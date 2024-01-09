@@ -509,7 +509,7 @@ const ManualReplaceManager = {
               top: 0;
               width: ${pos.width + 3}px;
               height: ${pos.lineHeight - 1}px;
-              border: 0px solid ${pos.color};
+              border: 0px solid ${pos.color}; // 改為 0px 不要動他
               border-radius: 2px;
               will-change: transform;
               z-index: 1001;
@@ -572,11 +572,11 @@ const ManualReplaceManager = {
         for (const match of matches) {
           // 檢查快取
           const cacheKey = `${groupIndex}-${match.index}-${match[0]}`;
-          let position = this.virtualScrollData.positionCache.get(cacheKey);
+          let positionList = this.virtualScrollData.positionCache.get(cacheKey);
           
           // 如果快取未命中或需要重新計算
-          if (!position || textChanged) {
-            position = TextHighlight.PositionCalculator.calculatePosition(
+          if (!positionList || textChanged) {
+            positionList = TextHighlight.PositionCalculator.calculatePosition(
               textArea,
               match.index,
               text,
@@ -584,25 +584,27 @@ const ManualReplaceManager = {
               styles
             );
             
-            if (position) {
+            if (positionList) {
               // 更新快取
-              this.virtualScrollData.positionCache.set(cacheKey, {
+              this.virtualScrollData.positionCache.set(cacheKey, positionList.map(pos => ({
+                ...pos,
+                text: match[0],
+                color,
+                lineHeight: styles.lineHeight,
+                originalTop: pos.top
+              })));
+            }
+          }
+          
+          if (positionList) {
+            positionList.forEach(position => {
+              positions.push({
                 ...position,
                 text: match[0],
                 color,
                 lineHeight: styles.lineHeight,
                 originalTop: position.top
               });
-            }
-          }
-          
-          if (position) {
-            positions.push({
-              ...position,
-              text: match[0],
-              color,
-              lineHeight: styles.lineHeight,
-              originalTop: position.top
             });
           }
         }

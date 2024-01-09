@@ -455,24 +455,71 @@ const TextHighlight = {
         const rects = range.getClientRects();
         if (rects.length === 0) return null;
 
-        const rect = rects[0];
         const divRect = this.cache.div.getBoundingClientRect();
-
-        const position = {
-          top: rect.top - divRect.top + styles.paddingTop,
-          left: rect.left - divRect.left + styles.paddingLeft + TextHighlight.CONFIG.FIXED_OFFSET.LEFT,
-          width: rect.width,
-          originalTop: rect.top - divRect.top + styles.paddingTop,
-          index,
-          text: matchedText,
-          needsRecalculation: false
-        };
+        const positions = [];
+        
+        // 合併相鄰的矩形
+        let currentRect = null;
+        
+        for (let i = 0; i < rects.length; i++) {
+          const rect = rects[i];
+          
+          if (!currentRect) {
+            // 第一個矩形
+            currentRect = {
+              top: rect.top,
+              left: rect.left,
+              width: rect.width,
+              height: rect.height,
+              bottom: rect.bottom
+            };
+          } else if (Math.abs(rect.top - currentRect.top) < 1) {
+            // 如果在同一行，合併矩形
+            currentRect.width = (rect.left + rect.width) - currentRect.left;
+          } else {
+            // 不在同一行，保存當前矩形並開始新的矩形
+            positions.push({
+              top: currentRect.top - divRect.top + styles.paddingTop,
+              left: currentRect.left - divRect.left + TextHighlight.CONFIG.FIXED_OFFSET.LEFT,
+              width: currentRect.width,
+              originalTop: currentRect.top - divRect.top + styles.paddingTop,
+              index,
+              text: matchedText,
+              needsRecalculation: false,
+              isMultiLine: rects.length > 1,
+              lineIndex: positions.length
+            });
+            
+            currentRect = {
+              top: rect.top,
+              left: rect.left,
+              width: rect.width,
+              height: rect.height,
+              bottom: rect.bottom
+            };
+          }
+        }
+        
+        // 添加最後一個矩形
+        if (currentRect) {
+          positions.push({
+            top: currentRect.top - divRect.top + styles.paddingTop,
+            left: currentRect.left - divRect.left + TextHighlight.CONFIG.FIXED_OFFSET.LEFT,
+            width: currentRect.width,
+            originalTop: currentRect.top - divRect.top + styles.paddingTop,
+            index,
+            text: matchedText,
+            needsRecalculation: false,
+            isMultiLine: rects.length > 1,
+            lineIndex: positions.length
+          });
+        }
 
         // 存入快取
-        this.cache.positions.set(`${index}-${matchedText}`, position);
-        TextHighlight.GlobalPositionCache.set(text, index, matchedText, position);
+        this.cache.positions.set(`${index}-${matchedText}`, positions);
+        TextHighlight.GlobalPositionCache.set(text, index, matchedText, positions);
 
-        return position;
+        return positions;
 
       } catch (error) {
         console.error(`[${new Date().toISOString()}] 計算位置時發生錯誤:`, error);
@@ -898,7 +945,7 @@ const TextHighlight = {
 
           for (const match of matches) {
             if (match[0]) {
-              const position = this.PositionCalculator.calculatePosition(
+              const positions = this.PositionCalculator.calculatePosition(
                 textArea, 
                 match.index, 
                 text, 
@@ -906,12 +953,14 @@ const TextHighlight = {
                 styles
               );
               
-              if (position) {
-                allPositions.push({
-                  position,
-                  color: this.getColorForWord(targetWord),
-                  targetWord,
-                  lineHeight: styles.lineHeight
+              if (positions) {
+                positions.forEach(position => {
+                  allPositions.push({
+                    position,
+                    color: this.getColorForWord(targetWord),
+                    targetWord,
+                    lineHeight: styles.lineHeight
+                  });
                 });
               }
             }
@@ -932,7 +981,7 @@ const TextHighlight = {
           }
 
           matches.forEach(match => {
-            const position = this.PositionCalculator.calculatePosition(
+            const positions = this.PositionCalculator.calculatePosition(
               textArea, 
               match.index, 
               text, 
@@ -940,12 +989,14 @@ const TextHighlight = {
               styles
             );
             
-            if (position) {
-              allPositions.push({
-                position,
-                color: this.getColorForWord(targetWord),
-                targetWord,
-                lineHeight: styles.lineHeight
+            if (positions) {
+              positions.forEach(position => {
+                allPositions.push({
+                  position,
+                  color: this.getColorForWord(targetWord),
+                  targetWord,
+                  lineHeight: styles.lineHeight
+                });
               });
             }
           });
