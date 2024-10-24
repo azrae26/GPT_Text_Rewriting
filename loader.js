@@ -1,4 +1,4 @@
-const REMOTE_BASE_URL = 'https://your-remote-server.com';
+const REMOTE_BASE_URL = 'https://azrae26.github.io/GPT_Text_Rewriting';
 const LOCAL_SCRIPT_PATH = 'file:///path/to/your/local/content.js';
 
 async function loadScript() {

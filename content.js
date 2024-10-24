@@ -363,7 +363,7 @@ const UIManager = {
     rewriteButton.textContent = '改寫';
     rewriteButton.style.cssText = `
       padding: 5px 10px;
-      background-color: #4CAF50;
+      background-color: #FF0000; // 改為紅色
       color: white;
       border: none;
       border-radius: 4px;

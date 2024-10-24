@@ -2,10 +2,8 @@
 const fs = require('fs');
 
 function updateLocalVersion() {
-  const now = new Date().toISOString();
   const versionData = {
-    version: "1.0.0", // 根據需要更新版本號
-    lastUpdated: now
+    version: "1.0.1" // 更新版本號
   };
 
   fs.writeFileSync('version.json', JSON.stringify(versionData, null, 2));

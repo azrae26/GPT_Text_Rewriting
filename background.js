@@ -1,24 +1,18 @@
 let contentScriptReady = false;
 let pendingRewriteRequest = null;
 
-const REMOTE_BASE_URL = 'https://your-remote-server.com';
-const UPDATE_INTERVAL = 10 * 60 * 1000; // 10 minutes
+const REMOTE_BASE_URL = 'https://azrae26.github.io';
+const UPDATE_INTERVAL = 1 * 60 * 1000; // 更新時間1分鐘
 
 async function checkForUpdates() {
   try {
     const response = await fetch(`${REMOTE_BASE_URL}/version.json`);
     const remoteVersion = await response.json();
-    const localData = await chrome.storage.local.get(['version', 'lastUpdated']);
+    const localData = await chrome.storage.local.get('version');
 
-    const remoteDate = new Date(remoteVersion.lastUpdated);
-    const localDate = localData.lastUpdated ? new Date(localData.lastUpdated) : new Date(0);
-
-    if (!localData.version || remoteDate > localDate) {
+    if (!localData.version || remoteVersion.version > localData.version) {
       // 遠端版本更新，執行更新操作
-      await chrome.storage.local.set({ 
-        version: remoteVersion.version,
-        lastUpdated: remoteVersion.lastUpdated
-      });
+      await chrome.storage.local.set({ version: remoteVersion.version });
       chrome.tabs.query({}, function(tabs) {
         tabs.forEach(tab => {
           if (tab.url.startsWith('https://data.uanalyze.twobitto.com/')) {
@@ -26,6 +20,7 @@ async function checkForUpdates() {
           }
         });
       });
+      console.log('更新到新版本:', remoteVersion.version);
     } else {
       console.log('本地版本已是最新');
     }
