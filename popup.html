@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GPT 文字重寫</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@700&display=swap');
+
+    body {
+      font-family: 'Microsoft JhengHei', 'PingFang TC', 'Heiti TC', 'Apple LiGothic Medium', 'Helvetica', 'Arial', sans-serif;
+      padding: 0; /* 移除 body 的 padding */
+      box-sizing: border-box;
+      width: 400px;
+      height: 480px; /* 稍微縮小總高度 */
+      margin: 0;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background-color: #f0f0f0;
+    }
+    h1 {
+      font-size: 22px;
+      margin: 0 0 6px 0;
+      color: #333;
+    }
+    .content {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow-y: auto;
+      padding: 15px; /* 將原來 body 的 padding 移到這裡 */
+    }
+    input, button, select {
+      width: 100%;
+      padding: 8px;
+      box-sizing: border-box;
+      font-size: 14px;
+      border-radius: 4px;
+      border: 1px solid #bbb;
+      height: 36px; /* 新增這行，統一高度 */
+    }
+    input:focus, select:focus {
+      outline: none;
+      border-color: #aaa; /* 加深焦點時的邊框顏色 */
+    }
+    textarea {
+      flex: 1;
+      min-height: 150px;
+      resize: none;
+      border: none; /* 移除改寫框的邊框 */
+      border-radius: 0 0 4px 4px; /* 保持底部圓角 */
+      background-color: #fff;
+      margin-top: 0; /* 確保 margin-top 為 0 */
+      padding: 8px;
+      font-size: 14px;
+    }
+    textarea:focus {
+      outline: none;
+    }
+    button {
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+      padding: 6px;
+      margin-top: 10px;
+      transition: background-color 0.3s;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    .input-group {
+      display: flex;
+      align-items: stretch; /* 改為 stretch，使子元素高度一致 */
+      margin-top: 8px;
+    }
+    #model-select {
+      width: 30%;
+      margin-right: 10px;
+    }
+    #api-key {
+      width: 70%;
+    }
+    .tab-container {
+      display: flex;
+      margin-top: 15px;
+      border: 1px solid #bbb;
+      border-bottom: none;
+      border-radius: 4px 4px 0 0;
+      overflow: hidden;
+    }
+    .tab {
+      flex: 1;
+      text-align: center;
+      padding: 8px; /* 將 padding 從 12px 減少到 10px */
+      background-color: #d0d0d0;
+      cursor: pointer;
+      transition: all 0.3s;
+      color: #444;
+      font-weight: bold;
+      border-right: 1px solid #bbb;
+      font-size: 14px; /* 新增這行，將小設置為 16px */
+    }
+    .tab:last-child {
+      border-right: none;
+    }
+    .tab.active {
+      background-color: #fff;
+      color: #2e9232;
+      border-bottom: 1px solid #fff;
+      margin-bottom: -1px;
+    }
+    .tab:hover:not(.active) {
+      background-color: #c0c0c0; /* 加深懸停時的背景色 */
+    }
+    .tab-content {
+      display: none;
+      flex: 1;
+      border: 1px solid #bbb;
+      border-top: none;
+      border-radius: 0 0 4px 4px;
+    }
+    .tab-content.active {
+      display: flex;
+      flex-direction: column;
+    }
+    .checkbox-group {
+      margin-top: 10px;
+      display: flex;
+      justify-content: flex-start; /* 改為靠左對齊 */
+    }
+
+    .checkbox-label {
+      display: inline-flex;
+      align-items: center;
+      margin-right: 20px; /* 增加右邊距，使兩個選項之間有更多空間 */
+      cursor: pointer;
+    }
+
+    .checkbox-label input[type="checkbox"] {
+      margin-right: 5px;
+      width: auto;
+    }
+
+    .checkbox-label span {
+      font-size: 14.5px;
+      color: #333;
+    }
+
+    /* 移除之前對 input 的全局樣式 */
+    input[type="checkbox"] {
+      width: auto;
+      padding: 0;
+      margin: 0 5px 0 0;
+    }
+    .model-select {
+      width: 100%;
+      margin-bottom: 0; /* 將 margin-bottom 改為 0 */
+    }
+
+    /* 新增最大層級分頁樣式 */
+    .main-tab-container {
+      display: flex;
+      margin-bottom: 0; /* 移除底部 margin */
+    }
+    .main-tab {
+      flex: 1;
+      text-align: center;
+      padding: 10px;
+      background-color: #d0d0d0;
+      cursor: pointer;
+      transition: all 0.3s;
+      color: #444;
+      font-weight: 700;
+      border: none; /* 移除邊框 */
+      border-bottom: 1px solid #bbb; /* 只保留底部邊框 */
+      font-size: 16px;
+      font-family: 'Noto Sans TC', sans-serif;
+    }
+    .main-tab.active {
+      background-color: #f0f0f0;
+      color: #2e9232;
+      border-bottom: none; /* 移除活動分頁的底部邊框 */
+    }
+    .main-tab-content {
+      display: none;
+      padding: 15px; /* 為內容添加內邊距 */
+    }
+    .main-tab-content.active {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="main-tab-container">
+    <div class="main-tab active" data-tab="rewrite">文字改寫</div>
+    <div class="main-tab" data-tab="empty">自動填入</div>
+  </div>
+
+  <div id="rewrite-tab" class="main-tab-content active">
+    <div class="content">
+      <div class="input-group">
+        <select id="model-select">
+          <option value="gpt-4">GPT-4</option>
+          <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+        </select>
+        <input type="password" id="api-key" placeholder="輸入您的 API 金鑰">
+      </div>
+      <button id="save">保存金鑰</button>
+      
+      <div class="tab-container">
+        <div class="tab active" data-tab="full">全文改寫</div>
+        <div class="tab" data-tab="short">10字以下改寫</div>
+        <div class="tab" data-tab="auto">雙擊自動改寫</div>
+      </div>
+      
+      <div id="full-tab" class="tab-content active">
+        <select id="fullRewriteModel" class="model-select">
+          <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+          <option value="gpt-4o-mini">GPT-4o mini</option>
+          <option value="gpt-4">GPT-4</option>
+        </select>
+        <textarea id="instruction" placeholder="輸入全文改寫要求"></textarea>
+      </div>
+      
+      <div id="short-tab" class="tab-content">
+        <select id="shortRewriteModel" class="model-select">
+          <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+          <option value="gpt-4o-mini">GPT-4o mini</option>
+          <option value="gpt-4">GPT-4</option>
+        </select>
+        <textarea id="shortInstruction" placeholder="輸入10個字以下改寫要求"></textarea>
+      </div>
+      
+      <div id="auto-tab" class="tab-content">
+        <select id="autoRewriteModel" class="model-select">
+          <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+          <option value="gpt-4o-mini">GPT-4o mini</option>
+          <option value="gpt-4">GPT-4</option>
+        </select>
+        <textarea id="autoRewritePatterns" placeholder="輸入反白自動改寫匹配模式" style="height: 200px;">
+/第\s*一\s*季/
+/第\s*二\s*季/
+/第\s*三\s*季/
+/第\s*四\s*季/
+/第\s*1\s*季/
+/第\s*2\s*季/
+/第\s*3\s*季/
+/第\s*4\s*季/
+/Q\s*1/
+/Q\s*2/
+/Q\s*3/
+/Q\s*4/
+/1\s*月/
+/2\s*月/
+/3\s*月/
+/4\s*月/
+/5\s*月/
+/6\s*月/
+/7\s*月/
+/8\s*月/
+/9\s*月/
+/10\s*月/
+/11\s*月/
+/12\s*月/
+/1\s*M/
+/M\s*1/
+/2\s*M/
+/M\s*2/
+/3\s*M/
+/M\s*3/
+/4\s*M/
+/M\s*4/
+/5\s*M/
+/M\s*5/
+/6\s*M/
+/M\s*6/
+/7\s*M/
+/M\s*7/
+/8\s*M/
+/M\s*8/
+/9\s*M/
+/M\s*9/
+/10\s*M/
+/M\s*10/
+/11\s*M/
+/M\s*11/
+/12\s*M/
+/M\s*12/
+/上\s*半\s*年/
+/下\s*半\s*年/
+/全\s*年/
+/去\s*年/
+/今\s*年/
+/明\s*年/
+/後\s*年/
+/今\s*明\s*年/
+/明\s*後\s*年/
+/今、\s*明\s*年/
+/明、\s*後\s*年/
+/今、\s*明\s*兩\s*年/
+/明、\s*後\s*兩\s*年/
+        </textarea>
+      </div>
+      
+      <div class="checkbox-group">
+        <label class="checkbox-label">
+          <input type="checkbox" id="confirmModel">
+          <span>確認模型</span>
+        </label>
+        <label class="checkbox-label">
+          <input type="checkbox" id="confirmContent">
+          <span>確認內容</span>
+        </label>
+      </div>
+      
+      <button id="rewrite">改寫文字</button>
+    </div>
+  </div>
+
+  <div id="empty-tab" class="main-tab-content">
+    <!-- 第二個分頁的內容，暫時為空 -->
+  </div>
+
+  <!-- <button id="aiAssistant">啟動 AI 助手</button> -->
+
+  <script src="popup.js"></script>
+</body>
+</html>
+
+
+
