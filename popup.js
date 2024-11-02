@@ -1,27 +1,34 @@
+/**
+ * popup.js - 擴充功能彈出視窗的主要腳本
+ * 功能：管理 API 金鑰、改寫設置、模型選擇等配置項目
+ */
+
 document.addEventListener('DOMContentLoaded', function() {
-  const apiKeyInput = document.getElementById('api-key');
-  const modelSelect = document.getElementById('model-select');
-  const instructionInput = document.getElementById('instruction');
-  const shortInstructionInput = document.getElementById('shortInstruction');
-  const autoRewritePatternsInput = document.getElementById('autoRewritePatterns');
-  const saveButton = document.getElementById('save');
-  const rewriteButton = document.getElementById('rewrite');
-  const confirmModelCheckbox = document.getElementById('confirmModel');
-  const confirmContentCheckbox = document.getElementById('confirmContent');
-  const fullRewriteModelSelect = document.getElementById('fullRewriteModel');
-  const shortRewriteModelSelect = document.getElementById('shortRewriteModel');
-  const autoRewriteModelSelect = document.getElementById('autoRewriteModel');
-  const aiAssistantButton = document.getElementById('aiAssistant');
+  // 獲取所有需要的 DOM 元素
+  const apiKeyInput = document.getElementById('api-key');                          // API 金鑰輸入
+  const modelSelect = document.getElementById('model-select');                     // 模型選擇
+  const instructionInput = document.getElementById('instruction');                 // 改寫指令
+  const shortInstructionInput = document.getElementById('shortInstruction');       // 短文本指令
+  const autoRewritePatternsInput = document.getElementById('autoRewritePatterns'); // 自動改寫模式
+  const saveButton = document.getElementById('save');                              // 保存按鈕
+  const rewriteButton = document.getElementById('rewrite');                        // 改寫按鈕
+  const confirmModelCheckbox = document.getElementById('confirmModel');            // 確認模型選項
+  const confirmContentCheckbox = document.getElementById('confirmContent');        // 確認內容選項
+  const fullRewriteModelSelect = document.getElementById('fullRewriteModel');      // 全文改寫模型
+  const shortRewriteModelSelect = document.getElementById('shortRewriteModel');    // 短文本模型
+  const autoRewriteModelSelect = document.getElementById('autoRewriteModel');      // 自動改寫模型
+  const aiAssistantButton = document.getElementById('aiAssistant');               // AI 助手按鈕
   
-  // 暫時隱藏自動改寫按鈕
+  // 暫時隱藏自動改寫按鈕（功能開發中）
   rewriteButton.style.display = 'none';
   
+  // API 金鑰存儲對象
   let apiKeys = {
     'openai': '',
     'gemini-1.5-flash': ''
   };
 
-  // 載入保存的設置
+  // 從 Chrome 儲存空間載入設置
   chrome.storage.sync.get(['apiKeys', 'instruction', 'shortInstruction', 'autoRewritePatterns', 'confirmModel', 'confirmContent', 'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel'], function(result) {
     if (result.apiKeys) {
       apiKeys = result.apiKeys;
@@ -37,14 +44,15 @@ document.addEventListener('DOMContentLoaded', function() {
     updateApiKeyInput();
   });
 
+  // 更新 API 金鑰輸入框顯示
   function updateApiKeyInput() {
     apiKeyInput.value = apiKeys[modelSelect.value] || '';
   }
 
-  // 當模型選擇改變時更新 API 金鑰輸入框
+  // 模型選擇變更處理
   modelSelect.addEventListener('change', updateApiKeyInput);
 
-  // 保存設置
+  // 保存所有設置
   saveButton.addEventListener('click', function() {
     const selectedModel = modelSelect.value;
     const apiKey = apiKeyInput.value;
@@ -71,7 +79,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
-  // 自動保存指令和匹配模式
+  // 自動保存各項設置的事件監聽器
   instructionInput.addEventListener('input', function() {
     chrome.storage.sync.set({ instruction: instructionInput.value });
   });
@@ -85,7 +93,7 @@ document.addEventListener('DOMContentLoaded', function() {
     sendAutoRewritePatternsUpdate();
   });
 
-  // 自動保存勾選狀態
+  // 確認選項變更處理
   confirmModelCheckbox.addEventListener('change', function() {
     chrome.storage.sync.set({ confirmModel: confirmModelCheckbox.checked }, function() {
       console.log('確認模型設置已更新:', confirmModelCheckbox.checked);
@@ -110,7 +118,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
-  // 添加事件監聽器來保存模型選擇
+  // 模型選擇變更處理
   fullRewriteModelSelect.addEventListener('change', function() {
     saveModelSelection('fullRewriteModel', this.value);
   });
@@ -123,6 +131,7 @@ document.addEventListener('DOMContentLoaded', function() {
     saveModelSelection('autoRewriteModel', this.value);
   });
 
+  // 保存模型選擇
   function saveModelSelection(modelType, value) {
     let settings = {};
     settings[modelType] = value;
@@ -132,7 +141,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // 發送改寫請求
+  // 改寫請求處理
   rewriteButton.addEventListener('click', function() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       chrome.tabs.sendMessage(tabs[0].id, {
@@ -160,7 +169,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
-  // 添加分頁切換功能
+  // 分頁切換功能
   const tabs = document.querySelectorAll('.tab');
   const tabContents = document.querySelectorAll('.tab-content');
 
@@ -176,7 +185,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
-  // 添加主分頁切換功能
+  // 主分頁切換功能
   const mainTabs = document.querySelectorAll('.main-tab');
   const mainTabContents = document.querySelectorAll('.main-tab-content');
 
@@ -192,6 +201,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   });
 
+  // 更新自動改寫模式
   function sendAutoRewritePatternsUpdate() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       chrome.tabs.sendMessage(tabs[0].id, {
@@ -207,10 +217,10 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // 在 DOMContentLoaded 事件監聽器的末尾添加初始化調用
+  // 初始化自動改寫模式
   sendAutoRewritePatternsUpdate();
 
-  // 添加新的函數來更新 content.js 的設置
+  // 更新內容腳本設置
   function updateContentScript(settings) {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       chrome.tabs.sendMessage(tabs[0].id, {
@@ -226,6 +236,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
+  // AI 助手功能啟動
   aiAssistantButton.addEventListener('click', function() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       chrome.tabs.sendMessage(tabs[0].id, {action: "activateAIAssistant"});

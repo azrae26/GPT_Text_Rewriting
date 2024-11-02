@@ -22,6 +22,8 @@
       "js": [
         "settings.js",
         "notification.js",
+        "undo.js",
+        "stock_list.js",
         "text-processor.js",
         "ui-manager.js",
         "content.js"

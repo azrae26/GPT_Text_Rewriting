@@ -20,8 +20,6 @@ const GlobalSettings = {
   shortRewriteModel: '',
   /** 自動改寫模型名稱。 */
   autoRewriteModel: '',
-  /** 改寫歷史記錄陣列，儲存每次改寫前的文本內容。 */
-  rewriteHistory: [],
 
   /**
    * 從 Chrome 儲存空間載入設定。
@@ -52,8 +50,6 @@ const GlobalSettings = {
         this.updateAutoRewritePatterns(result.autoRewritePatterns);
       }
 
-      // 修改這裡的檢查邏輯
-      // 如果沒有設置 gemini-1.5-flash 或 openai 的 API 金鑰，則拋出錯誤
       if (!this.apiKeys['gemini-1.5-flash'] && !this.apiKeys['openai']) {
         console.error('未設置任何 API 金鑰');
         throw new Error('未設置任何 API 金鑰，請在擴展設置中輸入至少一個 API 金鑰。');

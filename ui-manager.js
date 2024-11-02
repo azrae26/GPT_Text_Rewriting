@@ -1,27 +1,17 @@
-/* global GlobalSettings, TextProcessor, Notification */
-/**
- * UI 管理模組，負責管理使用者介面的元素和事件。
- */
+/* global GlobalSettings, TextProcessor, Notification, UndoManager */
+/** UI管理模組 */
 const UIManager = {
-  /**
-   * 向網頁中添加改寫按鈕和復原按鈕。
-   */
+  /** 添加改寫按鈕 */
   addRewriteButton() {
     console.log('開始添加改寫按鈕');
-    if (!window.shouldEnableFeatures()) {
-      console.log('當前頁面不符合啟用條件，不添加改寫按鈕');
-      return;
-    }
-
-    const existingButton = document.getElementById('gpt-rewrite-button');
-    if (existingButton) {
-      console.log('改寫按鈕已存在，不重複添加');
+    if (!window.shouldEnableFeatures() || document.getElementById('gpt-rewrite-button')) {
+      console.log('不符合添加按鈕條件');
       return;
     }
 
     const textArea = document.querySelector('textarea[name="content"]');
     if (!textArea) {
-      console.log('找不到文本區域，無法添加改寫按鈕');
+      console.log('找不到文本區域');
       return;
     }
 
@@ -31,274 +21,213 @@ const UIManager = {
     const rewriteButton = document.createElement('button');
     rewriteButton.id = 'gpt-rewrite-button';
     rewriteButton.textContent = '改寫';
-
     rewriteButton.addEventListener('click', async function() {
       try {
         await window.GlobalSettings.loadSettings();
         if (!window.GlobalSettings.apiKeys['gemini-1.5-flash'] && !window.GlobalSettings.apiKeys['openai']) {
-          alert('請先在擴展設置中輸入至少一個 API 金鑰');
+          alert('請先設置 API 金鑰');
           return;
         }
         if (!window.GlobalSettings.instruction.trim()) {
-          alert('改寫要求不能為空，請在擴展設置中輸入改寫要求');
+          alert('請設置改寫要求');
           return;
         }
         
-        rewriteButton.disabled = true;
-        window.GlobalSettings.originalContent = textArea.value;
+        this.disabled = true;
         await window.TextProcessor.rewriteText();
-        console.log('改寫成功完成');
+        console.log('改寫完成');
       } catch (error) {
-        console.error('Error in rewrite process:', error);
-        alert('改寫過程中發生錯誤: ' + error.message);
+        console.error('改寫錯誤:', error);
+        alert('改寫錯誤: ' + error.message);
       } finally {
-        rewriteButton.disabled = false;
+        this.disabled = false;
       }
     });
 
     buttonContainer.appendChild(rewriteButton);
-
-    const textAreaParent = textArea.parentElement;
-    textAreaParent.style.position = 'relative';
-    textAreaParent.appendChild(buttonContainer);
-
-    textAreaParent.style.display = 'flex';
-    textAreaParent.style.flexDirection = 'column';
-    textAreaParent.style.alignItems = 'flex-end';
-
+    this._setupTextArea(textArea, buttonContainer);
     console.log('改寫按鈕添加成功');
-
-    // 初始化歷史記錄 - 修正：傳入 textArea 元素
-    window.TextProcessor.addToHistory(textArea.value, textArea);
-
-    // 修改輸入事件監聽器，移除防抖
-    textArea.addEventListener('input', function(event) {
-      // 檢查是否是輸入或刪除單個字符
-      const oldLength = window.GlobalSettings.rewriteHistory[window.TextProcessor.currentHistoryIndex]?.length || 0;
-      const newLength = this.value.length;
-      const lengthDiff = Math.abs(newLength - oldLength);
-      
-      // 如果是輸入法編輯或貼上操作（長度差異大於1），使用防抖
-      if (lengthDiff > 1) {
-        clearTimeout(this._inputTimeout);
-        this._inputTimeout = setTimeout(() => {
-          window.TextProcessor.addToHistory(this.value, this);
-        }, 500);
-      } else {
-        // 單個字符的修改，直接記錄
-        window.TextProcessor.addToHistory(this.value, this);
-      }
-    });
-
-    // 貼上事件監聽器
-    textArea.addEventListener('paste', function() {
-      setTimeout(() => {
-        window.TextProcessor.addToHistory(this.value, this);
-      }, 0);
-    });
-
-    // 剪下事件監聽器
-    textArea.addEventListener('cut', function() {
-      setTimeout(() => {
-        window.TextProcessor.addToHistory(this.value, this);
-      }, 0);
-    });
   },
 
-  /**
-   * 初始化股票代碼功能，在文本區域附近顯示股票代碼按鈕。
-   */
+  /** 設置文本區域樣式和事件 */
+  _setupTextArea(textArea, buttonContainer) {
+    const parent = textArea.parentElement;
+    parent.style.position = 'relative';
+    parent.style.display = 'flex';
+    parent.style.flexDirection = 'column';
+    parent.style.alignItems = 'flex-end';
+    parent.appendChild(buttonContainer);
+
+    window.UndoManager.initInputHistory(textArea);
+    textArea.addEventListener('dblclick', (e) => this._handleDoubleClick(e, textArea));
+  },
+
+  /** 處理雙擊事件 */
+  async _handleDoubleClick(event, textArea) {
+    const selectedText = window.getSelection().toString().trim();
+    if (!selectedText || selectedText.length > 10) return;
+
+    const range = {
+      start: Math.max(0, textArea.selectionStart - 4),
+      end: Math.min(textArea.value.length, textArea.selectionEnd + 4)
+    };
+    const text = textArea.value.substring(range.start, range.end);
+    console.log('檢查文本:', text);
+
+    const matchResult = window.TextProcessor.findSpecialText(text);
+    if (!matchResult) return;
+
+    try {
+      const settings = await window.GlobalSettings.loadSettings();
+      if (!window.GlobalSettings.apiKeys['gemini-1.5-flash'] && !window.GlobalSettings.apiKeys['openai']) return;
+
+      if (settings.confirmModel || settings.confirmContent) {
+        const model = settings.autoRewriteModel || window.GlobalSettings.model;
+        if (!confirm(`使用 ${model} 改寫:\n${matchResult.matchedText}`)) return;
+      }
+
+      const rewrittenText = await window.TextProcessor.rewriteText(matchResult.matchedText, true);
+      if (rewrittenText?.trim() !== matchResult.matchedText) {
+        textArea.value = textArea.value.substring(0, range.start + matchResult.startIndex) +
+                        rewrittenText +
+                        textArea.value.substring(range.start + matchResult.endIndex);
+        textArea.dispatchEvent(new Event('input', { bubbles: true }));
+        
+        const undoButton = document.getElementById('gpt-undo-button');
+        if (undoButton) undoButton.style.display = 'inline-block';
+        
+        await window.Notification.showNotification('自動改寫完成', false);
+      }
+    } catch (error) {
+      console.error('自動改寫錯誤:', error);
+      alert('自動改寫錯誤: ' + error.message);
+    }
+  },
+
+  /** 初始化股票代碼功能 */
   initializeStockCodeFeature() {
-    console.log('開始初始化股票代碼功能');
     if (!window.shouldEnableFeatures()) {
-      console.log('當前頁面不符合啟用股票代號功能條件');
       this.removeStockCodeFeature();
       return;
     }
 
-    const contentTextarea = document.querySelector('textarea[name="content"]');
-    const stockCodeInput = document.querySelector('input[id=":r7:"]');
+    const elements = {
+      textarea: document.querySelector('textarea[name="content"]'),
+      input: document.querySelector('input[id=":r7:"]'),
+      container: this._getOrCreateContainer()
+    };
+
+    if (!elements.textarea || !elements.input) return;
+
+    const updateUI = () => {
+      const codes = this._getStockCodes(elements.textarea.value);
+      this._updateStockButtons(codes, elements);
+      this._updateContainerPosition(elements);
+    };
+
+    elements.textarea.addEventListener('input', updateUI);
+    window.addEventListener('resize', () => this._updateContainerPosition(elements));
+    window.addEventListener('scroll', () => this._updateContainerPosition(elements));
+    updateUI();
+  },
+
+  /** 獲取或創建按鈕容器 */
+  _getOrCreateContainer() {
+    let container = document.getElementById('stock-code-container');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'stock-code-container';
+      document.body.appendChild(container);
+    }
+    return container;
+  },
+
+  /** 從文本中提取股票代碼和名稱 */
+  _getStockCodes(text) {
+    const codes = new Set();
+    const matchedStocks = new Map(); // 用於存儲匹配到的股票信息
     
-    if (!contentTextarea || !stockCodeInput) {
-      console.log('找不到必要的元素，股票代號功能未初始化');
-      return;
-    }
+    // 從前100個字符中尋找股票名稱
+    const first10Chars = text.substring(0, 100);
+    console.log('檢查前100個字:', first10Chars);
 
-    let stockCodeContainer = document.getElementById('stock-code-container');
-    if (!stockCodeContainer) {
-      stockCodeContainer = document.createElement('div');
-      stockCodeContainer.id = 'stock-code-container';
-      document.body.appendChild(stockCodeContainer);
-    }
-
-    function updateStockCodeContainerPosition() {
-      if (stockCodeInput) {
-        const rect = stockCodeInput.getBoundingClientRect();
-        stockCodeContainer.style.top = `${rect.top + window.scrollY - stockCodeContainer.offsetHeight + 9}px`;
-        stockCodeContainer.style.left = `${rect.right + window.scrollX - stockCodeContainer.offsetWidth + 28}px`;
-      }
-    }
-
-    function detectStockCodes(text) {
-      const stockCodeRegex = /[（(]([0-9]{4})(?:[-\s.]*(?:TW|TWO))?[）)]|[（(]([0-9]{4})[-\s.]+(?:TW|TWO)[）)]/g;
-      const matches = text.matchAll(stockCodeRegex);
-      const stockCodes = [...new Set([...matches].map(match => match[1] || match[2]))];
-      return stockCodes;
-    }
-
-    function updateStockCodeButtons(stockCodes) {
-      stockCodeContainer.innerHTML = '';
-      stockCodes.forEach(code => {
-        const button = document.createElement('button');
-        button.textContent = code;
-        button.classList.add('stock-code-button');
-        button.addEventListener('click', () => {
-          stockCodeInput.value = code;
-          stockCodeInput.dispatchEvent(new Event('input', { bubbles: true }));
-          
-          stockCodeInput.focus();
-          setTimeout(() => {
-            stockCodeInput.blur();
-          }, 10);
-        });
-        stockCodeContainer.appendChild(button);
-      });
-      updateStockCodeContainerPosition();
-    }
-
-    function handleContentChange() {
-      const content = contentTextarea.value;
-      const stockCodes = detectStockCodes(content);
-      updateStockCodeButtons(stockCodes);
-      
-      if (stockCodes.length > 0 && !stockCodeInput.value) {
-        stockCodeInput.value = stockCodes[0];
-        stockCodeInput.dispatchEvent(new Event('input', { bubbles: true }));
+    if (window.stockList) {
+      window.stockList.forEach(stock => {
+        let stockName = stock.name;
+        // 檢查是否包含-KY或*，如果有則創建一個不帶後綴的版本
+        const baseNameKY = stockName.replace(/-KY$/, '');
+        const baseNameStar = stockName.replace(/\*$/, '');
         
-        stockCodeInput.focus();
-        setTimeout(() => {
-          stockCodeInput.blur();
-        }, 10);
-      }
-    }
-
-    contentTextarea.addEventListener('input', handleContentChange);
-    window.addEventListener('resize', updateStockCodeContainerPosition);
-    window.addEventListener('scroll', updateStockCodeContainerPosition);
-    
-    handleContentChange();
-
-    contentTextarea.addEventListener('dblclick', async function(event) {
-      console.log('檢測到雙擊事件');
-      const selectedText = window.getSelection().toString();
-      
-      console.log('選中的文本:', selectedText);
-      if (selectedText.trim() !== '' && selectedText.length <= 10) {
-        const start = Math.max(0, this.selectionStart - 4);
-        const end = Math.min(this.value.length, this.selectionEnd + 4);
-        const extendedText = this.value.substring(start, end);
-        
-        console.log('選中範圍:', { start: this.selectionStart, end: this.selectionEnd });
-        console.log('擴展後的範圍:', { start, end });
-        console.log('擴展檢查的文本:', extendedText);
-        
-        const matchResult = window.TextProcessor.findSpecialText(extendedText);
-        if (matchResult) {
-          console.log('找到匹配的特殊文本:', matchResult);
-          try {
-            const settings = await window.GlobalSettings.loadSettings();
-            if (!window.GlobalSettings.apiKeys['gemini-1.5-flash'] && !window.GlobalSettings.apiKeys['openai']) {
-              console.log('API 金鑰或短文本改寫指令未設置，跳過自動改寫');
-              return;
-            }
-            
-            let shouldProceed = true;
-            
-            if (settings.confirmModel || settings.confirmContent) {
-              const selectedModel = settings.autoRewriteModel || window.GlobalSettings.model;
-              const confirmMessage = `確定要使用 ${selectedModel} 模型自動改寫以下內容嗎？\n\n文本：${matchResult.matchedText}\n\n指令：${window.GlobalSettings.shortInstruction}`;
-              shouldProceed = confirm(confirmMessage);
-            }
-            
-            if (shouldProceed) {
-              console.log('開始自動改寫流程');
-              window.GlobalSettings.selectedOriginalContent = this.value;
-              console.log('準備改寫的文本:', matchResult.matchedText);
-              const rewrittenText = await window.TextProcessor.rewriteText(matchResult.matchedText, true);
-              
-              if (rewrittenText && rewrittenText.trim() !== matchResult.matchedText) {
-                console.log('開始替換文本');
-                const newText = this.value.substring(0, start + matchResult.startIndex) +
-                                rewrittenText +
-                                this.value.substring(start + matchResult.endIndex);
-                
-                console.log('改寫前的文本:', matchResult.matchedText);
-                console.log('改寫後的文本:', rewrittenText);
-                
-                this.value = newText;
-                console.log('文本已替換');
-                this.dispatchEvent(new Event('input', { bubbles: true }));
-                console.log('已觸發輸入事件');
-                
-                const undoButton = document.getElementById('gpt-undo-button');
-                if (undoButton) {
-                  undoButton.style.display = 'inline-block';
-                  console.log('復原按鈕已顯示');
-                }
-                
-                window.Notification.removeNotification();
-                
-                console.log('準備顯示改寫完成通知');
-                await window.Notification.showNotification('自動改寫已完成', false);
-                console.log('改寫完成通知顯示結束');
-                
-                console.log('反白自動改寫完成');
-              } else {
-                console.log('API 返回的改寫文本無效，或改寫結果與原文相同');
-                window.Notification.removeNotification();
-              }
-            } else {
-              console.log('用戶取消了自動改寫操作');
-              window.Notification.removeNotification();
-            }
-          } catch (error) {
-            console.error('自動改寫過程中發生錯誤:', error);
-            alert(`自動改寫過程中發生錯誤: ${error.message}\n請檢查您的設置並重試。`);
-          }
-        } else {
-          console.log('未找到匹配的特殊文本，擴展檢查的文本為:', extendedText);
+        // 檢查完整名稱或基礎名稱是否出現在前10個字符中
+        if (first10Chars.includes(stockName) || 
+            first10Chars.includes(baseNameKY) || 
+            first10Chars.includes(baseNameStar)) {
+          codes.add(stock.code);
+          matchedStocks.set(stock.code, stock.name);
         }
-      } else {
-        console.log('未選中任何文或選中文本超過10個字');
+      });
+    }
+
+    // 原有的代碼匹配邏輯
+    const codeRegex = /[（(]([0-9]{4})(?:[-\s.]*(?:TW|TWO))?[）)]|[（(]([0-9]{4})[-\s.]+(?:TW|TWO)[）)]|_([0-9]{4})/g;
+    const codeMatches = [...text.matchAll(codeRegex)];
+    codeMatches.forEach(match => {
+      const code = match[1] || match[2] || match[3];
+      if (code) {
+        codes.add(code);
+        // 如果在stockList中找到對應的股票，添加名稱信息
+        const stock = window.stockList?.find(s => s.code === code);
+        if (stock) {
+          matchedStocks.set(code, stock.name);
+        }
       }
     });
 
-    console.log('股代碼功能初始化成');
+    return { codes: Array.from(codes), matchedStocks };
   },
 
-  /**
-   * 移除股票代碼功能相關的元素和事件監聽器。
-   */
+  /** 更新股票代碼按鈕 */
+  _updateStockButtons(result, elements) {
+    const { codes, matchedStocks } = result;
+    elements.container.innerHTML = '';
+    codes.forEach(code => {
+      const button = document.createElement('button');
+      const stockName = matchedStocks.get(code);
+      button.textContent = stockName ? `${stockName}${code}` : code; // 顯示股票名稱和代碼
+      button.classList.add('stock-code-button');
+      button.onclick = () => {
+        elements.input.value = code;
+        elements.input.dispatchEvent(new Event('input', { bubbles: true }));
+        elements.input.focus();
+        setTimeout(() => elements.input.blur(), 10);
+      };
+      elements.container.appendChild(button);
+    });
+
+    if (codes.length > 0 && !elements.input.value) {
+      elements.input.value = codes[0];
+      elements.input.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  },
+
+  /** 更新按鈕容器位置 */
+  _updateContainerPosition(elements) {
+    const rect = elements.input.getBoundingClientRect();
+    elements.container.style.top = `${rect.top + window.scrollY - elements.container.offsetHeight + 9}px`;
+    elements.container.style.left = `${rect.right + window.scrollX - elements.container.offsetWidth + 38}px`;
+  },
+
+  /** 移除股票代碼功能，在URL變化時調用 */
   removeStockCodeFeature() {
-    const stockCodeContainer = document.getElementById('stock-code-container');
-    if (stockCodeContainer) {
-      stockCodeContainer.remove();
-    }
-    const contentTextarea = document.querySelector('textarea[name="content"]');
-    if (contentTextarea) {
-      contentTextarea.removeEventListener('input', handleContentChange);
-    }
-    window.removeEventListener('resize', updateStockCodeContainerPosition);
-    window.removeEventListener('scroll', updateStockCodeContainerPosition);
+    const container = document.getElementById('stock-code-container');
+    if (container) container.remove();
   },
 
-  /**
-   * 移除改寫按鈕和復原按鈕。
-   */
+  /** 移除改寫按鈕，在URL變化時調用 */
   removeRewriteButton() {
-    const buttonContainer = document.getElementById('gpt-button-container');
-    if (buttonContainer) {
-      buttonContainer.remove();
+    const container = document.getElementById('gpt-button-container');
+    if (container) {
+      container.remove();
       console.log('改寫按鈕已移除');
     }
   }
