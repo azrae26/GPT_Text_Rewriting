@@ -18,7 +18,6 @@ document.addEventListener('DOMContentLoaded', function() {
   
   let apiKeys = {
     'gpt-4': '',
-    'gpt-4o-mini': '', // 這裡會與 gpt-4 共用金鑰
     'gemini-1.5-flash': ''
   };
 

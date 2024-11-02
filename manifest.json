@@ -8,15 +8,25 @@
     "activeTab"
   ],
   "host_permissions": [
-    "<all_urls>"
+    "https://data.uanalyze.twobitto.com/*"
   ],
   "background": {
     "service_worker": "background.js"
   },
   "content_scripts": [
     {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"]
+      "matches": [
+        "https://data.uanalyze.twobitto.com/research-reports/*/edit*",
+        "https://data.uanalyze.twobitto.com/research-reports/create"
+      ],
+      "js": [
+        "settings.js",
+        "notification.js",
+        "text-processor.js",
+        "ui-manager.js",
+        "content.js"
+      ],
+      "css": ["content_script_uanalyze.css"]
     }
   ],
   "action": {

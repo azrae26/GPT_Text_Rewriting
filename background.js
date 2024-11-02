@@ -1,62 +1,80 @@
+// 用於追踪內容腳本是否已準備就緒的標誌
 let contentScriptReady = false;
+// 用於存儲待處理的改寫請求
 let pendingRewriteRequest = null;
 
+// 監聽來自其他部分的消息
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log("Background script received message:", request);
+  console.log("背景腳本收到消息:", request);
+  
+  // 處理內容腳本準備就緒的通知
   if (request.action === "contentScriptReady") {
     contentScriptReady = true;
     sendResponse({received: true});
-    console.log("Content script is ready");
-  } else if (request.action === "checkContentScriptReady") {
+    console.log("內容腳本已準備就緒");
+  } 
+  // 檢查內容腳本是否準備就緒
+  else if (request.action === "checkContentScriptReady") {
     sendResponse({ ready: contentScriptReady });
-    console.log("Checked content script readiness:", contentScriptReady);
-  } else if (request.action === "rewrite") {
-    console.log("Received rewrite request, storing it");
+    console.log("檢查內容腳本狀態:", contentScriptReady);
+  } 
+  // 處理改寫請求
+  else if (request.action === "rewrite") {
+    console.log("收到改寫請求，正在存儲");
     pendingRewriteRequest = request;
     sendResponse({received: true});
-  } else if (request.action === "popupReady") {
-    console.log("Popup is ready");
+  } 
+  // 處理彈出窗口準備就緒的通知
+  else if (request.action === "popupReady") {
+    console.log("彈出窗口已準備就緒");
+    // 如果有待處理的改寫請求，則轉發給彈出窗口
     if (pendingRewriteRequest) {
-      console.log("Forwarding pending rewrite request to popup");
+      console.log("轉發待處理的改寫請求到彈出窗口");
       chrome.runtime.sendMessage(pendingRewriteRequest, (response) => {
-        console.log("Received response from popup:", response);
+        console.log("收到彈出窗口的回應:", response);
         pendingRewriteRequest = null;
       });
     }
     sendResponse({received: true});
-  } else if (request.action === "getStorageData") {
+  } 
+  // 處理獲取存儲數據的請求
+  else if (request.action === "getStorageData") {
     chrome.storage.sync.get(request.keys, sendResponse);
     return true;  // 表示我們會異步發送響應
-  } else if (request.action === "setStorageData") {
+  } 
+  // 處理設置存儲數據的請求
+  else if (request.action === "setStorageData") {
     chrome.storage.sync.set(request.data, sendResponse);
     return true;  // 表示我們會異步發送響應
   }
   return true; // 表示我們會異步發送回應
 });
 
-// 修改這個監聽器來處理來自彈出窗口的消息
+// 處理更新內容腳本的請求
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "updateContentScript") {
-    console.log("Forwarding update request to content script", request);
-    // 將消息轉發給內容腳本
+    console.log("轉發更新請求到內容腳本", request);
+    // 查找當前活動的標籤頁
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       if (tabs[0]) {
+        // 向內容腳本發送消息
         chrome.tabs.sendMessage(tabs[0].id, request, (response) => {
-          console.log("Received response from content script:", response);
+          console.log("收到內容腳本的回應:", response);
+          // 錯誤處理
           if (chrome.runtime.lastError) {
-            console.error("Error sending message to content script:", chrome.runtime.lastError);
-            sendResponse({error: "Failed to communicate with content script", details: chrome.runtime.lastError.message});
+            console.error("向內容腳本發送消息時出錯:", chrome.runtime.lastError);
+            sendResponse({error: "與內容腳本通信失敗", details: chrome.runtime.lastError.message});
           } else {
             sendResponse(response);
           }
         });
       } else {
-        console.error("No active tab found");
-        sendResponse({error: "No active tab found"});
+        console.error("未找到活動的標籤頁");
+        sendResponse({error: "未找到活動的標籤頁"});
       }
     });
     return true; // 表示我們會異步發送回應
   }
 });
 
-console.log("Background script loaded");
+console.log("背景腳本已加載");
