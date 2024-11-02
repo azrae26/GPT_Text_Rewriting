@@ -52,8 +52,9 @@ const GlobalSettings = {
         this.updateAutoRewritePatterns(result.autoRewritePatterns);
       }
 
-      // 檢查是否有任何 API 金鑰
-      if (!this.apiKeys['gemini-1.5-flash'] && !this.apiKeys['gpt-4']) {
+      // 修改這裡的檢查邏輯
+      // 如果沒有設置 gemini-1.5-flash 或 openai 的 API 金鑰，則拋出錯誤
+      if (!this.apiKeys['gemini-1.5-flash'] && !this.apiKeys['openai']) {
         console.error('未設置任何 API 金鑰');
         throw new Error('未設置任何 API 金鑰，請在擴展設置中輸入至少一個 API 金鑰。');
       }

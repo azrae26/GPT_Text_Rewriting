@@ -32,14 +32,10 @@ const UIManager = {
     rewriteButton.id = 'gpt-rewrite-button';
     rewriteButton.textContent = '改寫';
 
-    const undoButton = document.createElement('button');
-    undoButton.id = 'gpt-undo-button';
-    undoButton.textContent = '復原';
-
     rewriteButton.addEventListener('click', async function() {
       try {
         await window.GlobalSettings.loadSettings();
-        if (!window.GlobalSettings.apiKeys['gemini-1.5-flash'] && !window.GlobalSettings.apiKeys['gpt-4']) {
+        if (!window.GlobalSettings.apiKeys['gemini-1.5-flash'] && !window.GlobalSettings.apiKeys['openai']) {
           alert('請先在擴展設置中輸入至少一個 API 金鑰');
           return;
         }
@@ -60,10 +56,7 @@ const UIManager = {
       }
     });
 
-    undoButton.addEventListener('click', handleUndo);
-
     buttonContainer.appendChild(rewriteButton);
-    buttonContainer.appendChild(undoButton);
 
     const textAreaParent = textArea.parentElement;
     textAreaParent.style.position = 'relative';
@@ -74,6 +67,42 @@ const UIManager = {
     textAreaParent.style.alignItems = 'flex-end';
 
     console.log('改寫按鈕添加成功');
+
+    // 初始化歷史記錄 - 修正：傳入 textArea 元素
+    window.TextProcessor.addToHistory(textArea.value, textArea);
+
+    // 修改輸入事件監聽器，移除防抖
+    textArea.addEventListener('input', function(event) {
+      // 檢查是否是輸入或刪除單個字符
+      const oldLength = window.GlobalSettings.rewriteHistory[window.TextProcessor.currentHistoryIndex]?.length || 0;
+      const newLength = this.value.length;
+      const lengthDiff = Math.abs(newLength - oldLength);
+      
+      // 如果是輸入法編輯或貼上操作（長度差異大於1），使用防抖
+      if (lengthDiff > 1) {
+        clearTimeout(this._inputTimeout);
+        this._inputTimeout = setTimeout(() => {
+          window.TextProcessor.addToHistory(this.value, this);
+        }, 500);
+      } else {
+        // 單個字符的修改，直接記錄
+        window.TextProcessor.addToHistory(this.value, this);
+      }
+    });
+
+    // 貼上事件監聽器
+    textArea.addEventListener('paste', function() {
+      setTimeout(() => {
+        window.TextProcessor.addToHistory(this.value, this);
+      }, 0);
+    });
+
+    // 剪下事件監聽器
+    textArea.addEventListener('cut', function() {
+      setTimeout(() => {
+        window.TextProcessor.addToHistory(this.value, this);
+      }, 0);
+    });
   },
 
   /**
@@ -178,7 +207,7 @@ const UIManager = {
           console.log('找到匹配的特殊文本:', matchResult);
           try {
             const settings = await window.GlobalSettings.loadSettings();
-            if (!window.GlobalSettings.apiKeys['gemini-1.5-flash'] && !window.GlobalSettings.apiKeys['gpt-4']) {
+            if (!window.GlobalSettings.apiKeys['gemini-1.5-flash'] && !window.GlobalSettings.apiKeys['openai']) {
               console.log('API 金鑰或短文本改寫指令未設置，跳過自動改寫');
               return;
             }

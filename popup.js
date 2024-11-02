@@ -17,13 +17,15 @@ document.addEventListener('DOMContentLoaded', function() {
   rewriteButton.style.display = 'none';
   
   let apiKeys = {
-    'gpt-4': '',
+    'openai': '',
     'gemini-1.5-flash': ''
   };
 
   // 載入保存的設置
   chrome.storage.sync.get(['apiKeys', 'instruction', 'shortInstruction', 'autoRewritePatterns', 'confirmModel', 'confirmContent', 'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel'], function(result) {
-    if (result.apiKeys) apiKeys = result.apiKeys;
+    if (result.apiKeys) {
+      apiKeys = result.apiKeys;
+    }
     if (result.instruction) instructionInput.value = result.instruction;
     if (result.shortInstruction) shortInstructionInput.value = result.shortInstruction;
     if (result.autoRewritePatterns) autoRewritePatternsInput.value = result.autoRewritePatterns;
@@ -47,7 +49,8 @@ document.addEventListener('DOMContentLoaded', function() {
     const selectedModel = modelSelect.value;
     const apiKey = apiKeyInput.value;
     
-    apiKeys[selectedModel] = apiKey;
+    const keyName = selectedModel === 'openai' ? 'openai' : selectedModel;
+    apiKeys[keyName] = apiKey;
 
     const settings = {
       apiKeys: apiKeys,
@@ -134,7 +137,10 @@ document.addEventListener('DOMContentLoaded', function() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       chrome.tabs.sendMessage(tabs[0].id, {
         action: "rewrite",
-        apiKey: apiKeys[modelSelect.value] || '',
+        apiKeys: {
+          'openai': apiKeys['openai'],
+          'gemini-1.5-flash': apiKeys['gemini-1.5-flash']
+        },
         model: modelSelect.value,
         instruction: instructionInput.value,
         shortInstruction: shortInstructionInput.value,
