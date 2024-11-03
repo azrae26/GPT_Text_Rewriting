@@ -8,6 +8,24 @@ const TranslateManager = {
   totalBatches: 0,
   timeoutId: null,
   isLastBatchProcessed: false,
+  batchInterval: 5000, // 預設間隔為5秒
+
+  /**
+   * 根據批次數量決定發送間隔
+   * @returns {number} 間隔時間（毫秒）
+   */
+  getBatchInterval() {
+    if (this.totalBatches <= 5) {
+      return 500; // 5次以下，0.5秒
+    } else if (this.totalBatches <= 10) {
+      return 1000; // 10次以下，1秒
+    } else if (this.totalBatches <= 20) {
+      return 3000; // 20次以下，3秒
+    } else if (this.totalBatches <= 25) {
+      return 4000; // 25次以下，4秒
+    }
+    return 5000; // 25次以上，5秒
+  },
 
   /**
    * 初始化翻譯功能
@@ -68,6 +86,7 @@ const TranslateManager = {
     this.translationQueue = [];
     this.pendingTranslations.clear();
     this.isLastBatchProcessed = false;
+    this.batchInterval = 5000;
     
     if (this.timeoutId) {
       clearTimeout(this.timeoutId);
@@ -160,6 +179,7 @@ const TranslateManager = {
     this.isLastBatchProcessed = false;
     this.translationQueue = this.splitTextIntoParagraphs(textArea.value);
     this.totalBatches = this.translationQueue.length;
+    this.batchInterval = this.getBatchInterval();
     this.pendingTranslations.clear();
     this.timeoutId = null;
 
@@ -171,12 +191,13 @@ const TranslateManager = {
     const model = settings.translateModel || settings.model;
     const apiKey = settings.apiKeys[model.startsWith('gemini') ? 'gemini-1.5-flash' : 'openai'];
 
-    console.log(`總共分割成 ${this.totalBatches} 個批次`);
+    console.log(`總共分割成 ${this.totalBatches} 個批次，間隔時間：${this.batchInterval/1000}秒`);
     await window.Notification.showNotification(`
       模型: ${TextProcessor.MODEL_NAMES[model] || model}<br>
       API KEY: ${apiKey.substring(0, 5)}...<br>
       翻譯中<br>
-      批次進度: 0/${this.totalBatches}
+      批次進度: 0/${this.totalBatches}<br>
+      發送間隔: ${this.batchInterval/1000}秒
     `, true);
 
     // 開始第一個批次並設置定時器
@@ -192,12 +213,12 @@ const TranslateManager = {
       this.timeoutId = setTimeout(() => {
         this.processNextBatch();
         this.scheduleNextBatch();
-      }, 5000);
+      }, this.batchInterval);
     }
   },
 
   /**
-   * 用於處理下一個批次，並檢查是否取消或完成
+   * 處理下一個批次
    */
   async processNextBatch() {
     console.log('processNextBatch called. shouldCancel:', this.shouldCancel, ', currentBatchIndex:', this.currentBatchIndex, ', totalBatches:', this.totalBatches);
@@ -257,7 +278,8 @@ const TranslateManager = {
             模型: ${TextProcessor.MODEL_NAMES[model] || model}<br>
             API KEY: ${apiKey.substring(0, 5)}...<br>
             翻譯中<br>
-            批次進度: ${batchIndex + 1}/${this.totalBatches}
+            批次進度: ${batchIndex + 1}/${this.totalBatches}<br>
+            發送間隔: ${this.batchInterval/1000}秒
           `, true);
         }
       }
