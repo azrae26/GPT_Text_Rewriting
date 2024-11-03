@@ -32,8 +32,10 @@ const Notification = {
       this.lastApiKeyPrefix = apiKeyPrefix; //儲存API KEY前綴
     }
 
-    console.log('通知中的模型名:', modelName);
-    console.log('通知的 API KEY 前綴:', apiKeyPrefix);
+    // 如果不是加載狀態，清除所有計時器
+    if (!isLoading) {
+      this.clearAllTimers();
+    }
 
     // 清除之前的超時
     if (this.notificationTimeout) {
@@ -116,16 +118,22 @@ const Notification = {
         resolve();
       } else {
         console.log('設置非加載狀態的通知顯示時間');
-        setTimeout(() => {
+        this.clearAllTimers(); // 確保清除所有計時器
+        
+        this.notificationTimeout = setTimeout(() => {
           console.log('開始淡出通知');
-          this.notificationElement.style.transition = 'opacity 0.25s ease-out';
-          this.notificationElement.style.opacity = '0';
-          
-          setTimeout(() => {
-            console.log('通知淡出完成，準備移除通知');
-            this.removeNotification();
+          if (this.notificationElement) {
+            this.notificationElement.style.transition = 'opacity 0.25s ease-out';
+            this.notificationElement.style.opacity = '0';
+            
+            setTimeout(() => {
+              console.log('通知淡出完成，準備移除通知');
+              this.removeNotification();
+              resolve();
+            }, 250);
+          } else {
             resolve();
-          }, 250);
+          }
         }, 1200);
       }
     });
@@ -136,6 +144,8 @@ const Notification = {
    */
   removeNotification() {
     console.log('嘗試移除通知');
+    this.clearAllTimers(); // 確保在移除通知前清除所有計時器
+    
     if (this.notificationElement) {
       if (this.notificationElement.parentNode) {
         this.notificationElement.parentNode.removeChild(this.notificationElement);
@@ -147,7 +157,6 @@ const Notification = {
     } else {
       console.log('沒有找到通知元素，無需移除');
     }
-    this.clearAllTimers();
   },
 
   /**

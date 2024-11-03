@@ -7,6 +7,7 @@ const TranslateManager = {
   shouldCancel: false,
   totalBatches: 0,
   timeoutId: null,
+  isLastBatchProcessed: false,
 
   /**
    * 初始化翻譯功能
@@ -66,6 +67,7 @@ const TranslateManager = {
     this.currentBatchIndex = 0;
     this.translationQueue = [];
     this.pendingTranslations.clear();
+    this.isLastBatchProcessed = false;
     
     if (this.timeoutId) {
       clearTimeout(this.timeoutId);
@@ -155,6 +157,7 @@ const TranslateManager = {
     this.isTranslating = true;
     this.shouldCancel = false;
     this.currentBatchIndex = 0;
+    this.isLastBatchProcessed = false;
     this.translationQueue = this.splitTextIntoParagraphs(textArea.value);
     this.totalBatches = this.translationQueue.length;
     this.pendingTranslations.clear();
@@ -194,22 +197,19 @@ const TranslateManager = {
   },
 
   /**
-   * 處理下一個批次
+   * 用於處理下一個批次，並檢查是否取消或完成
    */
   async processNextBatch() {
     console.log('processNextBatch called. shouldCancel:', this.shouldCancel, ', currentBatchIndex:', this.currentBatchIndex, ', totalBatches:', this.totalBatches);
     
-    // 如果已經取消或已處理完所有批次，直接返回
-    if (this.shouldCancel || this.currentBatchIndex >= this.translationQueue.length) {
-      if (this.shouldCancel) {
-        console.log('翻譯已取消，停止處理');
-      } else if (this.currentBatchIndex >= this.translationQueue.length) {
-        console.log('All batches processed. shouldCancel:', this.shouldCancel);
-        if (!this.shouldCancel) {
-          await window.Notification.showNotification('翻譯完成', false);
-        }
-        this.resetTranslation();
-      }
+    // 如果已經取消，直接返回
+    if (this.shouldCancel) {
+      console.log('翻譯已取消，停止處理');
+      return;
+    }
+
+    // 如果已經處理完所有批次，直接返回
+    if (this.currentBatchIndex >= this.translationQueue.length) {
       return;
     }
 
@@ -245,8 +245,14 @@ const TranslateManager = {
         this.updateTranslatedText(batchIndex, translatedText.trim());
         this.pendingTranslations.delete(batchIndex);
         
-        // 如果未取消且不是最後一個批次，顯示通知
-        if (!this.shouldCancel && batchIndex < this.translationQueue.length - 1) {
+        // 檢查是否是最後一個批次
+        if (batchIndex === this.translationQueue.length - 1) {
+          console.log('最後一個批次已完成，顯示完成通知');
+          clearTimeout(this.timeoutId);
+          await window.Notification.showNotification('翻譯完成', false);
+          this.resetTranslation();
+        } else if (!this.shouldCancel) {
+          // 如果不是最後一個批次，更新進度通知
           await window.Notification.showNotification(`
             模型: ${TextProcessor.MODEL_NAMES[model] || model}<br>
             API KEY: ${apiKey.substring(0, 5)}...<br>
