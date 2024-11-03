@@ -25,6 +25,7 @@
         "undo.js",
         "stock_list.js",
         "text-processor.js",
+        "translate.js",
         "ui-manager.js",
         "content.js"
       ],

@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const instructionInput = document.getElementById('instruction');                 // 改寫指令
   const shortInstructionInput = document.getElementById('shortInstruction');       // 短文本指令
   const autoRewritePatternsInput = document.getElementById('autoRewritePatterns'); // 自動改寫模式
+  const translateInstructionInput = document.getElementById('translateInstruction'); // 翻譯指令
   const saveButton = document.getElementById('save');                              // 保存按鈕
   const rewriteButton = document.getElementById('rewrite');                        // 改寫按鈕
   const confirmModelCheckbox = document.getElementById('confirmModel');            // 確認模型選項
@@ -17,6 +18,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const fullRewriteModelSelect = document.getElementById('fullRewriteModel');      // 全文改寫模型
   const shortRewriteModelSelect = document.getElementById('shortRewriteModel');    // 短文本模型
   const autoRewriteModelSelect = document.getElementById('autoRewriteModel');      // 自動改寫模型
+  const translateModelSelect = document.getElementById('translateModel');          // 翻譯模型
   const aiAssistantButton = document.getElementById('aiAssistant');               // AI 助手按鈕
   
   // 暫時隱藏自動改寫按鈕（功能開發中）
@@ -29,7 +31,19 @@ document.addEventListener('DOMContentLoaded', function() {
   };
 
   // 從 Chrome 儲存空間載入設置
-  chrome.storage.sync.get(['apiKeys', 'instruction', 'shortInstruction', 'autoRewritePatterns', 'confirmModel', 'confirmContent', 'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel'], function(result) {
+  chrome.storage.sync.get([
+    'apiKeys', 
+    'instruction', 
+    'shortInstruction', 
+    'autoRewritePatterns', 
+    'confirmModel', 
+    'confirmContent', 
+    'fullRewriteModel', 
+    'shortRewriteModel', 
+    'autoRewriteModel',
+    'translateModel',
+    'translateInstruction'
+  ], function(result) {
     if (result.apiKeys) {
       apiKeys = result.apiKeys;
     }
@@ -41,6 +55,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (result.fullRewriteModel) fullRewriteModelSelect.value = result.fullRewriteModel;
     if (result.shortRewriteModel) shortRewriteModelSelect.value = result.shortRewriteModel;
     if (result.autoRewriteModel) autoRewriteModelSelect.value = result.autoRewriteModel;
+    if (result.translateModel) translateModelSelect.value = result.translateModel;
+    if (result.translateInstruction) translateInstructionInput.value = result.translateInstruction;
     updateApiKeyInput();
   });
 
@@ -69,7 +85,9 @@ document.addEventListener('DOMContentLoaded', function() {
       confirmContent: confirmContentCheckbox.checked,
       fullRewriteModel: fullRewriteModelSelect.value,
       shortRewriteModel: shortRewriteModelSelect.value,
-      autoRewriteModel: autoRewriteModelSelect.value
+      autoRewriteModel: autoRewriteModelSelect.value,
+      translateModel: translateModelSelect.value,
+      translateInstruction: translateInstructionInput.value
     };
 
     chrome.storage.sync.set(settings, function() {
@@ -91,6 +109,10 @@ document.addEventListener('DOMContentLoaded', function() {
   autoRewritePatternsInput.addEventListener('input', function() {
     chrome.storage.sync.set({ autoRewritePatterns: autoRewritePatternsInput.value });
     sendAutoRewritePatternsUpdate();
+  });
+
+  translateInstructionInput.addEventListener('input', function() {
+    chrome.storage.sync.set({ translateInstruction: translateInstructionInput.value });
   });
 
   // 確認選項變更處理
@@ -131,6 +153,10 @@ document.addEventListener('DOMContentLoaded', function() {
     saveModelSelection('autoRewriteModel', this.value);
   });
 
+  translateModelSelect.addEventListener('change', function() {
+    saveModelSelection('translateModel', this.value);
+  });
+
   // 保存模型選擇
   function saveModelSelection(modelType, value) {
     let settings = {};
@@ -158,7 +184,9 @@ document.addEventListener('DOMContentLoaded', function() {
         confirmContent: confirmContentCheckbox.checked,
         fullRewriteModel: fullRewriteModelSelect.value,
         shortRewriteModel: shortRewriteModelSelect.value,
-        autoRewriteModel: autoRewriteModelSelect.value
+        autoRewriteModel: autoRewriteModelSelect.value,
+        translateModel: translateModelSelect.value,
+        translateInstruction: translateInstructionInput.value
       }, function(response) {
         if (response && response.success) {
           console.log('改寫請求已發送');

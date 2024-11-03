@@ -20,6 +20,10 @@ const GlobalSettings = {
   shortRewriteModel: '',
   /** 自動改寫模型名稱。 */
   autoRewriteModel: '',
+  /** 翻譯模型名稱。 */
+  translateModel: '',
+  /** 翻譯指令。 */
+  translateInstruction: '將文本翻譯成繁體中文，保持專業和流暢的語氣',
 
   /**
    * 從 Chrome 儲存空間載入設定。
@@ -32,7 +36,8 @@ const GlobalSettings = {
         chrome.storage.sync.get([
           'apiKeys', 'model', 'instruction', 'shortInstruction', 
           'autoRewritePatterns', 'confirmModel', 'confirmContent',
-          'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel'
+          'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel',
+          'translateModel', 'translateInstruction'
         ], resolve);
       });
 
@@ -45,6 +50,8 @@ const GlobalSettings = {
       this.fullRewriteModel = result.fullRewriteModel || result.model || '';
       this.shortRewriteModel = result.shortRewriteModel || result.model || '';
       this.autoRewriteModel = result.autoRewriteModel || result.model || '';
+      this.translateModel = result.translateModel || result.model || '';
+      this.translateInstruction = result.translateInstruction || '將文本翻譯成繁體中文，保持專業和流暢的語氣';
 
       if (result.autoRewritePatterns) {
         this.updateAutoRewritePatterns(result.autoRewritePatterns);

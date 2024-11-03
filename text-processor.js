@@ -72,34 +72,65 @@ const TextProcessor = {
    * 發送 API 請求
    */
   async _sendRequest(endpoint, body, apiKey, isGemini) {
-    console.log('準備發送 API 請求');
+    console.log('準備發送 API 請求', 'shouldCancel:', window.TranslateManager.shouldCancel);
     console.log('請求體:', JSON.stringify(body, null, 2));
 
-    const response = await fetch(
-      isGemini ? `${endpoint}?key=${apiKey}` : endpoint,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(!isGemini ? {'Authorization': `Bearer ${apiKey}`} : {})
-        },
-        body: JSON.stringify(body)
-      }
-    );
+    const controller = new AbortController();
+    const signal = controller.signal;
 
-    console.log('收到 API 響應');
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('API 錯誤響應:', errorData);
-      throw new Error(`HTTP error! status: ${response.status}, message: ${JSON.stringify(errorData)}`);
+    // 在 TranslateManager.shouldCancel 為 true 時取消請求
+    if (window.TranslateManager.shouldCancel) {
+      controller.abort();
+      console.log('翻譯請求已取消');
+      throw new Error('翻譯請求已取消');
     }
 
-    const data = await response.json();
-    console.log('API Response:', data);
+    try {
+      const response = await fetch(
+        isGemini ? `${endpoint}?key=${apiKey}` : endpoint,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(!isGemini ? {'Authorization': `Bearer ${apiKey}`} : {})
+          },
+          body: JSON.stringify(body),
+          signal: signal
+        }
+      );
 
-    return isGemini
-      ? data.candidates[0].content.parts[0].text
-      : data.choices[0].message.content;
+      console.log('收到 API 響應');
+      if (!response.ok) {
+        const errorData = await response.json();
+        console.error('API 錯誤響應:', errorData);
+        throw new Error(`HTTP error! status: ${response.status}, message: ${JSON.stringify(errorData)}`);
+      }
+
+      // 再次檢查是否已取消
+      if (window.TranslateManager.shouldCancel) {
+        console.log('翻譯已取消，忽略 API 響應');
+        throw new Error('翻譯請求已取消');
+      }
+
+      const data = await response.json();
+      console.log('API Response:', data);
+
+      // 最後一次檢查是否已取消
+      if (window.TranslateManager.shouldCancel) {
+        console.log('翻譯已取消，忽略 API 響應');
+        throw new Error('翻譯請求已取消');
+      }
+
+      return isGemini
+        ? data.candidates[0].content.parts[0].text
+        : data.choices[0].message.content;
+    } catch (error) {
+      if (error.name === 'AbortError' || error.message === '翻譯請求已取消') {
+        console.log('請求已被取消');
+        throw new Error('翻譯請求已取消');
+      }
+      throw error;
+    }
   },
 
   /**

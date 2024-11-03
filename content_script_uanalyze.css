@@ -21,7 +21,7 @@
 }
 
 /* 改寫按鈕樣式 */
-#gpt-rewrite-button {
+#gpt-rewrite-button, #gpt-translate-button {
   padding: 5px 10px;
   background-color: #4CAF50;
   color: white;
@@ -29,6 +29,10 @@
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
+}
+
+#gpt-translate-button.canceling {
+  background-color: #dc3545;
 }
 
 /* 股票代碼容器樣式 */
@@ -116,9 +120,24 @@
   font-size: 20px;
 }
 
+/* 批次進度樣式 */
+.batch-progress {
+  font-size: 16px;
+  font-weight: 500;
+  margin: 10px 0;
+}
+
+/* 當前批次樣式 */
+.current-batch {
+  color: #6cc4ff;
+  font-weight: 700;
+}
+
 /* 通知信息樣式 */
 .notification-info {
   font-size: 14px;
   color: #e0e0e0;
+  margin-top: 10px;
 }
+
 

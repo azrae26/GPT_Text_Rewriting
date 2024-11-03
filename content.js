@@ -1,4 +1,4 @@
-/* global chrome, GlobalSettings, TextProcessor, Notification, UIManager */
+/* global chrome, GlobalSettings, TextProcessor, Notification, UIManager, TranslateManager */
 // AI 文章改寫助手 - 內容腳本
 
 console.log('Content script starting to load');
@@ -18,6 +18,7 @@ function initializeExtension() {
       await window.GlobalSettings.loadSettings();
       window.UIManager.addRewriteButton();
       window.UIManager.initializeStockCodeFeature();
+      window.TranslateManager.initialize();
     } catch (error) {
       console.error('初始化UI元素時發生錯誤:', error);
     }
@@ -106,11 +107,17 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (request.settings.autoRewriteModel) {
         window.GlobalSettings.autoRewriteModel = request.settings.autoRewriteModel;
       }
-      // ... 其他設置更新 ...
+      if (request.settings.translateModel) {
+        window.GlobalSettings.translateModel = request.settings.translateModel;
+      }
+      if (request.settings.translateInstruction) {
+        window.GlobalSettings.translateInstruction = request.settings.translateInstruction;
+      }
       console.log('更新的設置:', {
         fullRewriteModel: window.GlobalSettings.fullRewriteModel,
         shortRewriteModel: window.GlobalSettings.shortRewriteModel,
         autoRewriteModel: window.GlobalSettings.autoRewriteModel,
+        translateModel: window.GlobalSettings.translateModel,
         apiKeys: window.GlobalSettings.apiKeys
       });
       sendResponse({success: true});
@@ -197,3 +204,6 @@ function handleUndo() {
     }
   });
 }
+
+// 將 shouldEnableFeatures 函數暴露給全局作用域
+window.shouldEnableFeatures = shouldEnableFeatures;

@@ -23,12 +23,12 @@ const UIManager = {
     rewriteButton.textContent = '改寫';
     rewriteButton.addEventListener('click', async function() {
       try {
-        await window.GlobalSettings.loadSettings();
-        if (!window.GlobalSettings.apiKeys['gemini-1.5-flash'] && !window.GlobalSettings.apiKeys['openai']) {
+        const settings = await window.GlobalSettings.loadSettings();
+        if (!settings.apiKeys['gemini-1.5-flash'] && !settings.apiKeys['openai']) {
           alert('請先設置 API 金鑰');
           return;
         }
-        if (!window.GlobalSettings.instruction.trim()) {
+        if (!settings.instruction.trim()) {
           alert('請設置改寫要求');
           return;
         }
@@ -52,10 +52,12 @@ const UIManager = {
   /** 設置文本區域樣式和事件 */
   _setupTextArea(textArea, buttonContainer) {
     const parent = textArea.parentElement;
-    parent.style.position = 'relative';
-    parent.style.display = 'flex';
-    parent.style.flexDirection = 'column';
-    parent.style.alignItems = 'flex-end';
+    Object.assign(parent.style, {
+      position: 'relative',
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'flex-end'
+    });
     parent.appendChild(buttonContainer);
 
     window.UndoManager.initInputHistory(textArea);
@@ -79,11 +81,12 @@ const UIManager = {
 
     try {
       const settings = await window.GlobalSettings.loadSettings();
-      if (!window.GlobalSettings.apiKeys['gemini-1.5-flash'] && !window.GlobalSettings.apiKeys['openai']) return;
+      if (!settings.apiKeys['gemini-1.5-flash'] && !settings.apiKeys['openai']) return;
 
-      if (settings.confirmModel || settings.confirmContent) {
-        const model = settings.autoRewriteModel || window.GlobalSettings.model;
-        if (!confirm(`使用 ${model} 改寫:\n${matchResult.matchedText}`)) return;
+      const model = settings.autoRewriteModel || window.GlobalSettings.model;
+      if ((settings.confirmModel || settings.confirmContent) && 
+          !confirm(`使用 ${model} 改寫:\n${matchResult.matchedText}`)) {
+        return;
       }
 
       const rewrittenText = await window.TextProcessor.rewriteText(matchResult.matchedText, true);
@@ -120,8 +123,8 @@ const UIManager = {
     if (!elements.textarea || !elements.input) return;
 
     const updateUI = () => {
-      const codes = this._getStockCodes(elements.textarea.value);
-      this._updateStockButtons(codes, elements);
+      const { codes, matchedStocks } = this._getStockCodes(elements.textarea.value);
+      this._updateStockButtons(codes, matchedStocks, elements);
       this._updateContainerPosition(elements);
     };
 
@@ -133,53 +136,47 @@ const UIManager = {
 
   /** 獲取或創建按鈕容器 */
   _getOrCreateContainer() {
-    let container = document.getElementById('stock-code-container');
-    if (!container) {
-      container = document.createElement('div');
+    return document.getElementById('stock-code-container') || (() => {
+      const container = document.createElement('div');
       container.id = 'stock-code-container';
       document.body.appendChild(container);
-    }
-    return container;
+      return container;
+    })();
   },
 
   /** 從文本中提取股票代碼和名稱 */
   _getStockCodes(text) {
     const codes = new Set();
-    const matchedStocks = new Map(); // 用於存儲匹配到的股票信息
+    const matchedStocks = new Map();
     
     // 從前100個字符中尋找股票名稱
     const first10Chars = text.substring(0, 100);
     console.log('檢查前100個字:', first10Chars);
 
+    // 檢查股票名稱匹配
     if (window.stockList) {
       window.stockList.forEach(stock => {
-        let stockName = stock.name;
-        // 檢查是否包含-KY或*，如果有則創建一個不帶後綴的版本
-        const baseNameKY = stockName.replace(/-KY$/, '');
-        const baseNameStar = stockName.replace(/\*$/, '');
+        const variants = [
+          stock.name,
+          stock.name.replace(/-KY$/, ''),
+          stock.name.replace(/\*$/, '')
+        ];
         
-        // 檢查完整名稱或基礎名稱是否出現在前10個字符中
-        if (first10Chars.includes(stockName) || 
-            first10Chars.includes(baseNameKY) || 
-            first10Chars.includes(baseNameStar)) {
+        if (variants.some(name => first10Chars.includes(name))) {
           codes.add(stock.code);
           matchedStocks.set(stock.code, stock.name);
         }
       });
     }
 
-    // 原有的代碼匹配邏輯
+    // 檢查股票代碼匹配
     const codeRegex = /[（(]([0-9]{4})(?:[-\s.]*(?:TW|TWO))?[）)]|[（(]([0-9]{4})[-\s.]+(?:TW|TWO)[）)]|_([0-9]{4})/g;
-    const codeMatches = [...text.matchAll(codeRegex)];
-    codeMatches.forEach(match => {
+    [...text.matchAll(codeRegex)].forEach(match => {
       const code = match[1] || match[2] || match[3];
       if (code) {
         codes.add(code);
-        // 如果在stockList中找到對應的股票，添加名稱信息
         const stock = window.stockList?.find(s => s.code === code);
-        if (stock) {
-          matchedStocks.set(code, stock.name);
-        }
+        if (stock) matchedStocks.set(code, stock.name);
       }
     });
 
@@ -187,13 +184,11 @@ const UIManager = {
   },
 
   /** 更新股票代碼按鈕 */
-  _updateStockButtons(result, elements) {
-    const { codes, matchedStocks } = result;
+  _updateStockButtons(codes, matchedStocks, elements) {
     elements.container.innerHTML = '';
     codes.forEach(code => {
       const button = document.createElement('button');
-      const stockName = matchedStocks.get(code);
-      button.textContent = stockName ? `${stockName}${code}` : code; // 顯示股票名稱和代碼
+      button.textContent = matchedStocks.has(code) ? `${matchedStocks.get(code)}${code}` : code;
       button.classList.add('stock-code-button');
       button.onclick = () => {
         elements.input.value = code;

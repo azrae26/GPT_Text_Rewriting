@@ -35,10 +35,10 @@ const UndoManager = {
       
       if (history.history[history.currentIndex] === value) return;
 
-      history.history = [
-        ...history.history.slice(0, history.currentIndex + 1),
-        value
-      ].slice(-this.MAX_HISTORY_SIZE);
+      history.history = history.history
+        .slice(0, history.currentIndex + 1)
+        .concat(value)
+        .slice(-this.MAX_HISTORY_SIZE);
       
       history.currentIndex = history.history.length - 1;
       console.log(`添加新的歷史記錄 [${inputId}]，當前索引:`, history.currentIndex);
@@ -49,10 +49,7 @@ const UndoManager = {
 
   /** 初始化歷史記錄 */
   initHistory(element) {
-    const history = {
-      history: [element.value || ''],
-      currentIndex: 0
-    };
+    const history = { history: [element.value || ''], currentIndex: 0 };
     this.inputHistories.set(this.getInputId(element), history);
     return history;
   },
@@ -104,11 +101,8 @@ const UndoManager = {
 
     const inputId = this.getInputId(activeElement);
     const history = this.inputHistories.get(inputId) || this.initHistory(activeElement);
-    const canExecute = isUndo ? 
-      history.currentIndex > 0 : 
-      history.currentIndex < history.history.length - 1;
-
-    if (canExecute) {
+    
+    if (isUndo ? history.currentIndex > 0 : history.currentIndex < history.history.length - 1) {
       history.currentIndex += isUndo ? -1 : 1;
       
       this.isUndoRedoOperation = true;
@@ -139,9 +133,8 @@ document.addEventListener('keydown', event => {
 
 // 初始化所有輸入元素
 const initializeInputs = () => {
-  const validInputTypes = ['text', 'search', 'url', 'tel', 'password'];
   document.querySelectorAll(
-    `textarea, input[type="${validInputTypes.join('"], input[type="')}"]`
+    `textarea, input[type="${['text', 'search', 'url', 'tel', 'password'].join('"], input[type="')}"]`
   ).forEach(input => {
     if (!input._historyInitialized) UndoManager.initInputHistory(input);
   });
