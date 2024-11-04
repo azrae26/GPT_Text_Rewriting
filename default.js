@@ -92,9 +92,9 @@ const DefaultSettings = {
 要求：如果開頭為人名，請不要在前面加『講者』。
 
 不用翻譯的詞：
-token不用翻譯。
-對於年與季的表達法，如4Q23，23Q4、24Q1、1Q24，這類不需翻譯。
-Cooler Master不用翻譯。
+token。
+Cooler Master。
+對於年與(季|上下半年|月)的表達法，如4Q23，23Q4、24Q1、1Q24、2H24、25M8、11M25，這類不需翻譯。。
 
 翻譯要求：
 Speaker翻譯為講者。
