@@ -6,11 +6,11 @@
 const GlobalSettings = {
   /** API 金鑰物件，儲存不同模型的 API 金鑰。 */
   apiKeys: {},
-  /** 預設模型名稱。 */
-  model: 'gemini-1.5-flash',
-  /** 預設改寫指令。 */
+  /** 模型名稱。 */
+  model: '',
+  /** 改寫指令。 */
   instruction: '',
-  /** 預設短改寫指令。 */
+  /** 短改寫指令。 */
   shortInstruction: '',
   /** 自動改寫匹配模式陣列。 */
   autoRewritePatterns: [],
@@ -24,10 +24,6 @@ const GlobalSettings = {
   translateModel: '',
   /** 翻譯指令。 */
   translateInstruction: '',
-  confirmModel: false,
-  confirmContent: false,
-  removeHash: true,
-  removeStar: true,
 
   /**
    * 從 Chrome 儲存空間載入設定。
@@ -53,11 +49,11 @@ const GlobalSettings = {
       this.translateModel = result.translateModel || this.model;
       this.translateInstruction = result.translateInstruction || (window.DefaultSettings?.translateInstruction || '');
       
-      // 修改布林值的處理方式
-      this.confirmModel = result.confirmModel === undefined ? false : result.confirmModel;
-      this.confirmContent = result.confirmContent === undefined ? false : result.confirmContent;
-      this.removeHash = result.removeHash === undefined ? true : result.removeHash;
-      this.removeStar = result.removeStar === undefined ? true : result.removeStar;
+      // 使用 DefaultSettings 中的預設值
+      this.confirmModel = result.confirmModel === undefined ? window.DefaultSettings?.confirmModel : result.confirmModel;
+      this.confirmContent = result.confirmContent === undefined ? window.DefaultSettings?.confirmContent : result.confirmContent;
+      this.removeHash = result.removeHash === undefined ? window.DefaultSettings?.removeHash : result.removeHash;
+      this.removeStar = result.removeStar === undefined ? window.DefaultSettings?.removeStar : result.removeStar;
 
       // 更新自動改寫模式
       if (result.autoRewritePatterns) {

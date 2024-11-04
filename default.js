@@ -1,4 +1,11 @@
 const DefaultSettings = {
+  // 模型相關預設值
+  model: 'gemini-1.5-flash',
+  fullRewriteModel: 'gemini-1.5-flash',
+  shortRewriteModel: 'gemini-1.5-flash',
+  autoRewriteModel: 'gemini-1.5-flash',
+  translateModel: 'gemini-1.5-flash',
+
   // 勾選框預設狀態
   confirmModel: false,      // 確認模型：預設不勾選
   confirmContent: false,    // 確認內容：預設不勾選
