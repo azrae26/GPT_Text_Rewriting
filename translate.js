@@ -14,6 +14,8 @@ window.TranslateManager = {
   batchInterval: 5000, // 預設間隔為5秒
   removeHashCheckbox: null,
   removeStarCheckbox: null,
+  selectionStart: null, // 新增：保存選取開始位置
+  selectionEnd: null,   // 新增：保存選取結束位置
 
   /**
    * 根據批次數量決定發送間隔
@@ -134,6 +136,8 @@ window.TranslateManager = {
     this.completedTranslations.clear(); // 清除已完成的翻譯記錄
     this.isLastBatchProcessed = false;
     this.batchInterval = 5000;
+    this.selectionStart = null; // 重置選取位置
+    this.selectionEnd = null;
 
     if (this.timeoutId) {
       clearTimeout(this.timeoutId);
@@ -220,11 +224,23 @@ window.TranslateManager = {
     const textArea = document.querySelector('textarea[name="content"]');
     if (!textArea) throw new Error('找不到文本區域');
 
+    // 檢查是否有選取文字
+    const hasSelection = textArea.selectionStart !== textArea.selectionEnd;
+    const textToTranslate = hasSelection 
+      ? textArea.value.substring(textArea.selectionStart, textArea.selectionEnd)
+      : textArea.value;
+
+    // 保存選取位置
+    if (hasSelection) {
+      this.selectionStart = textArea.selectionStart;
+      this.selectionEnd = textArea.selectionEnd;
+    }
+
     this.isTranslating = true;
     this.shouldCancel = false;
     this.currentBatchIndex = 0;
     this.isLastBatchProcessed = false;
-    this.translationQueue = this.splitTextIntoParagraphs(textArea.value);
+    this.translationQueue = this.splitTextIntoParagraphs(textToTranslate);
     this.totalBatches = this.translationQueue.length;
     this.batchInterval = this.getBatchInterval();
     this.pendingTranslations.clear();
@@ -365,7 +381,17 @@ window.TranslateManager = {
       finalTranslatedText = finalTranslatedText.replace(/\*\*\s*|\s*\*\*/g, '');
     }
 
+    // 顯示批次更新日誌
+    console.log(`\n=== 批次 ${batchIndex + 1}/${this.totalBatches} 翻譯更新 ===`);
+    console.log('原始文本：\n' + (originalText.length > 500 ? originalText.substring(0, 500) + '...' : originalText));
+    console.log('翻譯結果：\n' + (finalTranslatedText.length > 500 ? finalTranslatedText.substring(0, 500) + '...' : finalTranslatedText));
+    console.log(`原始長度：${originalText.length}，翻譯後長度：${finalTranslatedText.length}`);
+    console.log('=====================================\n');
+
+    // 直接替換整個文本
     textArea.value = textArea.value.replace(originalText, finalTranslatedText);
+
+
     textArea.dispatchEvent(new Event('input', { bubbles: true }));
   },
 
