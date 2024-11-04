@@ -64,7 +64,7 @@ window.TranslateManager = {
    */
   async initializeCheckboxes() {
     console.log('初始化 checkbox 元素...');
-    
+
     // 檢查是否已經存在
     if (!this.removeHashCheckbox) {
       this.removeHashCheckbox = document.getElementById('removeHash');
@@ -75,7 +75,7 @@ window.TranslateManager = {
         this.removeHashCheckbox.id = 'removeHash';
       }
     }
-    
+
     if (!this.removeStarCheckbox) {
       this.removeStarCheckbox = document.getElementById('removeStar');
       if (!this.removeStarCheckbox) {
@@ -85,9 +85,6 @@ window.TranslateManager = {
         this.removeStarCheckbox.id = 'removeStar';
       }
     }
-
-    // 載入儲存的狀態
-    await this.loadCheckboxStates();
   },
 
   /**
@@ -116,9 +113,6 @@ window.TranslateManager = {
         return;
       }
 
-      // 在開始翻譯前重新檢查 checkbox 狀態
-      await this.loadCheckboxStates();
-
       await this.startTranslation(button);
     } catch (error) {
       console.error('翻譯錯誤:', error);
@@ -140,12 +134,12 @@ window.TranslateManager = {
     this.completedTranslations.clear(); // 清除已完成的翻譯記錄
     this.isLastBatchProcessed = false;
     this.batchInterval = 5000;
-    
+
     if (this.timeoutId) {
       clearTimeout(this.timeoutId);
       this.timeoutId = null;
     }
-    
+
     const button = document.getElementById('gpt-translate-button');
     if (button) {
       button.textContent = '翻譯';
@@ -161,13 +155,13 @@ window.TranslateManager = {
     const paragraphs = [];
     let currentBatch = '';
     let currentLength = 0;
-    
+
     // 按換行分割文本
     const lines = text.split('\n');
-    
+
     for (const line of lines) {
       const hasPeriod = line.trim().endsWith('.') || line.trim().endsWith('。');
-      
+
       // 處理超過2000字的行
       if (line.length > 2000) {
         // 如果當前批次有內容，先保存
@@ -176,17 +170,17 @@ window.TranslateManager = {
           currentBatch = '';
           currentLength = 0;
         }
-        
+
         // 在句點處分割當前行
         let lastIndex = 0;
         const periodRegex = /[.。]/g;
         let match;
-        
+
         while ((match = periodRegex.exec(line)) !== null) {
           paragraphs.push(line.substring(lastIndex, match.index + 1));
           lastIndex = match.index + 1;
         }
-        
+
         // 如果還有剩餘的文本，保存到當前批次
         if (lastIndex < line.length) {
           currentBatch = line.substring(lastIndex);
@@ -194,10 +188,10 @@ window.TranslateManager = {
         }
         continue;
       }
-      
+
       // 計算添加這行後的總長度
       const newLength = currentLength + (currentBatch ? 1 : 0) + line.length;
-      
+
       // 如果當前行包含句點且總長度超過1500字，將當前行作為一個段落
       if (hasPeriod && newLength > 1500) {
         paragraphs.push(currentBatch + (currentBatch ? '\n' : '') + line);
@@ -210,12 +204,12 @@ window.TranslateManager = {
         currentLength = newLength;
       }
     }
-    
+
     // 添加最後一個批次
     if (currentBatch) {
       paragraphs.push(currentBatch);
     }
-    
+
     return paragraphs;
   },
 
@@ -276,7 +270,7 @@ window.TranslateManager = {
    */
   async processNextBatch() {
     console.log('processNextBatch called. shouldCancel:', this.shouldCancel, ', currentBatchIndex:', this.currentBatchIndex, ', totalBatches:', this.totalBatches);
-    
+
     // 如果已經取消，直接返回
     if (this.shouldCancel) {
       console.log('翻譯已取消，停止處理');
@@ -290,17 +284,17 @@ window.TranslateManager = {
 
     const originalText = this.translationQueue[this.currentBatchIndex];
     const batchIndex = this.currentBatchIndex;
-    
+
     // 設置當前批次的原始文本
     this.pendingTranslations.set(batchIndex, originalText);
     this.currentBatchIndex++;
-    
+
     try {
-      const settings = await window.GlobalSettings.loadSettings();
+      const settings = await window.GlobalSettings.loadSettings(); // Load settings here
       const model = settings.translateModel || settings.model;
       const isGemini = model.startsWith('gemini');
       const apiKey = settings.apiKeys[isGemini ? 'gemini-1.5-flash' : 'openai'];
-      
+
       const { endpoint, body } = TextProcessor._prepareApiConfig(
         model,
         originalText,
@@ -309,15 +303,15 @@ window.TranslateManager = {
 
       console.log(`正在翻譯第 ${batchIndex + 1}/${this.totalBatches} 批次`);
       const translatedText = await TextProcessor._sendRequest(endpoint, body, apiKey, isGemini);
-      
+
       if (this.shouldCancel) {
         console.log('翻譯已取消，忽略結果');
         return;
       }
-      
+
       // 更新已翻譯的文本
       if (this.pendingTranslations.has(batchIndex)) {
-        this.updateTranslatedText(batchIndex, translatedText.trim());
+        this.updateTranslatedText(batchIndex, translatedText.trim(), settings); // Pass settings
         this.pendingTranslations.delete(batchIndex);
         this.completedTranslations.add(batchIndex); // 記錄已完成的批次
 
@@ -343,7 +337,7 @@ window.TranslateManager = {
         console.log('批次已取消，停止處理');
         return;
       }
-      
+
       // 如果不是取消錯誤且未取消，則顯示錯誤
       if (!this.shouldCancel) {
         console.error(`批次 ${batchIndex + 1} 翻譯錯誤:`, error);
@@ -355,7 +349,7 @@ window.TranslateManager = {
   /**
    * 更新已翻譯的文本
    */
-  updateTranslatedText(batchIndex, translatedText) {
+  updateTranslatedText(batchIndex, translatedText, settings) {
     const textArea = document.querySelector('textarea[name="content"]');
     if (!textArea) return;
 
@@ -364,82 +358,26 @@ window.TranslateManager = {
     let finalTranslatedText = batchIndex > 0 ? '\n' + translatedText : translatedText;
 
     // 使用類別中保存的 checkbox 值
-    if (this.removeHashCheckbox && this.removeHashCheckbox.checked) {
+    if (settings.removeHash) {
       finalTranslatedText = finalTranslatedText.replace(/##\s*|\s*##/g, '');
     }
-    if (this.removeStarCheckbox && this.removeStarCheckbox.checked) {
+    if (settings.removeStar) {
       finalTranslatedText = finalTranslatedText.replace(/\*\*\s*|\s*\*\*/g, '');
     }
 
     textArea.value = textArea.value.replace(originalText, finalTranslatedText);
     textArea.dispatchEvent(new Event('input', { bubbles: true }));
   },
-  
-  /**
-   * 從 storage 載入 checkbox 狀態
-   */
-  async loadCheckboxStates() {
-    console.log('載入 checkbox 狀態...');
-    return new Promise((resolve) => {
-      chrome.storage.sync.get(['removeHash', 'removeStar'], (result) => {
-        console.log('已從 storage 載入 checkbox 狀態:', result);
-        
-        // 確保 checkbox 已初始化
-        if (!this.removeHashCheckbox || !this.removeStarCheckbox) {
-          console.log('Checkbox 未初始化，執行初始化');
-          this.initializeCheckboxes().then(() => {
-            this.setCheckboxStates(result);
-            resolve();
-          });
-        } else {
-          this.setCheckboxStates(result);
-          resolve();
-        }
-      });
-    });
-  },
 
   /**
-   * 設置 checkbox 狀態
-   */
-  setCheckboxStates(result) {
-    if (this.removeHashCheckbox) {
-      console.log('設置 removeHash checkbox 狀態:', result.removeHash);
-      this.removeHashCheckbox.checked = result.removeHash || false;
-    }
-    if (this.removeStarCheckbox) {
-      console.log('設置 removeStar checkbox 狀態:', result.removeStar);
-      this.removeStarCheckbox.checked = result.removeStar || false;
-    }
-  },
-  
-  /**
-   * 設置 checkbox 元素並載入狀態
+   * 設置 checkbox 元素並載入狀態 (移除監聽器)
    */
   setCheckboxes(removeHashCheckbox, removeStarCheckbox) {
     console.log('設置 checkboxes...');
     console.log('removeHashCheckbox:', removeHashCheckbox ? '已提供' : '未提供');
     console.log('removeStarCheckbox:', removeStarCheckbox ? '已提供' : '未提供');
-    
+
     this.removeHashCheckbox = removeHashCheckbox;
     this.removeStarCheckbox = removeStarCheckbox;
-    
-    // 立即載入狀態
-    this.loadCheckboxStates();
-    
-    // 監聽 checkbox 變更
-    if (removeHashCheckbox) {
-      removeHashCheckbox.addEventListener('change', () => {
-        console.log('TranslateManager: removeHash 狀態變更:', removeHashCheckbox.checked);
-        chrome.storage.sync.set({ removeHash: removeHashCheckbox.checked });
-      });
-    }
-    
-    if (removeStarCheckbox) {
-      removeStarCheckbox.addEventListener('change', () => {
-        console.log('TranslateManager: removeStar 狀態變更:', removeStarCheckbox.checked);
-        chrome.storage.sync.set({ removeStar: removeStarCheckbox.checked });
-      });
-    }
   }
 };
