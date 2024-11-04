@@ -56,53 +56,81 @@ document.addEventListener('DOMContentLoaded', function() {
     'removeStar'
   ], function(result) {
     console.log('載入儲存的設置:', result);
-    const isFirstTime = result.isFirstTime === true;
+    const isFirstTime = result.isFirstTime === undefined ? true : result.isFirstTime;
 
-    if (result.apiKeys) {
-      apiKeys = result.apiKeys;
-    }
-    if (result.instruction) instructionInput.value = result.instruction;
-    if (result.shortInstruction) shortInstructionInput.value = result.shortInstruction;
-    if (result.autoRewritePatterns) autoRewritePatternsInput.value = result.autoRewritePatterns;
-    if (result.confirmModel !== undefined) confirmModelCheckbox.checked = result.confirmModel;
-    if (result.confirmContent !== undefined) confirmContentCheckbox.checked = result.confirmContent;
-    if (result.fullRewriteModel) fullRewriteModelSelect.value = result.fullRewriteModel;
-    if (result.shortRewriteModel) shortRewriteModelSelect.value = result.shortRewriteModel;
-    if (result.autoRewriteModel) autoRewriteModelSelect.value = result.autoRewriteModel;
-    if (result.translateModel) translateModelSelect.value = result.translateModel;
-    if (result.translateInstruction) translateInstructionInput.value = result.translateInstruction;
-    if (result.removeHash !== undefined) {
-      console.log('設置 removeHash checkbox 狀態:', result.removeHash);
-      removeHashCheckbox.checked = result.removeHash;
-    }
-    if (result.removeStar !== undefined) {
-      console.log('設置 removeStar checkbox 狀態:', result.removeStar);
-      removeStarCheckbox.checked = result.removeStar;
+    if (isFirstTime && typeof DefaultSettings !== 'undefined') {
+      console.log('首次載入，應用預設設定');
+      loadDefaultSettings();
+    } else {
+      console.log('非首次載入，應用已保存的設定');
+      if (result.apiKeys) {
+        apiKeys = result.apiKeys;
+      }
+      if (result.instruction) instructionInput.value = result.instruction;
+      if (result.shortInstruction) shortInstructionInput.value = result.shortInstruction;
+      if (result.autoRewritePatterns) autoRewritePatternsInput.value = result.autoRewritePatterns;
+      if (result.confirmModel !== undefined) confirmModelCheckbox.checked = result.confirmModel;
+      if (result.confirmContent !== undefined) confirmContentCheckbox.checked = result.confirmContent;
+      if (result.fullRewriteModel) fullRewriteModelSelect.value = result.fullRewriteModel;
+      if (result.shortRewriteModel) shortRewriteModelSelect.value = result.shortRewriteModel;
+      if (result.autoRewriteModel) autoRewriteModelSelect.value = result.autoRewriteModel;
+      if (result.translateModel) translateModelSelect.value = result.translateModel;
+      if (result.translateInstruction) translateInstructionInput.value = result.translateInstruction;
+      if (result.removeHash !== undefined) {
+        console.log('設置 removeHash checkbox 狀態:', result.removeHash);
+        removeHashCheckbox.checked = result.removeHash;
+      }
+      if (result.removeStar !== undefined) {
+        console.log('設置 removeStar checkbox 狀態:', result.removeStar);
+        removeStarCheckbox.checked = result.removeStar;
+      }
     }
     updateApiKeyInput();
-
-    // Load default settings if it's the first time and DefaultSettings is defined
-    if (isFirstTime && typeof DefaultSettings !== 'undefined') {
-      loadDefaultSettings();
-    }
   });
 
   // Function to load default settings
   function loadDefaultSettings() {
+    console.log('載入預設設定...');
+    
+    // 載入預設指令
     instructionInput.value = DefaultSettings.fullRewriteInstruction;
     shortInstructionInput.value = DefaultSettings.shortRewriteInstruction;
     autoRewritePatternsInput.value = DefaultSettings.autoRewritePatterns;
     translateInstructionInput.value = DefaultSettings.translateInstruction;
-    fullRewriteModelSelect.value = DefaultSettings.fullRewriteModel || 'gemini-1.5-flash';
-    shortRewriteModelSelect.value = DefaultSettings.shortRewriteModel || 'gemini-1.5-flash';
-    autoRewriteModelSelect.value = DefaultSettings.autoRewriteModel || 'gemini-1.5-flash';
-    translateModelSelect.value = DefaultSettings.translateModel || 'gemini-1.5-flash';
-    //Set isFirstTime to false only after successfully loading default settings.
-    chrome.storage.sync.set({ isFirstTime: false }, function() {
-      console.log('預設設定已保存');
+
+    // 載入預設模型
+    fullRewriteModelSelect.value = 'gemini-1.5-flash';
+    shortRewriteModelSelect.value = 'gemini-1.5-flash';
+    autoRewriteModelSelect.value = 'gemini-1.5-flash';
+    translateModelSelect.value = 'gemini-1.5-flash';
+
+    // 載入預設勾選框狀態
+    confirmModelCheckbox.checked = DefaultSettings.confirmModel;
+    confirmContentCheckbox.checked = DefaultSettings.confirmContent;
+    removeHashCheckbox.checked = DefaultSettings.removeHash;
+    removeStarCheckbox.checked = DefaultSettings.removeStar;
+
+    // 保存所有預設設定到 storage
+    const defaultSettings = {
+      isFirstTime: false,
+      instruction: DefaultSettings.fullRewriteInstruction,
+      shortInstruction: DefaultSettings.shortRewriteInstruction,
+      autoRewritePatterns: DefaultSettings.autoRewritePatterns,
+      translateInstruction: DefaultSettings.translateInstruction,
+      confirmModel: DefaultSettings.confirmModel,
+      confirmContent: DefaultSettings.confirmContent,
+      removeHash: DefaultSettings.removeHash,
+      removeStar: DefaultSettings.removeStar,
+      fullRewriteModel: 'gemini-1.5-flash',
+      shortRewriteModel: 'gemini-1.5-flash',
+      autoRewriteModel: 'gemini-1.5-flash',
+      translateModel: 'gemini-1.5-flash'
+    };
+
+    chrome.storage.sync.set(defaultSettings, function() {
+      console.log('預設設定已保存到 storage');
     });
   }
-
 
   // 更新 API 金鑰輸入框顯示
   function updateApiKeyInput() {

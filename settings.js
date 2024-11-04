@@ -28,50 +28,60 @@ const GlobalSettings = {
   /**
    * 從 Chrome 儲存空間載入設定。
    * @returns {Promise<object>} - 一個 Promise 物件，resolve 後返回載入的設定物件。
-   * @throws {Error} - 如果載入設定時發生錯誤，則拋出錯誤。
    */
   async loadSettings() {
     try {
+      // 使用 Promise 包裝 chrome.storage.sync.get
       const result = await new Promise((resolve) => {
-        chrome.storage.sync.get([
-          'apiKeys', 'model', 'instruction', 'shortInstruction', 
-          'autoRewritePatterns', 'confirmModel', 'confirmContent',
-          'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel',
-          'translateModel', 'translateInstruction', 'firstRun'
-        ], resolve);
+        try {
+          chrome.storage.sync.get(null, (items) => {
+            if (chrome.runtime.lastError) {
+              // 如果有錯誤，使用預設值
+              resolve(window.DefaultSettings || {});
+            } else {
+              resolve(items);
+            }
+          });
+        } catch (error) {
+          // 如果出現異常，使用預設值
+          resolve(window.DefaultSettings || {});
+        }
       });
 
-      console.log('成功載入設置:', result);
-
-      this.apiKeys = result.apiKeys || {}; // 確保 apiKeys 是一個對象
+      // 設置值，優先使用已保存的值，如果沒有則使用預設值
+      this.apiKeys = result.apiKeys || {};
       this.model = result.model || 'gemini-1.5-flash';
-      this.instruction = result.instruction || '';
-      this.shortInstruction = result.shortInstruction || '';
-      this.fullRewriteModel = result.fullRewriteModel || result.model || '';
-      this.shortRewriteModel = result.shortRewriteModel || result.model || '';
-      this.autoRewriteModel = result.autoRewriteModel || result.model || '';
-      this.translateModel = result.translateModel || result.model || '';
-      this.translateInstruction = result.translateInstruction || '';
+      this.instruction = result.instruction || (window.DefaultSettings?.fullRewriteInstruction || '');
+      this.shortInstruction = result.shortInstruction || (window.DefaultSettings?.shortRewriteInstruction || '');
+      this.fullRewriteModel = result.fullRewriteModel || this.model;
+      this.shortRewriteModel = result.shortRewriteModel || this.model;
+      this.autoRewriteModel = result.autoRewriteModel || this.model;
+      this.translateModel = result.translateModel || this.model;
+      this.translateInstruction = result.translateInstruction || (window.DefaultSettings?.translateInstruction || '');
 
+      // 更新自動改寫模式
       if (result.autoRewritePatterns) {
         this.updateAutoRewritePatterns(result.autoRewritePatterns);
+      } else if (window.DefaultSettings?.autoRewritePatterns) {
+        this.updateAutoRewritePatterns(window.DefaultSettings.autoRewritePatterns);
       }
 
-      // 檢查是否為第一次運行，並根據情況載入預設設定
-      const isFirstRun = result.firstRun === undefined;
-      if (isFirstRun) {
-        console.log('第一次運行，載入預設設定');
-        await this.saveSettings(); // 儲存預設設定到 chrome.storage.sync
-        chrome.storage.sync.set({ firstRun: false }); // 標記為非第一次運行
-      } else if (!this.apiKeys['gemini-1.5-flash'] && !this.apiKeys['openai']) {
-        console.error('未設置任何 API 金鑰');
-        throw new Error('未設置任何 API 金鑰，請在擴展設置中輸入至少一個 API 金鑰。');
+      // 如果是首次運行，設置預設值
+      if (result.firstRun === undefined) {
+        await this.saveSettings();
+        chrome.storage.sync.set({ 
+          firstRun: false,
+          confirmModel: window.DefaultSettings?.confirmModel || false,
+          confirmContent: window.DefaultSettings?.confirmContent || false,
+          removeHash: window.DefaultSettings?.removeHash || true,
+          removeStar: window.DefaultSettings?.removeStar || true
+        });
       }
 
       return result;
     } catch (error) {
-      console.error('載入設置時出錯:', error);
-      throw error;
+      console.warn('載入設置時出錯，使用預設值:', error);
+      return window.DefaultSettings || {};
     }
   },
 
@@ -85,9 +95,9 @@ const GlobalSettings = {
         .map(line => line.trim())
         .filter(line => line && !line.startsWith('//'))
         .map(pattern => new RegExp(pattern.replace(/^\/|\/$/g, ''), 'g'));
-      console.log('成功更新自動改寫匹配模式:', this.autoRewritePatterns);
     } catch (error) {
-      console.error('更新匹配模式時出錯:', error);
+      console.warn('更新匹配模式時出錯:', error);
+      this.autoRewritePatterns = [];
     }
   },
 
@@ -96,28 +106,24 @@ const GlobalSettings = {
    * @returns {Promise<void>} - 一個 Promise 物件，resolve 後表示設定已儲存。
    */
   async saveSettings() {
-    return new Promise((resolve) => {
-      chrome.storage.sync.set({
-        apiKeys: this.apiKeys,
-        model: this.model,
-        instruction: this.instruction,
-        shortInstruction: this.shortInstruction,
-        autoRewritePatterns: this.autoRewritePatterns.map(pattern => pattern.source),
-        fullRewriteModel: this.fullRewriteModel,
-        shortRewriteModel: this.shortRewriteModel,
-        autoRewriteModel: this.autoRewriteModel,
-        translateModel: this.translateModel,
-        translateInstruction: this.translateInstruction,
-      }, resolve);
-    });
-  },
-
-  /**
-   * 返回 chrome.storage.sync 物件。
-   * @returns {object} - chrome.storage.sync 物件。
-   */
-  getChromeStorage() {
-    return chrome.storage.sync;
+    try {
+      await new Promise((resolve) => {
+        chrome.storage.sync.set({
+          apiKeys: this.apiKeys,
+          model: this.model,
+          instruction: this.instruction,
+          shortInstruction: this.shortInstruction,
+          autoRewritePatterns: this.autoRewritePatterns.map(pattern => pattern.source),
+          fullRewriteModel: this.fullRewriteModel,
+          shortRewriteModel: this.shortRewriteModel,
+          autoRewriteModel: this.autoRewriteModel,
+          translateModel: this.translateModel,
+          translateInstruction: this.translateInstruction
+        }, resolve);
+      });
+    } catch (error) {
+      console.warn('保存設置時出錯:', error);
+    }
   }
 };
 

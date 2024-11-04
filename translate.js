@@ -6,6 +6,7 @@ window.TranslateManager = {
   currentBatchIndex: 0,
   translationQueue: [],
   pendingTranslations: new Map(),
+  completedTranslations: new Set(), // 新增：追踪已完成的翻譯
   shouldCancel: false,
   totalBatches: 0,
   timeoutId: null,
@@ -31,6 +32,13 @@ window.TranslateManager = {
       return 5000; // 25次以下，5秒
     }
     return 5000; // 25次以上，5秒
+  },
+
+  /**
+   * 檢查是否所有批次都已完成
+   */
+  isAllBatchesCompleted() {
+    return this.completedTranslations.size === this.totalBatches;
   },
 
   /**
@@ -129,6 +137,7 @@ window.TranslateManager = {
     this.currentBatchIndex = 0;
     this.translationQueue = [];
     this.pendingTranslations.clear();
+    this.completedTranslations.clear(); // 清除已完成的翻譯記錄
     this.isLastBatchProcessed = false;
     this.batchInterval = 5000;
     
@@ -225,6 +234,7 @@ window.TranslateManager = {
     this.totalBatches = this.translationQueue.length;
     this.batchInterval = this.getBatchInterval();
     this.pendingTranslations.clear();
+    this.completedTranslations.clear(); // 重置已完成的翻譯記錄
     this.timeoutId = null;
 
     // 更新按鈕狀態
@@ -309,20 +319,21 @@ window.TranslateManager = {
       if (this.pendingTranslations.has(batchIndex)) {
         this.updateTranslatedText(batchIndex, translatedText.trim());
         this.pendingTranslations.delete(batchIndex);
-        
-        // 檢查是否是最後一個批次
-        if (batchIndex === this.translationQueue.length - 1) {
-          console.log('最後一個批次已完成，顯示完成通知');
+        this.completedTranslations.add(batchIndex); // 記錄已完成的批次
+
+        // 檢查是否所有批次都已完成
+        if (this.isAllBatchesCompleted()) {
+          console.log('所有批次已完成，顯示完成通知');
           clearTimeout(this.timeoutId);
           await window.Notification.showNotification('翻譯完成', false);
           this.resetTranslation();
         } else if (!this.shouldCancel) {
-          // 如果不是最後一個批次，更新進度通知
+          // 如果還有未完成的批次，更新進度通知
           await window.Notification.showNotification(`
             模型: ${TextProcessor.MODEL_NAMES[model] || model}<br>
             API KEY: ${apiKey.substring(0, 5)}...<br>
             翻譯中<br>
-            批次進度: ${batchIndex + 1}/${this.totalBatches}<br>
+            批次進度: ${this.completedTranslations.size}/${this.totalBatches}<br>
             發送間隔: ${this.batchInterval/1000}秒
           `, true);
         }

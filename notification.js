@@ -37,13 +37,19 @@ const Notification = {
       this.lastApiKeyPrefix = apiKeyPrefix;
     }
 
-    // 只在第一次顯示通知時創建元素
-    if (!this.notificationElement) {
+    // 只在第一次顯示通知時創建元素和初始化讀秒
+    const isFirstNotification = !this.notificationElement;
+    if (isFirstNotification) {
       this.notificationElement = document.createElement('div');
       this.notificationElement.classList.add('notification-element');
       document.body.appendChild(this.notificationElement);
       console.log('通知元素已創建並添加到 DOM');
       this.currentCount = 0;
+      
+      // 只在首次創建時初始化讀秒計時器
+      if (isLoading) {
+        this.startCountdown();
+      }
     }
 
     // 判斷是否為取消翻譯的通知
@@ -56,12 +62,6 @@ const Notification = {
       const batchElement = this.notificationElement.querySelector('.current-batch');
       if (batchElement) {
         batchElement.textContent = currentBatch;
-        // 重置讀秒
-        this.currentCount = 0;
-        const countdownElement = document.getElementById('countdown');
-        if (countdownElement) {
-          countdownElement.textContent = '0';
-        }
         return;
       }
     }
@@ -92,30 +92,11 @@ const Notification = {
       }, 10);
 
       if (isLoading && !isCancelTranslation) {
-        console.log('設置加載中狀態的通知');
-        // 清除之前的讀秒計時器
-        if (this.countdownInterval) {
-          clearInterval(this.countdownInterval);
-          this.countdownInterval = null;
-        }
-        
-        // 重置讀秒
-        this.currentCount = 0;
+        // 更新當前讀秒顯示
         const countdownElement = document.getElementById('countdown');
         if (countdownElement) {
-          countdownElement.textContent = '0';
+          countdownElement.textContent = this.currentCount;
         }
-        
-        // 創建新的讀秒計時器
-        this.countdownInterval = setInterval(() => {
-          this.currentCount++;
-          const element = document.getElementById('countdown');
-          if (element) {
-            element.textContent = this.currentCount;
-          }
-          console.log('讀秒:', this.currentCount);
-        }, 1000);
-        
         resolve();
       } else {
         console.log('設置完成狀態的通知');
@@ -140,6 +121,26 @@ const Notification = {
         }, 1200);
       }
     });
+  },
+
+  /**
+   * 開始讀秒計時器
+   */
+  startCountdown() {
+    // 清除現有的計時器（如果有的話）
+    if (this.countdownInterval) {
+      clearInterval(this.countdownInterval);
+    }
+    
+    // 創建新的讀秒計時器
+    this.countdownInterval = setInterval(() => {
+      this.currentCount++;
+      const element = document.getElementById('countdown');
+      if (element) {
+        element.textContent = this.currentCount;
+      }
+      console.log('讀秒:', this.currentCount);
+    }, 1000);
   },
 
   /**
