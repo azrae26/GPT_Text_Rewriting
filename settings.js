@@ -24,6 +24,10 @@ const GlobalSettings = {
   translateModel: '',
   /** 翻譯指令。 */
   translateInstruction: '',
+  confirmModel: false,
+  confirmContent: false,
+  removeHash: true,
+  removeStar: true,
 
   /**
    * 從 Chrome 儲存空間載入設定。
@@ -33,19 +37,9 @@ const GlobalSettings = {
     try {
       // 使用 Promise 包裝 chrome.storage.sync.get
       const result = await new Promise((resolve) => {
-        try {
-          chrome.storage.sync.get(null, (items) => {
-            if (chrome.runtime.lastError) {
-              // 如果有錯誤，使用預設值
-              resolve(window.DefaultSettings || {});
-            } else {
-              resolve(items);
-            }
-          });
-        } catch (error) {
-          // 如果出現異常，使用預設值
-          resolve(window.DefaultSettings || {});
-        }
+        chrome.storage.sync.get(null, (items) => {
+          resolve(items);
+        });
       });
 
       // 設置值，優先使用已保存的值，如果沒有則使用預設值
@@ -58,6 +52,12 @@ const GlobalSettings = {
       this.autoRewriteModel = result.autoRewriteModel || this.model;
       this.translateModel = result.translateModel || this.model;
       this.translateInstruction = result.translateInstruction || (window.DefaultSettings?.translateInstruction || '');
+      
+      // 修改布林值的處理方式
+      this.confirmModel = result.confirmModel === undefined ? false : result.confirmModel;
+      this.confirmContent = result.confirmContent === undefined ? false : result.confirmContent;
+      this.removeHash = result.removeHash === undefined ? true : result.removeHash;
+      this.removeStar = result.removeStar === undefined ? true : result.removeStar;
 
       // 更新自動改寫模式
       if (result.autoRewritePatterns) {
@@ -69,16 +69,10 @@ const GlobalSettings = {
       // 如果是首次運行，設置預設值
       if (result.firstRun === undefined) {
         await this.saveSettings();
-        chrome.storage.sync.set({ 
-          firstRun: false,
-          confirmModel: window.DefaultSettings?.confirmModel || false,
-          confirmContent: window.DefaultSettings?.confirmContent || false,
-          removeHash: window.DefaultSettings?.removeHash || true,
-          removeStar: window.DefaultSettings?.removeStar || true
-        });
+        chrome.storage.sync.set({ firstRun: false });
       }
 
-      return result;
+      return this;
     } catch (error) {
       console.warn('載入設置時出錯，使用預設值:', error);
       return window.DefaultSettings || {};
@@ -118,11 +112,47 @@ const GlobalSettings = {
           shortRewriteModel: this.shortRewriteModel,
           autoRewriteModel: this.autoRewriteModel,
           translateModel: this.translateModel,
-          translateInstruction: this.translateInstruction
+          translateInstruction: this.translateInstruction,
+          confirmModel: this.confirmModel,
+          confirmContent: this.confirmContent,
+          removeHash: this.removeHash,
+          removeStar: this.removeStar
         }, resolve);
       });
     } catch (error) {
       console.warn('保存設置時出錯:', error);
+    }
+  },
+
+  /**
+   *儲存單一設定
+   * @param {string} key - 設定的鍵
+   * @param {any} value - 設定的值
+   * @returns {Promise<void>}
+   */
+  async saveSingleSetting(key, value) {
+    try {
+      await new Promise((resolve) => {
+        const settings = {};
+        settings[key] = value;
+        chrome.storage.sync.set(settings, resolve);
+      });
+      // 同時更新本地值
+      this[key] = value;
+    } catch (error) {
+      console.warn('儲存單一設定時出錯:', error);
+    }
+  },
+
+  async saveModelSelection(modelType, value) {
+    try {
+      await new Promise((resolve) => {
+        const settings = {};
+        settings[modelType] = value;
+        this.saveSingleSetting(modelType, value).then(resolve);
+      });
+    } catch (error) {
+      console.warn('儲存模型選擇時出錯:', error);
     }
   }
 };

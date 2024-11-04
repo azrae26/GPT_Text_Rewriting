@@ -3,10 +3,10 @@
  * 功能：管理 API 金鑰、改寫設置、模型選擇等配置項目
  */
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
   console.log('DOM 載入完成，開始初始化...');
   
-  // 獲取所有需要的 DOM 元素
+  // 獲取所有需要的 DOM 元素，白話文：獲取頁面上的元素
   const apiKeyInput = document.getElementById('api-key');                          // API 金鑰輸入
   const modelSelect = document.getElementById('model-select');                     // 模型選擇
   const instructionInput = document.getElementById('instruction');                 // 改寫指令
@@ -39,98 +39,29 @@ document.addEventListener('DOMContentLoaded', function() {
   };
 
   // 從 Chrome 儲存空間載入設置
-  chrome.storage.sync.get([
-    'apiKeys',
-    'instruction',
-    'shortInstruction',
-    'autoRewritePatterns',
-    'confirmModel',
-    'confirmContent',
-    'fullRewriteModel',
-    'shortRewriteModel',
-    'autoRewriteModel',
-    'translateModel',
-    'translateInstruction',
-    'isFirstTime',
-    'removeHash',
-    'removeStar'
-  ], function(result) {
-    console.log('載入儲存的設置:', result);
-    const isFirstTime = result.isFirstTime === undefined ? true : result.isFirstTime;
+  const settings = await GlobalSettings.loadSettings();
+  console.log('載入儲存的設置:', settings);
 
-    if (isFirstTime && typeof DefaultSettings !== 'undefined') {
-      console.log('首次載入，應用預設設定');
-      loadDefaultSettings();
-    } else {
-      console.log('非首次載入，應用已保存的設定');
-      if (result.apiKeys) {
-        apiKeys = result.apiKeys;
-      }
-      if (result.instruction) instructionInput.value = result.instruction;
-      if (result.shortInstruction) shortInstructionInput.value = result.shortInstruction;
-      if (result.autoRewritePatterns) autoRewritePatternsInput.value = result.autoRewritePatterns;
-      if (result.confirmModel !== undefined) confirmModelCheckbox.checked = result.confirmModel;
-      if (result.confirmContent !== undefined) confirmContentCheckbox.checked = result.confirmContent;
-      if (result.fullRewriteModel) fullRewriteModelSelect.value = result.fullRewriteModel;
-      if (result.shortRewriteModel) shortRewriteModelSelect.value = result.shortRewriteModel;
-      if (result.autoRewriteModel) autoRewriteModelSelect.value = result.autoRewriteModel;
-      if (result.translateModel) translateModelSelect.value = result.translateModel;
-      if (result.translateInstruction) translateInstructionInput.value = result.translateInstruction;
-      if (result.removeHash !== undefined) {
-        console.log('設置 removeHash checkbox 狀態:', result.removeHash);
-        removeHashCheckbox.checked = result.removeHash;
-      }
-      if (result.removeStar !== undefined) {
-        console.log('設置 removeStar checkbox 狀態:', result.removeStar);
-        removeStarCheckbox.checked = result.removeStar;
-      }
-    }
-    updateApiKeyInput();
-  });
-
-  // Function to load default settings
-  function loadDefaultSettings() {
-    console.log('載入預設設定...');
-    
-    // 載入預設指令
-    instructionInput.value = DefaultSettings.fullRewriteInstruction;
-    shortInstructionInput.value = DefaultSettings.shortRewriteInstruction;
-    autoRewritePatternsInput.value = DefaultSettings.autoRewritePatterns;
-    translateInstructionInput.value = DefaultSettings.translateInstruction;
-
-    // 載入預設模型
-    fullRewriteModelSelect.value = 'gemini-1.5-flash';
-    shortRewriteModelSelect.value = 'gemini-1.5-flash';
-    autoRewriteModelSelect.value = 'gemini-1.5-flash';
-    translateModelSelect.value = 'gemini-1.5-flash';
-
-    // 載入預設勾選框狀態
-    confirmModelCheckbox.checked = DefaultSettings.confirmModel;
-    confirmContentCheckbox.checked = DefaultSettings.confirmContent;
-    removeHashCheckbox.checked = DefaultSettings.removeHash;
-    removeStarCheckbox.checked = DefaultSettings.removeStar;
-
-    // 保存所有預設設定到 storage
-    const defaultSettings = {
-      isFirstTime: false,
-      instruction: DefaultSettings.fullRewriteInstruction,
-      shortInstruction: DefaultSettings.shortRewriteInstruction,
-      autoRewritePatterns: DefaultSettings.autoRewritePatterns,
-      translateInstruction: DefaultSettings.translateInstruction,
-      confirmModel: DefaultSettings.confirmModel,
-      confirmContent: DefaultSettings.confirmContent,
-      removeHash: DefaultSettings.removeHash,
-      removeStar: DefaultSettings.removeStar,
-      fullRewriteModel: 'gemini-1.5-flash',
-      shortRewriteModel: 'gemini-1.5-flash',
-      autoRewriteModel: 'gemini-1.5-flash',
-      translateModel: 'gemini-1.5-flash'
-    };
-
-    chrome.storage.sync.set(defaultSettings, function() {
-      console.log('預設設定已保存到 storage');
-    });
+  if (settings.firstRun === true && typeof DefaultSettings !== 'undefined') {
+    console.log('首次載入，應用預設設定');
+    await GlobalSettings.saveSettings();
+  } else {
+    console.log('非首次載入，應用已保存的設定');
+    apiKeys = settings.apiKeys || {};
+    instructionInput.value = settings.instruction || '';
+    shortInstructionInput.value = settings.shortInstruction || '';
+    autoRewritePatternsInput.value = settings.autoRewritePatterns || '';
+    confirmModelCheckbox.checked = settings.confirmModel || false;
+    confirmContentCheckbox.checked = settings.confirmContent || false;
+    fullRewriteModelSelect.value = settings.fullRewriteModel || 'gemini-1.5-flash';
+    shortRewriteModelSelect.value = settings.shortRewriteModel || 'gemini-1.5-flash';
+    autoRewriteModelSelect.value = settings.autoRewriteModel || 'gemini-1.5-flash';
+    translateModelSelect.value = settings.translateModel || 'gemini-1.5-flash';
+    translateInstructionInput.value = settings.translateInstruction || '';
+    removeHashCheckbox.checked = settings.removeHash !== undefined ? settings.removeHash : true;
+    removeStarCheckbox.checked = settings.removeStar !== undefined ? settings.removeStar : true;
   }
+  updateApiKeyInput();
 
   // 更新 API 金鑰輸入框顯示
   function updateApiKeyInput() {
@@ -141,14 +72,9 @@ document.addEventListener('DOMContentLoaded', function() {
   modelSelect.addEventListener('change', updateApiKeyInput);
 
   // 保存所有設置
-  saveButton.addEventListener('click', function() {
-    const selectedModel = modelSelect.value;
-    const apiKey = apiKeyInput.value;
-
-    const keyName = selectedModel === 'openai' ? 'openai' : selectedModel;
-    apiKeys[keyName] = apiKey;
-
-    const settings = {
+  saveButton.addEventListener('click', async function() {
+    apiKeys[modelSelect.value] = apiKeyInput.value;
+    await GlobalSettings.saveSettings({
       apiKeys: apiKeys,
       instruction: instructionInput.value,
       shortInstruction: shortInstructionInput.value,
@@ -162,94 +88,83 @@ document.addEventListener('DOMContentLoaded', function() {
       translateInstruction: translateInstructionInput.value,
       removeHash: removeHashCheckbox.checked,
       removeStar: removeStarCheckbox.checked
-    };
-
-    chrome.storage.sync.set(settings, function() {
-      console.log('設置已保存:', settings);
-      alert('設置已保存');
-      updateContentScript(settings);
     });
+    console.log('設置已保存');
+    alert('設置已保存');
+    updateContentScript();
   });
 
   // 自動保存各項設置的事件監聽器
-  instructionInput.addEventListener('input', function() {
-    chrome.storage.sync.set({ instruction: instructionInput.value });
+  instructionInput.addEventListener('input', async function() {
+    await GlobalSettings.saveSingleSetting('instruction', instructionInput.value);
   });
 
-  shortInstructionInput.addEventListener('input', function() {
-    chrome.storage.sync.set({ shortInstruction: shortInstructionInput.value });
+  shortInstructionInput.addEventListener('input', async function() {
+    await GlobalSettings.saveSingleSetting('shortInstruction', shortInstructionInput.value);
   });
 
-  autoRewritePatternsInput.addEventListener('input', function() {
-    chrome.storage.sync.set({ autoRewritePatterns: autoRewritePatternsInput.value });
+  autoRewritePatternsInput.addEventListener('input', async function() {
+    await GlobalSettings.saveSingleSetting('autoRewritePatterns', autoRewritePatternsInput.value);
     sendAutoRewritePatternsUpdate();
   });
 
-  translateInstructionInput.addEventListener('input', function() {
-    chrome.storage.sync.set({ translateInstruction: translateInstructionInput.value });
+  translateInstructionInput.addEventListener('input', async function() {
+    await GlobalSettings.saveSingleSetting('translateInstruction', translateInstructionInput.value);
   });
 
   // 確認選項變更處理
-  confirmModelCheckbox.addEventListener('change', function() {
-    chrome.storage.sync.set({ confirmModel: confirmModelCheckbox.checked }, function() {
-      console.log('確認模型設置已更新:', confirmModelCheckbox.checked);
-      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: "updateSettings",
-          settings: { confirmModel: confirmModelCheckbox.checked }
-        });
-      });
-    });
+  confirmModelCheckbox.addEventListener('change', async function() {
+    await GlobalSettings.saveSingleSetting('confirmModel', confirmModelCheckbox.checked);
+    console.log('確認模型設置已更新:', confirmModelCheckbox.checked);
+    updateContentScript();
   });
 
-  confirmContentCheckbox.addEventListener('change', function() {
-    chrome.storage.sync.set({ confirmContent: confirmContentCheckbox.checked }, function() {
-      console.log('確認內容設置已更新:', confirmContentCheckbox.checked);
-      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: "updateSettings",
-          settings: { confirmContent: confirmContentCheckbox.checked }
-        });
-      });
-    });
+  confirmContentCheckbox.addEventListener('change', async function() {
+    await GlobalSettings.saveSingleSetting('confirmContent', confirmContentCheckbox.checked);
+    console.log('確認內容設置已更新:', confirmContentCheckbox.checked);
+    updateContentScript();
+  });
+
+  // 移除標記符號選項變更處理
+  removeHashCheckbox.addEventListener('change', async function() {
+    await GlobalSettings.saveSingleSetting('removeHash', removeHashCheckbox.checked);
+    console.log('移除##設置已更新:', removeHashCheckbox.checked);
+    updateContentScript();
+  });
+
+  removeStarCheckbox.addEventListener('change', async function() {
+    await GlobalSettings.saveSingleSetting('removeStar', removeStarCheckbox.checked);
+    console.log('移除**設置已更新:', removeStarCheckbox.checked);
+    updateContentScript();
   });
 
   // 模型選擇變更處理
-  fullRewriteModelSelect.addEventListener('change', function() {
-    saveModelSelection('fullRewriteModel', this.value);
+  fullRewriteModelSelect.addEventListener('change', async function() {
+    await GlobalSettings.saveModelSelection('fullRewriteModel', this.value);
+    updateContentScript();
   });
 
-  shortRewriteModelSelect.addEventListener('change', function() {
-    saveModelSelection('shortRewriteModel', this.value);
+  shortRewriteModelSelect.addEventListener('change', async function() {
+    await GlobalSettings.saveModelSelection('shortRewriteModel', this.value);
+    updateContentScript();
   });
 
-  autoRewriteModelSelect.addEventListener('change', function() {
-    saveModelSelection('autoRewriteModel', this.value);
+  autoRewriteModelSelect.addEventListener('change', async function() {
+    await GlobalSettings.saveModelSelection('autoRewriteModel', this.value);
+    updateContentScript();
   });
 
-  translateModelSelect.addEventListener('change', function() {
-    saveModelSelection('translateModel', this.value);
+  translateModelSelect.addEventListener('change', async function() {
+    await GlobalSettings.saveModelSelection('translateModel', this.value);
+    updateContentScript();
   });
-
-  // 保存模型選擇
-  function saveModelSelection(modelType, value) {
-    let settings = {};
-    settings[modelType] = value;
-    chrome.storage.sync.set(settings, function() {
-      console.log(`${modelType} 已更新:`, value);
-      updateContentScript(settings);
-    });
-  }
 
   // 改寫請求處理
   rewriteButton.addEventListener('click', function() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       chrome.tabs.sendMessage(tabs[0].id, {
         action: "rewrite",
-        apiKeys: {
-          'openai': apiKeys['openai'],
-          'gemini-1.5-flash': apiKeys['gemini-1.5-flash']
-        },
+        apiKeys: apiKeys,
         model: modelSelect.value,
         instruction: instructionInput.value,
         shortInstruction: shortInstructionInput.value,
@@ -272,19 +187,17 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     });
   });
-
+  
   // 分頁切換功能
   const tabs = document.querySelectorAll('.tab');
   const tabContents = document.querySelectorAll('.tab-content');
 
   tabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const tabName = tab.getAttribute('data-tab');
-
+    tab.addEventListener('click', function() {
+      const tabName = this.getAttribute('data-tab');
       tabs.forEach(t => t.classList.remove('active'));
       tabContents.forEach(c => c.classList.remove('active'));
-
-      tab.classList.add('active');
+      this.classList.add('active');
       document.getElementById(`${tabName}-tab`).classList.add('active');
     });
   });
@@ -294,8 +207,8 @@ document.addEventListener('DOMContentLoaded', function() {
   const mainTabContents = document.querySelectorAll('.main-tab-content');
 
   mainTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const tabName = tab.getAttribute('data-tab');
+    tab.addEventListener('click', function() {
+      const tabName = this.getAttribute('data-tab');
 
       mainTabs.forEach(t => t.classList.remove('active'));
       mainTabContents.forEach(c => c.classList.remove('active'));
@@ -321,11 +234,9 @@ document.addEventListener('DOMContentLoaded', function() {
     });
   }
 
-  // 初始化自動改寫模式
-  sendAutoRewritePatternsUpdate();
-
   // 更新內容腳本設置
-  function updateContentScript(settings) {
+  async function updateContentScript() {
+    const settings = await GlobalSettings.loadSettings();
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       chrome.tabs.sendMessage(tabs[0].id, {
         action: "updateSettings",
@@ -347,39 +258,5 @@ document.addEventListener('DOMContentLoaded', function() {
         chrome.tabs.sendMessage(tabs[0].id, {action: "activateAIAssistant"});
       });
     });
-  }
-
-  // 新增的勾選框事件監聽器
-  if (removeHashCheckbox) {
-    removeHashCheckbox.addEventListener('change', function() {
-      console.log('removeHash checkbox 變更事件觸發');
-      console.log('新的狀態:', removeHashCheckbox.checked);
-      chrome.storage.sync.set({ removeHash: removeHashCheckbox.checked }, function() {
-        console.log('removeHash 已保存到 storage:', removeHashCheckbox.checked);
-      });
-    });
-  } else {
-    console.error('removeHash checkbox 元素未找到');
-  }
-
-  if (removeStarCheckbox) {
-    removeStarCheckbox.addEventListener('change', function() {
-      console.log('removeStar checkbox 變更事件觸發');
-      console.log('新的狀態:', removeStarCheckbox.checked);
-      chrome.storage.sync.set({ removeStar: removeStarCheckbox.checked }, function() {
-        console.log('removeStar 已保存到 storage:', removeStarCheckbox.checked);
-      });
-    });
-  } else {
-    console.error('removeStar checkbox 元素未找到');
-  }
-
-  // 初始化 TranslateManager
-  console.log('準備初始化 TranslateManager...');
-  if (typeof window.TranslateManager !== 'undefined') {
-    console.log('TranslateManager 存在，設置 checkboxes');
-    window.TranslateManager.setCheckboxes(removeHashCheckbox, removeStarCheckbox);
-  } else {
-    console.error('TranslateManager 未定義');
   }
 });
