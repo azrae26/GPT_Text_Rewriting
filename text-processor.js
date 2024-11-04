@@ -214,7 +214,7 @@ const TextProcessor = {
   },
 
   /**
-   * 執行文字改寫
+   * 執行文字改寫 (修改後的版本)
    */
   async rewriteText(textToRewrite, isAutoRewrite = false) {
     try {
@@ -225,6 +225,11 @@ const TextProcessor = {
       const textArea = document.querySelector('textarea[name="content"]');
       if (!textArea) throw new Error('找不到文本區域');
 
+      const originalTextToRewrite = this._getTextToRewrite(textArea, isAutoRewrite, textToRewrite);
+      if (!originalTextToRewrite) {
+        throw new Error('找不到要改寫的文字');
+      }
+
       const isPartialRewrite = isAutoRewrite || (textArea.selectionStart !== textArea.selectionEnd);
       const useShortInstruction = isAutoRewrite || (isPartialRewrite && textArea.selectionEnd - textArea.selectionStart <= 15);
 
@@ -232,7 +237,6 @@ const TextProcessor = {
       console.log('使用短指令:', useShortInstruction);
       console.log('選中文本長度:', textArea.selectionEnd - textArea.selectionStart);
 
-      const finalTextToRewrite = this._getTextToRewrite(textArea, isAutoRewrite, textToRewrite);
       const instruction = useShortInstruction ? settings.shortInstruction : settings.instruction;
       if (!instruction.trim()) throw new Error(useShortInstruction ? '短文本改寫指令不能為空' : '改寫令不能為空');
 
@@ -247,7 +251,7 @@ const TextProcessor = {
       console.log('選擇的模型:', model);
       console.log('使用的 API 金鑰:', apiKey.substring(0, 5) + '...');
 
-      if (!isAutoRewrite && !await this._confirmRewrite(model, finalTextToRewrite, instruction)) {
+      if (!isAutoRewrite && !await this._confirmRewrite(model, originalTextToRewrite, instruction)) {
         return;
       }
 
@@ -257,10 +261,10 @@ const TextProcessor = {
         ${isPartialRewrite ? (useShortInstruction ? '正在改寫選中的短文本' : '正在改寫選中文本') : '正在改寫全文'}
       `, true);
 
-      const { endpoint, body } = this._prepareApiConfig(model, finalTextToRewrite, instruction);
+      const { endpoint, body } = this._prepareApiConfig(model, originalTextToRewrite, instruction);
       const rewrittenText = await this._sendRequest(endpoint, body, apiKey, isGemini);
 
-      console.log('改寫前文本:', finalTextToRewrite);
+      console.log('改寫前文本:', originalTextToRewrite);
       console.log('改寫後的文本:', rewrittenText);
 
       window.UndoManager.addToHistory(textArea.value, textArea);
@@ -270,10 +274,13 @@ const TextProcessor = {
         return rewrittenText.trim();
       }
 
-      const newText = (isPartialRewrite
-        ? textArea.value.substring(0, textArea.selectionStart) + rewrittenText.trim() + textArea.value.substring(textArea.selectionEnd)
-        : rewrittenText.trim()
-      ).replace(/\n{3,}/g, '\n\n');
+
+      const index = textArea.value.indexOf(originalTextToRewrite);
+      if (index === -1) {
+        throw new Error('找不到原始文字');
+      }
+
+      const newText = textArea.value.substring(0, index) + rewrittenText.trim() + textArea.value.substring(index + originalTextToRewrite.length);
 
       console.log('更新前的文本區域值:', textArea.value);
       textArea.value = newText;
