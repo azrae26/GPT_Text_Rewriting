@@ -83,7 +83,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       // 保存確認設置
       chrome.storage.sync.set({
         confirmModel: request.confirmModel,
-        confirmContent: request.confirmContent
+        confirmContent: request.confirmContent,
+        removeHash: request.removeHash,
+        removeStar: request.removeStar
       });
       TextProcessor.rewriteText();
       sendResponse({success: true});
@@ -113,12 +115,20 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       if (request.settings.translateInstruction) {
         window.GlobalSettings.translateInstruction = request.settings.translateInstruction;
       }
+      if (request.settings.removeHash !== undefined) {
+        window.GlobalSettings.removeHash = request.settings.removeHash;
+      }
+      if (request.settings.removeStar !== undefined) {
+        window.GlobalSettings.removeStar = request.settings.removeStar;
+      }
       console.log('更新的設置:', {
         fullRewriteModel: window.GlobalSettings.fullRewriteModel,
         shortRewriteModel: window.GlobalSettings.shortRewriteModel,
         autoRewriteModel: window.GlobalSettings.autoRewriteModel,
         translateModel: window.GlobalSettings.translateModel,
-        apiKeys: window.GlobalSettings.apiKeys
+        apiKeys: window.GlobalSettings.apiKeys,
+        removeHash: window.GlobalSettings.removeHash,
+        removeStar: window.GlobalSettings.removeStar
       });
       sendResponse({success: true});
       break;

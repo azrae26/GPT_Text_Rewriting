@@ -1,5 +1,7 @@
 /* global GlobalSettings, Notification, TextProcessor */
-const TranslateManager = {
+
+// 確保在全局範圍內定義 TranslateManager
+window.TranslateManager = {
   isTranslating: false,
   currentBatchIndex: 0,
   translationQueue: [],
@@ -9,6 +11,8 @@ const TranslateManager = {
   timeoutId: null,
   isLastBatchProcessed: false,
   batchInterval: 5000, // 預設間隔為5秒
+  removeHashCheckbox: null,
+  removeStarCheckbox: null,
 
   /**
    * 根據批次數量決定發送間隔
@@ -19,10 +23,12 @@ const TranslateManager = {
       return 500; // 5次以下，0.5秒
     } else if (this.totalBatches <= 10) {
       return 1000; // 10次以下，1秒
+    } else if (this.totalBatches <= 15) {
+      return 3000; // 15次以下，3秒
     } else if (this.totalBatches <= 20) {
-      return 3000; // 20次以下，3秒
+      return 4000; // 20次以下，4秒
     } else if (this.totalBatches <= 25) {
-      return 4000; // 25次以下，4秒
+      return 5000; // 25次以下，5秒
     }
     return 5000; // 25次以上，5秒
   },
@@ -31,6 +37,7 @@ const TranslateManager = {
    * 初始化翻譯功能
    */
   initialize() {
+    console.log('TranslateManager 初始化...');
     const buttonContainer = document.getElementById('gpt-button-container');
     if (!buttonContainer || document.getElementById('gpt-translate-button')) return;
 
@@ -66,6 +73,9 @@ const TranslateManager = {
         alert('請設置翻譯要求');
         return;
       }
+
+      // 在開始翻譯前重新檢查 checkbox 狀態
+      await this.loadCheckboxStates();
 
       await this.startTranslation(button);
     } catch (error) {
@@ -306,10 +316,72 @@ const TranslateManager = {
 
     const originalText = this.translationQueue[batchIndex];
     // 如果不是第一批次，在翻譯文本前添加換行符
-    const finalTranslatedText = batchIndex > 0 ? '\n' + translatedText : translatedText;
+    let finalTranslatedText = batchIndex > 0 ? '\n' + translatedText : translatedText;
+
+    // 使用類別中保存的 checkbox 值
+    if (this.removeHashCheckbox && this.removeHashCheckbox.checked) {
+      finalTranslatedText = finalTranslatedText.replace(/##\s*|\s*##/g, '');
+    }
+    if (this.removeStarCheckbox && this.removeStarCheckbox.checked) {
+      finalTranslatedText = finalTranslatedText.replace(/\*\*\s*|\s*\*\*/g, '');
+    }
+
     textArea.value = textArea.value.replace(originalText, finalTranslatedText);
     textArea.dispatchEvent(new Event('input', { bubbles: true }));
+  },
+  
+  /**
+   * 從 storage 載入 checkbox 狀態
+   */
+  async loadCheckboxStates() {
+    console.log('載入 checkbox 狀態...');
+    return new Promise((resolve) => {
+      chrome.storage.sync.get(['removeHash', 'removeStar'], (result) => {
+        console.log('已從 storage 載入 checkbox 狀態:', result);
+        if (this.removeHashCheckbox) {
+          console.log('設置 removeHash checkbox 狀態:', result.removeHash);
+          this.removeHashCheckbox.checked = result.removeHash || false;
+        } else {
+          console.error('removeHash checkbox 未初始化');
+        }
+        if (this.removeStarCheckbox) {
+          console.log('設置 removeStar checkbox 狀態:', result.removeStar);
+          this.removeStarCheckbox.checked = result.removeStar || false;
+        } else {
+          console.error('removeStar checkbox 未初始化');
+        }
+        resolve();
+      });
+    });
+  },
+  
+  /**
+   * 設置 checkbox 元素並載入狀態
+   */
+  setCheckboxes(removeHashCheckbox, removeStarCheckbox) {
+    console.log('設置 checkboxes...');
+    console.log('removeHashCheckbox:', removeHashCheckbox ? '已提供' : '未提供');
+    console.log('removeStarCheckbox:', removeStarCheckbox ? '已提供' : '未提供');
+    
+    this.removeHashCheckbox = removeHashCheckbox;
+    this.removeStarCheckbox = removeStarCheckbox;
+    
+    // 立即載入狀態
+    this.loadCheckboxStates();
+    
+    // 監聽 checkbox 變更
+    if (removeHashCheckbox) {
+      removeHashCheckbox.addEventListener('change', () => {
+        console.log('TranslateManager: removeHash 狀態變更:', removeHashCheckbox.checked);
+        chrome.storage.sync.set({ removeHash: removeHashCheckbox.checked });
+      });
+    }
+    
+    if (removeStarCheckbox) {
+      removeStarCheckbox.addEventListener('change', () => {
+        console.log('TranslateManager: removeStar 狀態變更:', removeStarCheckbox.checked);
+        chrome.storage.sync.set({ removeStar: removeStarCheckbox.checked });
+      });
+    }
   }
 };
-
-window.TranslateManager = TranslateManager;

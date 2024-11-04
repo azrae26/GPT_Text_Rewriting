@@ -14,6 +14,26 @@ const TextProcessor = {
     'gemini-1.5-flash': 'Gemini 1.5 Flash'
   },
 
+  // Gemini API 安全設置級別
+  SAFETY_SETTINGS: [
+    {
+      category: "HARM_CATEGORY_HARASSMENT",
+      threshold: "BLOCK_NONE"
+    },
+    {
+      category: "HARM_CATEGORY_HATE_SPEECH",
+      threshold: "BLOCK_NONE"
+    },
+    {
+      category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+      threshold: "BLOCK_NONE"
+    },
+    {
+      category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+      threshold: "BLOCK_NONE"
+    }
+  ],
+
   /**
    * 在給定的文本中查找符合自動改寫模式的特殊文本。
    */
@@ -56,7 +76,9 @@ const TextProcessor = {
         parts: [{
           text: `要替換的文本：${text}。\n\n\n替換指令：${instruction}`
         }]
-      }]
+      }],
+      // 添加安全設置，降低內容過濾的嚴格程度
+      safetySettings: this.SAFETY_SETTINGS
     } : {
       model,
       messages: [
@@ -121,9 +143,24 @@ const TextProcessor = {
         throw new Error('翻譯請求已取消');
       }
 
-      return isGemini
-        ? data.candidates[0].content.parts[0].text
-        : data.choices[0].message.content;
+      // 處理 Gemini API 的安全限制回應
+      if (isGemini && data.candidates && data.candidates[0].finishReason === "SAFETY") {
+        throw new Error('內容被 Gemini API 的安全限制阻擋，請嘗試修改文本或使用其他模型');
+      }
+
+      // 檢查回應格式是否正確
+      if (isGemini) {
+        if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+          throw new Error('Gemini API 回應格式無效');
+        }
+        return data.candidates[0].content.parts[0].text;
+      } else {
+        if (!data.choices?.[0]?.message?.content) {
+          throw new Error('OpenAI API 回應格式無效');
+        }
+        return data.choices[0].message.content;
+      }
+
     } catch (error) {
       if (error.name === 'AbortError' || error.message === '翻譯請求已取消') {
         console.log('請求已被取消');

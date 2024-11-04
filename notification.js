@@ -17,6 +17,11 @@ const Notification = {
   async showNotification(message, isLoading = true) {
     console.log('顯示通知:', message, '正在加載:', isLoading);
     
+    // 如果不是加載狀態，立即清除所有計時器
+    if (!isLoading) {
+      this.clearAllTimers();
+    }
+    
     // 從 message 中提取模型名稱和 API KEY
     const modelMatch = message.match(/模型: (.*?)<br>/);
     const apiKeyMatch = message.match(/API KEY: (.*?)<br>/);
@@ -28,20 +33,8 @@ const Notification = {
     const totalBatches = batchMatch ? batchMatch[2] : null;
 
     if (isLoading) {
-      this.lastModelName = modelName; //儲存模型名稱
-      this.lastApiKeyPrefix = apiKeyPrefix; //儲存API KEY前綴
-    }
-
-    // 如果不是加載狀態，清除所有計時器
-    if (!isLoading) {
-      this.clearAllTimers();
-    }
-
-    // 清除之前的超時
-    if (this.notificationTimeout) {
-      console.log('清除之前的通知超時');
-      clearTimeout(this.notificationTimeout);
-      this.notificationTimeout = null;
+      this.lastModelName = modelName;
+      this.lastApiKeyPrefix = apiKeyPrefix;
     }
 
     // 只在第一次顯示通知時創建元素
@@ -59,35 +52,39 @@ const Notification = {
     const isTranslation = message.includes('翻譯中') || message.includes('翻譯完成') || isCancelTranslation;
 
     // 如果是批次進度更新，只更新進度相關的內容
-    if (currentBatch && this.notificationElement) {
+    if (currentBatch && this.notificationElement && isLoading) {
       const batchElement = this.notificationElement.querySelector('.current-batch');
       if (batchElement) {
         batchElement.textContent = currentBatch;
+        // 重置讀秒
+        this.currentCount = 0;
+        const countdownElement = document.getElementById('countdown');
+        if (countdownElement) {
+          countdownElement.textContent = '0';
+        }
         return;
       }
     }
 
-    // 只在首次顯示或結束時重建完整的通知內容
-    if (!this.notificationElement.innerHTML || !isLoading) {
-      this.notificationElement.innerHTML = `
-        <div class="notification-title">
-          ${isCancelTranslation ? '已取消翻譯' : 
-            isTranslation ? 
-              (isLoading ? '翻譯中' : '翻譯完成') : 
-              (isLoading ? '正在改寫' : '改寫完成')}
+    // 重建完整的通知內容
+    this.notificationElement.innerHTML = `
+      <div class="notification-title">
+        ${isCancelTranslation ? '已取消翻譯' : 
+          isTranslation ? 
+            (isLoading ? '翻譯中' : '翻譯完成') : 
+            (isLoading ? '正在改寫' : '改寫完成')}
+      </div>
+      ${currentBatch && !isCancelTranslation ? `
+        <div class="batch-progress">批次：<span class="current-batch">${currentBatch}</span> / ${totalBatches}</div>
+      ` : ''}
+      ${isLoading && !isCancelTranslation ? '<div class="spinner-container"><div class="spinner"></div><div id="countdown">0</div></div>' : ''}
+      ${!isCancelTranslation ? `
+        <div class="notification-info">
+          模型: ${modelName}<br>
+          API KEY: ${apiKeyPrefix}
         </div>
-        ${currentBatch && !isCancelTranslation ? `
-          <div class="batch-progress">批次：<span class="current-batch">${currentBatch}</span> / ${totalBatches}</div>
-        ` : ''}
-        ${isLoading && !isCancelTranslation ? '<div class="spinner-container"><div class="spinner"></div><div id="countdown">0</div></div>' : ''}
-        ${!isCancelTranslation ? `
-          <div class="notification-info">
-            模型: ${modelName}<br>
-            API KEY: ${apiKeyPrefix}
-          </div>
-        ` : ''}
-      `;
-    }
+      ` : ''}
+    `;
     
     return new Promise((resolve) => {
       setTimeout(() => {
@@ -95,31 +92,37 @@ const Notification = {
       }, 10);
 
       if (isLoading && !isCancelTranslation) {
-        console.log('檢查讀秒狀態');
+        console.log('設置加載中狀態的通知');
+        // 清除之前的讀秒計時器
+        if (this.countdownInterval) {
+          clearInterval(this.countdownInterval);
+          this.countdownInterval = null;
+        }
+        
+        // 重置讀秒
+        this.currentCount = 0;
         const countdownElement = document.getElementById('countdown');
-        
         if (countdownElement) {
-          countdownElement.textContent = this.currentCount;
+          countdownElement.textContent = '0';
         }
         
-        // 只在沒有運行中的讀秒器時才創建新的
-        if (!this.countdownInterval) {
-          console.log('開始新的讀秒');
-          this.countdownInterval = setInterval(() => {
-            this.currentCount++;
-            const element = document.getElementById('countdown');
-            if (element) {
-              element.textContent = this.currentCount;
-            }
-            console.log('讀秒:', this.currentCount);
-          }, 1000);
-        }
+        // 創建新的讀秒計時器
+        this.countdownInterval = setInterval(() => {
+          this.currentCount++;
+          const element = document.getElementById('countdown');
+          if (element) {
+            element.textContent = this.currentCount;
+          }
+          console.log('讀秒:', this.currentCount);
+        }, 1000);
         
         resolve();
       } else {
-        console.log('設置非加載狀態的通知顯示時間');
-        this.clearAllTimers(); // 確保清除所有計時器
+        console.log('設置完成狀態的通知');
+        // 確保清除所有計時器
+        this.clearAllTimers();
         
+        // 設置通知自動消失
         this.notificationTimeout = setTimeout(() => {
           console.log('開始淡出通知');
           if (this.notificationElement) {
@@ -163,6 +166,7 @@ const Notification = {
    * 清除所有計時器。
    */
   clearAllTimers() {
+    console.log('清除所有計時器');
     if (this.countdownInterval) {
       clearInterval(this.countdownInterval);
       this.countdownInterval = null;

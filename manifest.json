@@ -20,6 +20,7 @@
         "https://data.uanalyze.twobitto.com/research-reports/create"
       ],
       "js": [
+        "default.js",
         "settings.js",
         "notification.js",
         "undo.js",

@@ -1,3 +1,4 @@
+// background.js
 // 用於追踪內容腳本是否已準備就緒的標誌
 let contentScriptReady = false;
 // 用於存儲待處理的改寫請求
@@ -6,24 +7,24 @@ let pendingRewriteRequest = null;
 // 監聽來自其他部分的消息
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   console.log("背景腳本收到消息:", request);
-  
+
   // 處理內容腳本準備就緒的通知
   if (request.action === "contentScriptReady") {
     contentScriptReady = true;
     sendResponse({received: true});
     console.log("內容腳本已準備就緒");
-  } 
+  }
   // 檢查內容腳本是否準備就緒
   else if (request.action === "checkContentScriptReady") {
     sendResponse({ ready: contentScriptReady });
     console.log("檢查內容腳本狀態:", contentScriptReady);
-  } 
+  }
   // 處理改寫請求
   else if (request.action === "rewrite") {
     console.log("收到改寫請求，正在存儲");
     pendingRewriteRequest = request;
     sendResponse({received: true});
-  } 
+  }
   // 處理彈出窗口準備就緒的通知
   else if (request.action === "popupReady") {
     console.log("彈出窗口已準備就緒");
@@ -36,12 +37,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
     }
     sendResponse({received: true});
-  } 
+  }
   // 處理獲取存儲數據的請求
   else if (request.action === "getStorageData") {
     chrome.storage.sync.get(request.keys, sendResponse);
     return true;  // 表示我們會異步發送響應
-  } 
+  }
   // 處理設置存儲數據的請求
   else if (request.action === "setStorageData") {
     chrome.storage.sync.set(request.data, sendResponse);
@@ -74,6 +75,14 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
     });
     return true; // 表示我們會異步發送回應
+  }
+});
+
+// 監聽插件啟動事件  -  移除舊的預設設定
+chrome.runtime.onInstalled.addListener((details) => {
+  console.log('插件已安裝或更新', details);
+  if(details.reason === "install"){
+    chrome.storage.sync.set({ isFirstTime: true });
   }
 });
 

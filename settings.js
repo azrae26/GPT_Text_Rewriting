@@ -9,7 +9,7 @@ const GlobalSettings = {
   /** 預設模型名稱。 */
   model: 'gemini-1.5-flash',
   /** 預設改寫指令。 */
-  instruction: '使用更正式的語言',
+  instruction: '',
   /** 預設短改寫指令。 */
   shortInstruction: '',
   /** 自動改寫匹配模式陣列。 */
@@ -23,7 +23,7 @@ const GlobalSettings = {
   /** 翻譯模型名稱。 */
   translateModel: '',
   /** 翻譯指令。 */
-  translateInstruction: '將文本翻譯成繁體中文，保持專業和流暢的語氣',
+  translateInstruction: '',
 
   /**
    * 從 Chrome 儲存空間載入設定。
@@ -37,7 +37,7 @@ const GlobalSettings = {
           'apiKeys', 'model', 'instruction', 'shortInstruction', 
           'autoRewritePatterns', 'confirmModel', 'confirmContent',
           'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel',
-          'translateModel', 'translateInstruction'
+          'translateModel', 'translateInstruction', 'firstRun'
         ], resolve);
       });
 
@@ -45,19 +45,25 @@ const GlobalSettings = {
 
       this.apiKeys = result.apiKeys || {}; // 確保 apiKeys 是一個對象
       this.model = result.model || 'gemini-1.5-flash';
-      this.instruction = result.instruction || '使用更正式的語言';
+      this.instruction = result.instruction || '';
       this.shortInstruction = result.shortInstruction || '';
       this.fullRewriteModel = result.fullRewriteModel || result.model || '';
       this.shortRewriteModel = result.shortRewriteModel || result.model || '';
       this.autoRewriteModel = result.autoRewriteModel || result.model || '';
       this.translateModel = result.translateModel || result.model || '';
-      this.translateInstruction = result.translateInstruction || '將文本翻譯成繁體中文，保持專業和流暢的語氣';
+      this.translateInstruction = result.translateInstruction || '';
 
       if (result.autoRewritePatterns) {
         this.updateAutoRewritePatterns(result.autoRewritePatterns);
       }
 
-      if (!this.apiKeys['gemini-1.5-flash'] && !this.apiKeys['openai']) {
+      // 檢查是否為第一次運行，並根據情況載入預設設定
+      const isFirstRun = result.firstRun === undefined;
+      if (isFirstRun) {
+        console.log('第一次運行，載入預設設定');
+        await this.saveSettings(); // 儲存預設設定到 chrome.storage.sync
+        chrome.storage.sync.set({ firstRun: false }); // 標記為非第一次運行
+      } else if (!this.apiKeys['gemini-1.5-flash'] && !this.apiKeys['openai']) {
         console.error('未設置任何 API 金鑰');
         throw new Error('未設置任何 API 金鑰，請在擴展設置中輸入至少一個 API 金鑰。');
       }
@@ -83,6 +89,27 @@ const GlobalSettings = {
     } catch (error) {
       console.error('更新匹配模式時出錯:', error);
     }
+  },
+
+  /**
+   * 儲存設定到 Chrome 儲存空間。
+   * @returns {Promise<void>} - 一個 Promise 物件，resolve 後表示設定已儲存。
+   */
+  async saveSettings() {
+    return new Promise((resolve) => {
+      chrome.storage.sync.set({
+        apiKeys: this.apiKeys,
+        model: this.model,
+        instruction: this.instruction,
+        shortInstruction: this.shortInstruction,
+        autoRewritePatterns: this.autoRewritePatterns.map(pattern => pattern.source),
+        fullRewriteModel: this.fullRewriteModel,
+        shortRewriteModel: this.shortRewriteModel,
+        autoRewriteModel: this.autoRewriteModel,
+        translateModel: this.translateModel,
+        translateInstruction: this.translateInstruction,
+      }, resolve);
+    });
   },
 
   /**

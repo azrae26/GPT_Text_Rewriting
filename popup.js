@@ -4,6 +4,8 @@
  */
 
 document.addEventListener('DOMContentLoaded', function() {
+  console.log('DOM 載入完成，開始初始化...');
+  
   // 獲取所有需要的 DOM 元素
   const apiKeyInput = document.getElementById('api-key');                          // API 金鑰輸入
   const modelSelect = document.getElementById('model-select');                     // 模型選擇
@@ -20,10 +22,16 @@ document.addEventListener('DOMContentLoaded', function() {
   const autoRewriteModelSelect = document.getElementById('autoRewriteModel');      // 自動改寫模型
   const translateModelSelect = document.getElementById('translateModel');          // 翻譯模型
   const aiAssistantButton = document.getElementById('aiAssistant');               // AI 助手按鈕
-  
+  const removeHashCheckbox = document.getElementById('removeHash');                // 刪除 ## 勾選框
+  const removeStarCheckbox = document.getElementById('removeStar');                // 刪除 ** 勾選框
+
+  console.log('DOM 元素初始化完成');
+  console.log('removeHashCheckbox:', removeHashCheckbox ? '已找到' : '未找到');
+  console.log('removeStarCheckbox:', removeStarCheckbox ? '已找到' : '未找到');
+
   // 暫時隱藏自動改寫按鈕（功能開發中）
   rewriteButton.style.display = 'none';
-  
+
   // API 金鑰存儲對象
   let apiKeys = {
     'openai': '',
@@ -32,18 +40,24 @@ document.addEventListener('DOMContentLoaded', function() {
 
   // 從 Chrome 儲存空間載入設置
   chrome.storage.sync.get([
-    'apiKeys', 
-    'instruction', 
-    'shortInstruction', 
-    'autoRewritePatterns', 
-    'confirmModel', 
-    'confirmContent', 
-    'fullRewriteModel', 
-    'shortRewriteModel', 
+    'apiKeys',
+    'instruction',
+    'shortInstruction',
+    'autoRewritePatterns',
+    'confirmModel',
+    'confirmContent',
+    'fullRewriteModel',
+    'shortRewriteModel',
     'autoRewriteModel',
     'translateModel',
-    'translateInstruction'
+    'translateInstruction',
+    'isFirstTime',
+    'removeHash',
+    'removeStar'
   ], function(result) {
+    console.log('載入儲存的設置:', result);
+    const isFirstTime = result.isFirstTime === true;
+
     if (result.apiKeys) {
       apiKeys = result.apiKeys;
     }
@@ -57,8 +71,38 @@ document.addEventListener('DOMContentLoaded', function() {
     if (result.autoRewriteModel) autoRewriteModelSelect.value = result.autoRewriteModel;
     if (result.translateModel) translateModelSelect.value = result.translateModel;
     if (result.translateInstruction) translateInstructionInput.value = result.translateInstruction;
+    if (result.removeHash !== undefined) {
+      console.log('設置 removeHash checkbox 狀態:', result.removeHash);
+      removeHashCheckbox.checked = result.removeHash;
+    }
+    if (result.removeStar !== undefined) {
+      console.log('設置 removeStar checkbox 狀態:', result.removeStar);
+      removeStarCheckbox.checked = result.removeStar;
+    }
     updateApiKeyInput();
+
+    // Load default settings if it's the first time and DefaultSettings is defined
+    if (isFirstTime && typeof DefaultSettings !== 'undefined') {
+      loadDefaultSettings();
+    }
   });
+
+  // Function to load default settings
+  function loadDefaultSettings() {
+    instructionInput.value = DefaultSettings.fullRewriteInstruction;
+    shortInstructionInput.value = DefaultSettings.shortRewriteInstruction;
+    autoRewritePatternsInput.value = DefaultSettings.autoRewritePatterns;
+    translateInstructionInput.value = DefaultSettings.translateInstruction;
+    fullRewriteModelSelect.value = DefaultSettings.fullRewriteModel || 'gemini-1.5-flash';
+    shortRewriteModelSelect.value = DefaultSettings.shortRewriteModel || 'gemini-1.5-flash';
+    autoRewriteModelSelect.value = DefaultSettings.autoRewriteModel || 'gemini-1.5-flash';
+    translateModelSelect.value = DefaultSettings.translateModel || 'gemini-1.5-flash';
+    //Set isFirstTime to false only after successfully loading default settings.
+    chrome.storage.sync.set({ isFirstTime: false }, function() {
+      console.log('預設設定已保存');
+    });
+  }
+
 
   // 更新 API 金鑰輸入框顯示
   function updateApiKeyInput() {
@@ -72,7 +116,7 @@ document.addEventListener('DOMContentLoaded', function() {
   saveButton.addEventListener('click', function() {
     const selectedModel = modelSelect.value;
     const apiKey = apiKeyInput.value;
-    
+
     const keyName = selectedModel === 'openai' ? 'openai' : selectedModel;
     apiKeys[keyName] = apiKey;
 
@@ -87,7 +131,9 @@ document.addEventListener('DOMContentLoaded', function() {
       shortRewriteModel: shortRewriteModelSelect.value,
       autoRewriteModel: autoRewriteModelSelect.value,
       translateModel: translateModelSelect.value,
-      translateInstruction: translateInstructionInput.value
+      translateInstruction: translateInstructionInput.value,
+      removeHash: removeHashCheckbox.checked,
+      removeStar: removeStarCheckbox.checked
     };
 
     chrome.storage.sync.set(settings, function() {
@@ -186,7 +232,9 @@ document.addEventListener('DOMContentLoaded', function() {
         shortRewriteModel: shortRewriteModelSelect.value,
         autoRewriteModel: autoRewriteModelSelect.value,
         translateModel: translateModelSelect.value,
-        translateInstruction: translateInstructionInput.value
+        translateInstruction: translateInstructionInput.value,
+        removeHash: removeHashCheckbox.checked,
+        removeStar: removeStarCheckbox.checked
       }, function(response) {
         if (response && response.success) {
           console.log('改寫請求已發送');
@@ -204,10 +252,10 @@ document.addEventListener('DOMContentLoaded', function() {
   tabs.forEach(tab => {
     tab.addEventListener('click', () => {
       const tabName = tab.getAttribute('data-tab');
-      
+
       tabs.forEach(t => t.classList.remove('active'));
       tabContents.forEach(c => c.classList.remove('active'));
-      
+
       tab.classList.add('active');
       document.getElementById(`${tabName}-tab`).classList.add('active');
     });
@@ -220,10 +268,10 @@ document.addEventListener('DOMContentLoaded', function() {
   mainTabs.forEach(tab => {
     tab.addEventListener('click', () => {
       const tabName = tab.getAttribute('data-tab');
-      
+
       mainTabs.forEach(t => t.classList.remove('active'));
       mainTabContents.forEach(c => c.classList.remove('active'));
-      
+
       tab.classList.add('active');
       document.getElementById(`${tabName}-tab`).classList.add('active');
     });
@@ -265,9 +313,45 @@ document.addEventListener('DOMContentLoaded', function() {
   }
 
   // AI 助手功能啟動
-  aiAssistantButton.addEventListener('click', function() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {action: "activateAIAssistant"});
+  if (aiAssistantButton) {
+    aiAssistantButton.addEventListener('click', function() {
+      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        chrome.tabs.sendMessage(tabs[0].id, {action: "activateAIAssistant"});
+      });
     });
-  });
+  }
+
+  // 新增的勾選框事件監聽器
+  if (removeHashCheckbox) {
+    removeHashCheckbox.addEventListener('change', function() {
+      console.log('removeHash checkbox 變更事件觸發');
+      console.log('新的狀態:', removeHashCheckbox.checked);
+      chrome.storage.sync.set({ removeHash: removeHashCheckbox.checked }, function() {
+        console.log('removeHash 已保存到 storage:', removeHashCheckbox.checked);
+      });
+    });
+  } else {
+    console.error('removeHash checkbox 元素未找到');
+  }
+
+  if (removeStarCheckbox) {
+    removeStarCheckbox.addEventListener('change', function() {
+      console.log('removeStar checkbox 變更事件觸發');
+      console.log('新的狀態:', removeStarCheckbox.checked);
+      chrome.storage.sync.set({ removeStar: removeStarCheckbox.checked }, function() {
+        console.log('removeStar 已保存到 storage:', removeStarCheckbox.checked);
+      });
+    });
+  } else {
+    console.error('removeStar checkbox 元素未找到');
+  }
+
+  // 初始化 TranslateManager
+  console.log('準備初始化 TranslateManager...');
+  if (typeof window.TranslateManager !== 'undefined') {
+    console.log('TranslateManager 存在，設置 checkboxes');
+    window.TranslateManager.setCheckboxes(removeHashCheckbox, removeStarCheckbox);
+  } else {
+    console.error('TranslateManager 未定義');
+  }
 });
