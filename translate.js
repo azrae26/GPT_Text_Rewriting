@@ -46,6 +46,40 @@ window.TranslateManager = {
     translateButton.textContent = '翻譯';
     translateButton.addEventListener('click', () => this.handleTranslateClick(translateButton));
     buttonContainer.appendChild(translateButton);
+
+    // 初始化 checkbox 元素
+    this.initializeCheckboxes();
+  },
+
+  /**
+   * 初始化 checkbox 元素
+   */
+  async initializeCheckboxes() {
+    console.log('初始化 checkbox 元素...');
+    
+    // 檢查是否已經存在
+    if (!this.removeHashCheckbox) {
+      this.removeHashCheckbox = document.getElementById('removeHash');
+      if (!this.removeHashCheckbox) {
+        console.log('創建 removeHash checkbox');
+        this.removeHashCheckbox = document.createElement('input');
+        this.removeHashCheckbox.type = 'checkbox';
+        this.removeHashCheckbox.id = 'removeHash';
+      }
+    }
+    
+    if (!this.removeStarCheckbox) {
+      this.removeStarCheckbox = document.getElementById('removeStar');
+      if (!this.removeStarCheckbox) {
+        console.log('創建 removeStar checkbox');
+        this.removeStarCheckbox = document.createElement('input');
+        this.removeStarCheckbox.type = 'checkbox';
+        this.removeStarCheckbox.id = 'removeStar';
+      }
+    }
+
+    // 載入儲存的狀態
+    await this.loadCheckboxStates();
   },
 
   /**
@@ -338,21 +372,34 @@ window.TranslateManager = {
     return new Promise((resolve) => {
       chrome.storage.sync.get(['removeHash', 'removeStar'], (result) => {
         console.log('已從 storage 載入 checkbox 狀態:', result);
-        if (this.removeHashCheckbox) {
-          console.log('設置 removeHash checkbox 狀態:', result.removeHash);
-          this.removeHashCheckbox.checked = result.removeHash || false;
+        
+        // 確保 checkbox 已初始化
+        if (!this.removeHashCheckbox || !this.removeStarCheckbox) {
+          console.log('Checkbox 未初始化，執行初始化');
+          this.initializeCheckboxes().then(() => {
+            this.setCheckboxStates(result);
+            resolve();
+          });
         } else {
-          console.error('removeHash checkbox 未初始化');
+          this.setCheckboxStates(result);
+          resolve();
         }
-        if (this.removeStarCheckbox) {
-          console.log('設置 removeStar checkbox 狀態:', result.removeStar);
-          this.removeStarCheckbox.checked = result.removeStar || false;
-        } else {
-          console.error('removeStar checkbox 未初始化');
-        }
-        resolve();
       });
     });
+  },
+
+  /**
+   * 設置 checkbox 狀態
+   */
+  setCheckboxStates(result) {
+    if (this.removeHashCheckbox) {
+      console.log('設置 removeHash checkbox 狀態:', result.removeHash);
+      this.removeHashCheckbox.checked = result.removeHash || false;
+    }
+    if (this.removeStarCheckbox) {
+      console.log('設置 removeStar checkbox 狀態:', result.removeStar);
+      this.removeStarCheckbox.checked = result.removeStar || false;
+    }
   },
   
   /**
