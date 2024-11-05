@@ -15,8 +15,6 @@ document.addEventListener('DOMContentLoaded', async function() {
   const translateInstructionInput = document.getElementById('translateInstruction'); // 翻譯指令
   const saveButton = document.getElementById('save');                              // 保存按鈕
   const rewriteButton = document.getElementById('rewrite');                        // 改寫按鈕
-  const confirmModelCheckbox = document.getElementById('confirmModel');            // 確認模型選項
-  const confirmContentCheckbox = document.getElementById('confirmContent');        // 確認內容選項
   const fullRewriteModelSelect = document.getElementById('fullRewriteModel');      // 全文改寫模型
   const shortRewriteModelSelect = document.getElementById('shortRewriteModel');    // 短文本模型
   const autoRewriteModelSelect = document.getElementById('autoRewriteModel');      // 自動改寫模型
@@ -51,8 +49,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     instructionInput.value = settings.instruction || '';
     shortInstructionInput.value = settings.shortInstruction || '';
     autoRewritePatternsInput.value = settings.autoRewritePatterns || '';
-    confirmModelCheckbox.checked = settings.confirmModel || false;
-    confirmContentCheckbox.checked = settings.confirmContent || false;
     fullRewriteModelSelect.value = settings.fullRewriteModel || 'gemini-1.5-flash';
     shortRewriteModelSelect.value = settings.shortRewriteModel || 'gemini-1.5-flash';
     autoRewriteModelSelect.value = settings.autoRewriteModel || 'gemini-1.5-flash';
@@ -79,8 +75,6 @@ document.addEventListener('DOMContentLoaded', async function() {
       instruction: instructionInput.value,
       shortInstruction: shortInstructionInput.value,
       autoRewritePatterns: autoRewritePatternsInput.value,
-      confirmModel: confirmModelCheckbox.checked,
-      confirmContent: confirmContentCheckbox.checked,
       fullRewriteModel: fullRewriteModelSelect.value,
       shortRewriteModel: shortRewriteModelSelect.value,
       autoRewriteModel: autoRewriteModelSelect.value,
@@ -110,19 +104,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   translateInstructionInput.addEventListener('input', async function() {
     await GlobalSettings.saveSingleSetting('translateInstruction', translateInstructionInput.value);
-  });
-
-  // 確認選項變更處理
-  confirmModelCheckbox.addEventListener('change', async function() {
-    await GlobalSettings.saveSingleSetting('confirmModel', confirmModelCheckbox.checked);
-    console.log('確認模型設置已更新:', confirmModelCheckbox.checked);
-    updateContentScript();
-  });
-
-  confirmContentCheckbox.addEventListener('change', async function() {
-    await GlobalSettings.saveSingleSetting('confirmContent', confirmContentCheckbox.checked);
-    console.log('確認內容設置已更新:', confirmContentCheckbox.checked);
-    updateContentScript();
   });
 
   // 移除標記符號選項變更處理
@@ -169,8 +150,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         instruction: instructionInput.value,
         shortInstruction: shortInstructionInput.value,
         autoRewritePatterns: autoRewritePatternsInput.value,
-        confirmModel: confirmModelCheckbox.checked,
-        confirmContent: confirmContentCheckbox.checked,
         fullRewriteModel: fullRewriteModelSelect.value,
         shortRewriteModel: shortRewriteModelSelect.value,
         autoRewriteModel: autoRewriteModelSelect.value,

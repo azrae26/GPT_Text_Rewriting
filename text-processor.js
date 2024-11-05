@@ -38,12 +38,11 @@ const TextProcessor = {
    * 在給定的文本中查找符合自動改寫模式的特殊文本。
    */
   findSpecialText(text) {
-    console.log('正在查找特殊文本，檢查的文本:', text);
-    for (let pattern of window.GlobalSettings.autoRewritePatterns) {
-      pattern.lastIndex = 0;
-      let match = pattern.exec(text);
+    const patterns = window.GlobalSettings.getAutoRewritePatterns();
+    for (const pattern of patterns) {
+      pattern.lastIndex = 0;  // 重置 lastIndex
+      const match = pattern.exec(text);
       if (match) {
-        console.log('找到匹配:', pattern, match[0]);
         return {
           matchedText: match[0],
           startIndex: match.index,
@@ -51,7 +50,6 @@ const TextProcessor = {
         };
       }
     }
-    console.log('未找到匹配');
     return null;
   },
 
@@ -107,6 +105,7 @@ const TextProcessor = {
       throw new Error('翻譯請求已取消');
     }
 
+    // 發送API請求
     try {
       const response = await fetch(
         isGemini ? `${endpoint}?key=${apiKey}` : endpoint,
@@ -121,6 +120,7 @@ const TextProcessor = {
         }
       );
 
+      // 檢查API響應
       console.log('收到 API 響應');
       if (!response.ok) {
         const errorData = await response.json();
@@ -176,41 +176,22 @@ const TextProcessor = {
   _getTextToRewrite(textArea, isAutoRewrite, textToRewrite) {
     if (textToRewrite) return textToRewrite;
     
-    const isPartialRewrite = isAutoRewrite || (textArea.selectionStart !== textArea.selectionEnd);
-    if (!isPartialRewrite) return textArea.value;
+    // 檢查改寫類型
+    const isPartialRewrite = isAutoRewrite || (textArea.selectionStart !== textArea.selectionEnd); // 檢查是否為部分改寫
+    if (!isPartialRewrite) return textArea.value; // 如果非部分改寫，返回全文
 
     if (!isAutoRewrite) {
-      return textArea.value.substring(textArea.selectionStart, textArea.selectionEnd);
+      return textArea.value.substring(textArea.selectionStart, textArea.selectionEnd); // 如果非自動改寫，返回選中的文本
     }
 
+    // 獲取選擇的文本範圍
     const start = Math.max(0, textArea.selectionStart - 3);
     const end = Math.min(textArea.value.length, textArea.selectionEnd + 3);
     const extendedText = textArea.value.substring(start, end);
+
+    // 檢查是否包含特殊文本
     const matchResult = this.findSpecialText(extendedText);
     return matchResult ? matchResult.matchedText : null;
-  },
-
-  /**
-   * 確認改寫操作
-   */
-  async _confirmRewrite(model, text, instruction) {
-    if (window.GlobalSettings.confirmModel) {
-      console.log('確認模型:', model);
-      if (!confirm(`您確定要使用 ${this.MODEL_NAMES[model] || model} 模型進行改寫嗎？`)) {
-        console.log('用戶取消了模型確認');
-        return false;
-      }
-    }
-
-    if (window.GlobalSettings.confirmContent) {
-      const preview = text.length > 100 ? text.substring(0, 100) + '...' : text;
-      if (!confirm(`您確定要改寫以下內容嗎？\n\n文本${preview}\n\n指令：${instruction}`)) {
-        console.log('用戶取消了內容確認');
-        return false;
-      }
-    }
-
-    return true;
   },
 
   /**
@@ -230,6 +211,7 @@ const TextProcessor = {
         throw new Error('找不到要改寫的文字');
       }
 
+      // 檢查改寫類型
       const isPartialRewrite = isAutoRewrite || (textArea.selectionStart !== textArea.selectionEnd);
       const useShortInstruction = isAutoRewrite || (isPartialRewrite && textArea.selectionEnd - textArea.selectionStart <= 15);
 
@@ -237,6 +219,7 @@ const TextProcessor = {
       console.log('使用短指令:', useShortInstruction);
       console.log('選中文本長度:', textArea.selectionEnd - textArea.selectionStart);
 
+      // 檢查改寫指令
       const instruction = useShortInstruction ? settings.shortInstruction : settings.instruction;
       if (!instruction.trim()) throw new Error(useShortInstruction ? '短文本改寫指令不能為空' : '改寫令不能為空');
 
@@ -244,6 +227,7 @@ const TextProcessor = {
                    isPartialRewrite && useShortInstruction ? settings.shortRewriteModel :
                    settings.fullRewriteModel || settings.model;
 
+      // 檢查API金鑰
       const isGemini = model.startsWith('gemini');
       const apiKey = settings.apiKeys[isGemini ? 'gemini-1.5-flash' : 'openai'];
       if (!apiKey) throw new Error(`未找到 ${isGemini ? 'Gemini' : 'OpenAI'} 的 API 金鑰`);
@@ -251,22 +235,21 @@ const TextProcessor = {
       console.log('選擇的模型:', model);
       console.log('使用的 API 金鑰:', apiKey.substring(0, 5) + '...');
 
-      if (!isAutoRewrite && !await this._confirmRewrite(model, originalTextToRewrite, instruction)) {
-        return;
-      }
-
+      // 顯示通知
       await window.Notification.showNotification(`
         模型: ${this.MODEL_NAMES[model] || model}<br>
         API KEY: ${apiKey.substring(0, 5)}...<br>
         ${isPartialRewrite ? (useShortInstruction ? '正在改寫選中的短文本' : '正在改寫選中文本') : '正在改寫全文'}
       `, true);
 
+      // 準備API請求
       const { endpoint, body } = this._prepareApiConfig(model, originalTextToRewrite, instruction);
       const rewrittenText = await this._sendRequest(endpoint, body, apiKey, isGemini);
 
       console.log('改寫前文本:', originalTextToRewrite);
       console.log('改寫後的文本:', rewrittenText);
 
+      // 添加到歷史紀錄
       window.UndoManager.addToHistory(textArea.value, textArea);
 
       if (isAutoRewrite) {
@@ -274,7 +257,7 @@ const TextProcessor = {
         return rewrittenText.trim();
       }
 
-
+      // 更新文本區域
       const index = textArea.value.indexOf(originalTextToRewrite);
       if (index === -1) {
         throw new Error('找不到原始文字');
@@ -288,12 +271,7 @@ const TextProcessor = {
       textArea.dispatchEvent(new Event('input', { bubbles: true }));
       console.log('已觸發輸入事件');
 
-      const undoButton = document.getElementById('gpt-undo-button');
-      if (undoButton) {
-        undoButton.style.display = 'inline-block';
-        console.log('復原按鈕已顯示');
-      }
-
+      // 移除通知
       window.Notification.removeNotification();
       await window.Notification.showNotification('改寫已完成', false);
       console.log('改寫完成');

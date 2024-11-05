@@ -80,14 +80,25 @@ const GlobalSettings = {
    * @param {string} patternsString - 包含自動改寫匹配模式的字串，每行一個模式。
    */
   updateAutoRewritePatterns(patternsString) {
+    // 直接儲存原始字串，不做處理
+    this.autoRewritePatterns = patternsString;
+  },
+
+  /**
+   * 獲取處理後的匹配模式陣列
+   * @returns {RegExp[]} - 一個 RegExp 陣列，表示處理後的匹配模式。
+   */
+  getAutoRewritePatterns() {
     try {
-      this.autoRewritePatterns = patternsString.split('\n')
+      // 當需要使用時才轉換為 RegExp 陣列
+      return this.autoRewritePatterns
+        .split('\n')
         .map(line => line.trim())
         .filter(line => line && !line.startsWith('//'))
         .map(pattern => new RegExp(pattern.replace(/^\/|\/$/g, ''), 'g'));
     } catch (error) {
-      console.warn('更新匹配模式時出錯:', error);
-      this.autoRewritePatterns = [];
+      console.warn('轉換匹配模式時出錯:', error);
+      return [];
     }
   },
 

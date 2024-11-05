@@ -92,10 +92,6 @@ const UIManager = {
 
       // 檢查模型
       const model = settings.autoRewriteModel || window.GlobalSettings.model;
-      if ((settings.confirmModel || settings.confirmContent) && 
-          !confirm(`使用 ${model} 改寫:\n${matchResult.matchedText}`)) {
-        return;
-      }
 
       // 改寫文本
       const rewrittenText = await window.TextProcessor.rewriteText(matchResult.matchedText, true);
@@ -104,9 +100,6 @@ const UIManager = {
                         rewrittenText +
                         textArea.value.substring(range.start + matchResult.endIndex);
         textArea.dispatchEvent(new Event('input', { bubbles: true }));
-        
-        const undoButton = document.getElementById('gpt-undo-button');
-        if (undoButton) undoButton.style.display = 'inline-block';
         
         await window.Notification.showNotification('自動改寫完成', false);
       }
