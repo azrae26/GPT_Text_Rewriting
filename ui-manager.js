@@ -9,15 +9,18 @@ const UIManager = {
       return;
     }
 
+    // 獲取textarea元素
     const textArea = document.querySelector('textarea[name="content"]');
     if (!textArea) {
       console.log('找不到文本區域');
       return;
     }
 
+    // 創建按鈕容器
     const buttonContainer = document.createElement('div');
     buttonContainer.id = 'gpt-button-container';
 
+    // 創建改寫按鈕
     const rewriteButton = document.createElement('button');
     rewriteButton.id = 'gpt-rewrite-button';
     rewriteButton.textContent = '改寫';
@@ -25,7 +28,7 @@ const UIManager = {
       try {
         const settings = await window.GlobalSettings.loadSettings();
         if (!settings.apiKeys['gemini-1.5-flash'] && !settings.apiKeys['openai']) {
-          alert('請先設置 API 金鑰');
+          alert('請先設置 API 金');
           return;
         }
         if (!settings.instruction.trim()) {
@@ -64,18 +67,22 @@ const UIManager = {
     textArea.addEventListener('dblclick', (e) => this._handleDoubleClick(e, textArea));
   },
 
-  /** 處理雙擊事件 */
+  /** 處理雙擊改寫事件 */
   async _handleDoubleClick(event, textArea) {
     const selectedText = window.getSelection().toString().trim();
     if (!selectedText || selectedText.length > 10) return;
 
+    // 獲取選擇的文本範圍
     const range = {
       start: Math.max(0, textArea.selectionStart - 4),
       end: Math.min(textArea.value.length, textArea.selectionEnd + 4)
     };
+    
+    // 獲取選擇的文本
     const text = textArea.value.substring(range.start, range.end);
     console.log('檢查文本:', text);
 
+    // 檢查是否包含特殊文本
     const matchResult = window.TextProcessor.findSpecialText(text);
     if (!matchResult) return;
 
@@ -83,12 +90,14 @@ const UIManager = {
       const settings = await window.GlobalSettings.loadSettings();
       if (!settings.apiKeys['gemini-1.5-flash'] && !settings.apiKeys['openai']) return;
 
+      // 檢查模型
       const model = settings.autoRewriteModel || window.GlobalSettings.model;
       if ((settings.confirmModel || settings.confirmContent) && 
           !confirm(`使用 ${model} 改寫:\n${matchResult.matchedText}`)) {
         return;
       }
 
+      // 改寫文本
       const rewrittenText = await window.TextProcessor.rewriteText(matchResult.matchedText, true);
       if (rewrittenText?.trim() !== matchResult.matchedText) {
         textArea.value = textArea.value.substring(0, range.start + matchResult.startIndex) +
@@ -113,24 +122,34 @@ const UIManager = {
       this.removeStockCodeFeature();
       return;
     }
-
+    // 獲取textarea和input元素
     const elements = {
       textarea: document.querySelector('textarea[name="content"]'),
       input: document.querySelector('input[id=":r7:"]'),
       container: this._getOrCreateContainer()
     };
 
+    // 檢查元素是否存在
     if (!elements.textarea || !elements.input) return;
 
+    // 更新UI
     const updateUI = () => {
-      const { codes, matchedStocks } = this._getStockCodes(elements.textarea.value);
+      // 傳入當前輸入框的值
+      const { codes, matchedStocks } = this._getStockCodes(
+        elements.textarea.value, 
+        elements.input.value.trim()
+      );
       this._updateStockButtons(codes, matchedStocks, elements);
       this._updateContainerPosition(elements);
     };
 
+    // 添加事件監聽器
     elements.textarea.addEventListener('input', updateUI);
+    elements.input.addEventListener('input', updateUI); // 監聽輸入框變化
     window.addEventListener('resize', () => this._updateContainerPosition(elements));
     window.addEventListener('scroll', () => this._updateContainerPosition(elements));
+
+    // 初始化UI
     updateUI();
   },
 
@@ -145,10 +164,19 @@ const UIManager = {
   },
 
   /** 從文本中提取股票代碼和名稱 */
-  _getStockCodes(text) {
+  _getStockCodes(text, inputCode = '') {
     const codes = new Set();
     const matchedStocks = new Map();
     
+    // 檢查輸入框代號是否在 stockList 中
+    if (inputCode && window.stockList) {
+      const stock = window.stockList.find(s => s.code === inputCode);
+      if (stock) {
+        codes.add(stock.code);
+        matchedStocks.set(stock.code, stock.name);
+      }
+    }
+
     // 從前100個字符中尋找股票名稱
     const first10Chars = text.substring(0, 100);
     console.log('檢查前100個字:', first10Chars);
@@ -162,6 +190,7 @@ const UIManager = {
           stock.name.replace(/\*$/, '')
         ];
         
+        // 檢查股票名稱匹配
         if (variants.some(name => first10Chars.includes(name))) {
           codes.add(stock.code);
           matchedStocks.set(stock.code, stock.name);
@@ -190,6 +219,11 @@ const UIManager = {
       const button = document.createElement('button');
       button.textContent = matchedStocks.has(code) ? `${matchedStocks.get(code)}${code}` : code;
       button.classList.add('stock-code-button');
+      // 檢查是否與輸入框代號匹配
+      if (elements.input.value === code) {
+        button.classList.add('matched');
+      }
+      
       button.onclick = () => {
         elements.input.value = code;
         elements.input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -199,9 +233,15 @@ const UIManager = {
       elements.container.appendChild(button);
     });
 
+    // 如果找到股票代碼，且input值為空，則填入第一個股票代碼
     if (codes.length > 0 && !elements.input.value) {
       elements.input.value = codes[0];
       elements.input.dispatchEvent(new Event('input', { bubbles: true }));
+      elements.input.focus();
+      setTimeout(() => {
+        elements.input.blur();
+        console.log('股票代碼輸入框焦點已移除');
+      }, 1);
     }
   },
 

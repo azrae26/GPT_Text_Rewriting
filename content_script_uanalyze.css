@@ -58,6 +58,11 @@
   margin: 2px;
 }
 
+/* 股票代碼按鈕匹配狀態 */
+.stock-code-button.matched {
+  background-color: #dc3545;
+}
+
 /* 通知元素樣式 */
 .notification-element {
   position: fixed;
