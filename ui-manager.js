@@ -180,7 +180,7 @@ const UIManager = {
           
           // 計算出現次數
           const nameMatches = (text.match(new RegExp(`${baseStockName}(?:-KY)?`, 'g')) || []).length;
-          // 日誌：匹配的股票名稱及次數
+          // @importantdonotremove 日誌：匹配的股票名稱及次數
           console.log(`股票：${stock.name}，基本名稱：${baseStockName}，匹配次數：${nameMatches}`);
           
           const codeMatches = (text.match(new RegExp(codePattern, 'g')) || []).length;

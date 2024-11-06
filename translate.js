@@ -160,62 +160,41 @@ window.TranslateManager = {
   splitTextIntoParagraphs(text) {
     const paragraphs = [];
     let currentBatch = '';
-    let currentLength = 0;
+    
+    // 添加到段落
+    const addToParagraphs = (text) => {
+      if (text.trim()) paragraphs.push(text);
+    };
+
+    // 處理長行
+    const processLongLine = (line) => {
+      const segments = line.match(/[^.。]+[.。]/g) || [];
+      segments.forEach(segment => addToParagraphs(segment));
+      return line.replace(/.*[.。]/, ''); // 返回剩餘文本
+    };
 
     // 按換行分割文本
-    const lines = text.split('\n');
-
-    for (const line of lines) {
-      const hasPeriod = line.trim().endsWith('.') || line.trim().endsWith('。');
-
-      // 處理超過2000字的行
+    text.split('\n').forEach(line => {
       if (line.length > 2000) {
-        // 如果當前批次有內容，先保存
-        if (currentBatch) {
-          paragraphs.push(currentBatch);
-          currentBatch = '';
-          currentLength = 0;
-        }
-
-        // 在句點處分割當前行
-        let lastIndex = 0;
-        const periodRegex = /[.。]/g;
-        let match;
-
-        while ((match = periodRegex.exec(line)) !== null) {
-          paragraphs.push(line.substring(lastIndex, match.index + 1));
-          lastIndex = match.index + 1;
-        }
-
-        // 如果還有剩餘的文本，保存到當前批次
-        if (lastIndex < line.length) {
-          currentBatch = line.substring(lastIndex);
-          currentLength = currentBatch.length;
-        }
-        continue;
+        const remainder = processLongLine(line);
+        currentBatch = remainder;
+        return;
       }
 
-      // 計算添加這行後的總長度
-      const newLength = currentLength + (currentBatch ? 1 : 0) + line.length;
+      // 組合新批次
+      const newBatch = currentBatch ? `${currentBatch}\n${line}` : line;
+      const hasPeriod = /[.。]$/.test(line.trim());
 
-      // 如果當前行包含句點且總長度超過1500字，將當前行作為一個段落
-      if (hasPeriod && newLength > 1500) {
-        paragraphs.push(currentBatch + (currentBatch ? '\n' : '') + line);
+      // 如果新批次包含句號，且長度超過1500字，則添加到段落
+      if (hasPeriod && newBatch.length > 1500) {
+        addToParagraphs(newBatch);
         currentBatch = '';
-        currentLength = 0;
       } else {
-        // 繼續添加到當前批次
-        if (currentBatch) currentBatch += '\n';
-        currentBatch += line;
-        currentLength = newLength;
+        currentBatch = newBatch;
       }
-    }
+    });
 
-    // 添加最後一個批次
-    if (currentBatch) {
-      paragraphs.push(currentBatch);
-    }
-
+    addToParagraphs(currentBatch);
     return paragraphs;
   },
 
