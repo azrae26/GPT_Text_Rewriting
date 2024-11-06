@@ -3,37 +3,6 @@
  * 文本處理模組，負責處理文字改寫的邏輯。
  */
 const TextProcessor = {
-  API_ENDPOINTS: {
-    gemini: 'https://generativelanguage.googleapis.com/v1beta/models/:model:generateContent',
-    openai: 'https://api.openai.com/v1/chat/completions'
-  },
-
-  MODEL_NAMES: {
-    'gpt-4': 'GPT-4',
-    'gpt-4o-mini': 'GPT-4o mini',
-    'gemini-1.5-flash': 'Gemini 1.5 Flash'
-  },
-
-  // Gemini API 安全設置級別
-  SAFETY_SETTINGS: [
-    {
-      category: "HARM_CATEGORY_HARASSMENT",
-      threshold: "BLOCK_NONE"
-    },
-    {
-      category: "HARM_CATEGORY_HATE_SPEECH",
-      threshold: "BLOCK_NONE"
-    },
-    {
-      category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-      threshold: "BLOCK_NONE"
-    },
-    {
-      category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-      threshold: "BLOCK_NONE"
-    }
-  ],
-
   /**
    * 在給定的文本中查找符合自動改寫模式的特殊文本。
    */
@@ -66,8 +35,8 @@ const TextProcessor = {
   _prepareApiConfig(model, text, instruction) {
     const isGemini = model.startsWith('gemini');
     const endpoint = isGemini 
-      ? this.API_ENDPOINTS.gemini.replace(':model', model)
-      : this.API_ENDPOINTS.openai;
+      ? window.GlobalSettings.API.endpoints.gemini.replace(':model', model)
+      : window.GlobalSettings.API.endpoints.openai;
 
     const body = isGemini ? {
       contents: [{
@@ -76,7 +45,7 @@ const TextProcessor = {
         }]
       }],
       // 添加安全設置，降低內容過濾的嚴格程度
-      safetySettings: this.SAFETY_SETTINGS
+      safetySettings: window.GlobalSettings.API.safetySettings
     } : {
       model,
       messages: [
@@ -237,7 +206,7 @@ const TextProcessor = {
 
       // 顯示通知
       await window.Notification.showNotification(`
-        模型: ${this.MODEL_NAMES[model] || model}<br>
+        模型: ${window.GlobalSettings.API.models[model] || model}<br>
         API KEY: ${apiKey.substring(0, 5)}...<br>
         ${isPartialRewrite ? (useShortInstruction ? '正在改寫選中的短文本' : '正在改寫選中文本') : '正在改寫全文'}
       `, true);

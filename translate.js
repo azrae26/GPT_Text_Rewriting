@@ -259,7 +259,7 @@ window.TranslateManager = {
 
     console.log(`總共分割成 ${this.totalBatches} 個批次，間隔時間：${this.batchInterval/1000}秒`);
     await window.Notification.showNotification(`
-      模型: ${TextProcessor.MODEL_NAMES[model] || model}<br>
+      模型: ${window.GlobalSettings.API.models[model] || model}<br>
       API KEY: ${apiKey.substring(0, 5)}...<br>
       翻譯中<br>
       批次進度: 0/${this.totalBatches}<br>
@@ -342,7 +342,7 @@ window.TranslateManager = {
         } else if (!this.shouldCancel) {
           // 如果還有未完成的批次，更新進度通知
           await window.Notification.showNotification(`
-            模型: ${TextProcessor.MODEL_NAMES[model] || model}<br>
+            模型: ${window.GlobalSettings.API.models[model] || model}<br>
             API KEY: ${apiKey.substring(0, 5)}...<br>
             翻譯中<br>
             批次進度: ${this.completedTranslations.size}/${this.totalBatches}<br>

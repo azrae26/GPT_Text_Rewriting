@@ -4,6 +4,25 @@
  * 全局變量和設置模組，管理擴充程式的全局設定。
  */
 const GlobalSettings = {
+  /** API 相關配置 */
+  API: {
+    endpoints: {
+      gemini: 'https://generativelanguage.googleapis.com/v1beta/models/:model:generateContent',
+      openai: 'https://api.openai.com/v1/chat/completions'
+    },
+    models: {
+      'gpt-4': 'GPT-4',
+      'gpt-4o-mini': 'GPT-4o mini',
+      'gemini-1.5-flash': 'Gemini 1.5 Flash'
+    },
+    safetySettings: [
+      { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+      { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+    ]
+  },
+
   /** API 金鑰物件，儲存不同模型的 API 金鑰。 */
   apiKeys: {},
   /** 模型名稱。 */
