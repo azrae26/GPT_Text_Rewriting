@@ -38,6 +38,9 @@
 /* 股票代碼容器樣式 */
 #stock-code-container {
   position: absolute;
+  bottom: 100%;
+  left: 0;
+  margin: 0 0 -15px 5px;
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
