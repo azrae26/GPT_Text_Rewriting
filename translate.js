@@ -19,21 +19,17 @@ window.TranslateManager = {
 
   /**
    * 根據批次數量決定發送間隔
-   * @returns {number} 間隔時間（毫秒）
    */
   getBatchInterval() {
-    if (this.totalBatches <= 5) {
-      return 500; // 5次以下，0.5秒
-    } else if (this.totalBatches <= 10) {
-      return 1000; // 10次以下，1秒
-    } else if (this.totalBatches <= 15) {
-      return 3000; // 15次以下，3秒
-    } else if (this.totalBatches <= 20) {
-      return 4000; // 20次以下，4秒
-    } else if (this.totalBatches <= 25) {
-      return 5000; // 25次以下，5秒
-    }
-    return 5000; // 25次以上，5秒
+    const intervals = [
+      [5, 500],   // 5次以下，0.5秒
+      [10, 1000], // 10次以下，1秒
+      [15, 3000], // 15次以下，3秒
+      [20, 4000], // 20次以下，4秒
+      [25, 5000]  // 25次以下，5秒
+    ];
+
+    return intervals.find(([count]) => this.totalBatches <= count)?.[1] || 5000;
   },
 
   /**
@@ -59,35 +55,7 @@ window.TranslateManager = {
     buttonContainer.appendChild(translateButton);
 
     // 初始化 checkbox 元素
-    this.initializeCheckboxes();
-  },
-
-  /**
-   * 初始化 checkbox 元素
-   */
-  async initializeCheckboxes() {
-    console.log('初始化 checkbox 元素...');
-
-    // 檢查是否已經存在
-    if (!this.removeHashCheckbox) {
-      this.removeHashCheckbox = document.getElementById('removeHash');
-      if (!this.removeHashCheckbox) {
-        console.log('創建 removeHash checkbox');
-        this.removeHashCheckbox = document.createElement('input');
-        this.removeHashCheckbox.type = 'checkbox';
-        this.removeHashCheckbox.id = 'removeHash';
-      }
-    }
-
-    if (!this.removeStarCheckbox) {
-      this.removeStarCheckbox = document.getElementById('removeStar');
-      if (!this.removeStarCheckbox) {
-        console.log('創建 removeStar checkbox');
-        this.removeStarCheckbox = document.createElement('input');
-        this.removeStarCheckbox.type = 'checkbox';
-        this.removeStarCheckbox.id = 'removeStar';
-      }
-    }
+    this.checkboxManager.init();
   },
 
   /**
@@ -175,7 +143,7 @@ window.TranslateManager = {
 
     // 按換行分割文本
     text.split('\n').forEach(line => {
-      if (line.length > 2000) {
+      if (line.length > 2000) { // 如果行長度超過2000字
         const remainder = processLongLine(line);
         currentBatch = remainder;
         return;
@@ -189,12 +157,12 @@ window.TranslateManager = {
       if (hasPeriod && newBatch.length > 1500) {
         addToParagraphs(newBatch);
         currentBatch = '';
-      } else {
+      } else { // 否則，將新批次設置為當前批次
         currentBatch = newBatch;
       }
     });
 
-    addToParagraphs(currentBatch);
+    addToParagraphs(currentBatch); // 添加剩餘文本
     return paragraphs;
   },
 
@@ -386,5 +354,33 @@ window.TranslateManager = {
 
     this.removeHashCheckbox = removeHashCheckbox;
     this.removeStarCheckbox = removeStarCheckbox;
+  },
+
+  // checkbox 相關配置和方法
+  checkboxManager: {
+    configs: [
+      { id: 'removeHash', ref: 'removeHashCheckbox' },
+      { id: 'removeStar', ref: 'removeStarCheckbox' }
+    ],
+
+    init() {
+      this.configs.forEach(({ id, ref }) => {
+        if (!TranslateManager[ref]) {
+          TranslateManager[ref] = document.getElementById(id) || this._createCheckbox(id);
+        }
+      });
+    },
+
+    _createCheckbox(id) {
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.id = id;
+      return checkbox;
+    },
+
+    set(hashCheckbox, starCheckbox) {
+      TranslateManager.removeHashCheckbox = hashCheckbox;
+      TranslateManager.removeStarCheckbox = starCheckbox;
+    }
   }
 };
