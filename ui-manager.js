@@ -124,6 +124,7 @@ const UIManager = {
 
     if (!elements.textarea || !elements.input) return;
 
+    // 更新股票UI
     const updateUI = () => {
       const { codes, matchedStocks } = this._getStockCodes(
         elements.textarea.value, 
@@ -133,7 +134,20 @@ const UIManager = {
     };
 
     elements.textarea.addEventListener('input', updateUI);
-    elements.input.addEventListener('input', updateUI);
+    
+    // 使用 MutationObserver 監視值的變化，MutationObserver 是 HTML5 新增的 API，用於監視 DOM 的變化
+    const observer = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.type === 'attributes' && mutation.attributeName === 'value') {
+          updateUI();
+        }
+      });
+    });
+    // 監視 input 元素的 value 屬性
+    observer.observe(elements.input, {
+      attributes: true,
+      attributeFilter: ['value']
+    });
 
     updateUI();
   },
@@ -208,14 +222,15 @@ const UIManager = {
   _updateStockButtons(codes, matchedStocks, elements) {
     elements.container.innerHTML = '';
     codes.forEach(code => {
+      // 創建按鈕
       const button = document.createElement('button');
-      button.textContent = matchedStocks.has(code) ? `${matchedStocks.get(code)}${code}` : code;
-      button.classList.add('stock-code-button');
+      button.textContent = matchedStocks.has(code) ? `${matchedStocks.get(code)}${code}` : code; // 顯示股票名稱和代號
+      button.classList.add('stock-code-button'); // 添加按鈕樣式
       // 檢查是否與輸入框代號匹配
       if (elements.input.value === code) {
         button.classList.add('matched');
       }
-      
+      // 點擊事件
       button.onclick = () => {
         elements.input.value = code;
         elements.input.dispatchEvent(new Event('input', { bubbles: true }));
@@ -229,9 +244,9 @@ const UIManager = {
     if (codes.length > 0 && !elements.input.value) {
       elements.input.value = codes[0];
       elements.input.dispatchEvent(new Event('input', { bubbles: true }));
-      elements.input.focus();
+      elements.input.focus(); // 設置焦點
       setTimeout(() => {
-        elements.input.blur();
+        elements.input.blur(); // 移除焦點
         console.log('股票代碼輸入框焦點已移除');
       }, 1);
     }
