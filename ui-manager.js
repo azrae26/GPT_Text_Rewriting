@@ -75,21 +75,14 @@ const UIManager = {
       end: Math.min(textArea.value.length, textArea.selectionEnd + 4)
     };
     
-    const text = textArea.value.substring(range.start, range.end);
-    console.log('檢查文本:', text);
-
-    const matchResult = window.TextProcessor.findSpecialText(text);
+    const matchResult = window.TextProcessor.findSpecialText(
+      textArea.value.substring(range.start, range.end)
+    );
     if (!matchResult) return;
 
     try {
       const settings = await window.GlobalSettings.loadSettings();
-      // 檢查 settings 是否有效
-      if (!settings || !settings.apiKeys) {
-        throw new Error('無法載入設定');
-      }
-      
-      // 檢查 API 金鑰
-      if (!settings.apiKeys['gemini-1.5-flash'] && !settings.apiKeys['openai']) {
+      if (!settings?.apiKeys?.['gemini-1.5-flash'] && !settings?.apiKeys?.['openai']) {
         throw new Error('請先設置 API 金鑰');
       }
 
@@ -125,13 +118,10 @@ const UIManager = {
         await window.Notification.showNotification('自動改寫完成', false); // 顯示通知
       }
 
-      // 完成後移除這個任務
-      this._activeRewrites.delete(rewriteTask);
-
     } catch (error) {
       console.error('自動改寫錯誤:', error);
       alert('自動改寫錯誤: ' + error.message);
-      // 確保 rewriteTask 存在時才刪除
+    } finally {
       if (typeof rewriteTask !== 'undefined') {
         this._activeRewrites.delete(rewriteTask);
       }
@@ -269,7 +259,7 @@ const UIManager = {
       elements.container.appendChild(button);
     });
 
-    // 如果���到股票代碼，且input值為空，則填入第一個股票代碼
+    // 如果到股票代碼，且input值為空，則填入第一個股票代碼
     if (codes.length > 0 && !elements.input.value) {
       elements.input.value = codes[0];
       elements.input.dispatchEvent(new Event('input', { bubbles: true }));
