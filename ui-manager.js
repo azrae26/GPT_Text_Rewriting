@@ -64,116 +64,45 @@ const UIManager = {
     parent.appendChild(buttonContainer);
 
     window.UndoManager.initInputHistory(textArea);
-    
-    // 雙擊改寫事件
     textArea.addEventListener('dblclick', (e) => this._handleDoubleClick(e, textArea));
-    
-    // CTRL+左鍵改寫事件
-    textArea.addEventListener('mousedown', (e) => {
-      if (e.ctrlKey && e.button === 0) {
-        e.preventDefault();
-        const clickPosition = textArea.selectionStart + 
-          textArea.value.substring(0, textArea.selectionStart).split('\n').length;
-        
-        // 設置選擇範圍為點擊位置
-        textArea.setSelectionRange(clickPosition, clickPosition);
-        
-        // 使用點擊位置作為中心點進行擴張
-        const contextRange = {
-          start: Math.max(0, clickPosition - 4),
-          end: Math.min(textArea.value.length, clickPosition + 4)
-        };
-        
-        const contextText = textArea.value.substring(contextRange.start, contextRange.end);
-        const matchResult = window.TextProcessor.findSpecialText(contextText);
-        
-        if (matchResult) {
-          this._handleDoubleClick(e, textArea);
-        }
-      }
-    });
   },
 
   /** 處理雙擊改寫事件 */
-  async _handleDoubleClick(event, textArea, isCtrlClick = false, clickPosition = null) {
-    let contextRange;
-    if (isCtrlClick) {
-      const pos = clickPosition || textArea.selectionStart;
-      contextRange = {
-        start: Math.max(0, pos - 4),
-        end: Math.min(textArea.value.length, pos + 4)
-      };
-    } else {
-      // 雙擊：從選中文本位置擴展
-      const selectedText = window.getSelection().toString().trim();
-      if (!selectedText || selectedText.length > 10) return;
-      contextRange = {
-        start: Math.max(0, textArea.selectionStart - 4),
-        end: Math.min(textArea.value.length, textArea.selectionEnd + 4)
-      };
-    }
+  async _handleDoubleClick(event, textArea) {
+    const selectedText = window.getSelection().toString().trim();
+    if (!selectedText || selectedText.length > 10) return;
 
-    // 獲取上下文文本
-    const contextText = textArea.value.substring(contextRange.start, contextRange.end);
-    console.log('上下文文本:', contextText);
+    // 獲取選擇的文本範圍
+    const range = {
+      start: Math.max(0, textArea.selectionStart - 4),
+      end: Math.min(textArea.value.length, textArea.selectionEnd + 4)
+    };
     
-    // 查找特殊文本
-    const matchResult = window.TextProcessor.findSpecialText(contextText);
-    console.log('匹配結果:', matchResult);
+    // 獲取選擇的文本
+    const text = textArea.value.substring(range.start, range.end);
+    console.log('檢查文本:', text);
+
+    // 檢查是否包含特殊文本
+    const matchResult = window.TextProcessor.findSpecialText(text);
     if (!matchResult) return;
 
     try {
       const settings = await window.GlobalSettings.loadSettings();
       if (!settings.apiKeys['gemini-1.5-flash'] && !settings.apiKeys['openai']) return;
 
-      // 記錄原始文本和位置信息
-      const originalText = matchResult.matchedText;
-      const textPositions = this._findAllPositions(textArea.value, originalText);
-      
-      // 修改後的位置檢查邏輯
-      const targetPosition = textPositions.find(pos => {
-        // 計算匹配文本的結束位置
-        const matchEnd = pos + originalText.length;
-        // 檢查匹配文本的範圍是否與上下文範圍有重疊
-        return (pos <= contextRange.end && matchEnd >= contextRange.start);
-      });
-      
-      console.log('目標位置:', targetPosition);
+      // 檢查模型
+      const model = settings.autoRewriteModel || window.GlobalSettings.model;
 
-      if (targetPosition === undefined) return;
-
-      // 監聽文本變化
-      const updatePosition = () => {
-        const newPositions = this._findAllPositions(textArea.value, originalText);
-        console.log('新的位置:', newPositions);
-        const newTargetPosition = newPositions.find(pos => 
-          Math.abs(pos - targetPosition) < 10
-        );
-        console.log('新的目標位置:', newTargetPosition);
-        if (newTargetPosition) {
-          targetPosition = newTargetPosition;
-        }
-        console.log('目標位置:', targetPosition);
-      };
-
-      // 監聽文本變化
-      textArea.addEventListener('input', updatePosition);
-
-      // 發送改寫請求
-      const rewrittenText = await window.TextProcessor.rewriteText(originalText, true);
-      
-      // 移除監聽器
-      textArea.removeEventListener('input', updatePosition);
-
-      // 更新文本
-      if (rewrittenText?.trim() !== originalText) {
-        const beforeText = textArea.value.substring(0, targetPosition);
-        const afterText = textArea.value.substring(targetPosition + originalText.length);
-        textArea.value = beforeText + rewrittenText + afterText;
+      // 改寫文本
+      const rewrittenText = await window.TextProcessor.rewriteText(matchResult.matchedText, true);
+      if (rewrittenText?.trim() !== matchResult.matchedText) {
+        textArea.value = textArea.value.substring(0, range.start + matchResult.startIndex) +
+                        rewrittenText +
+                        textArea.value.substring(range.start + matchResult.endIndex);
         textArea.dispatchEvent(new Event('input', { bubbles: true }));
+        
         await window.Notification.showNotification('自動改寫完成', false);
       }
-
     } catch (error) {
       console.error('自動改寫錯誤:', error);
       alert('自動改寫錯誤: ' + error.message);
@@ -336,17 +265,6 @@ const UIManager = {
       container.remove();
       console.log('改寫按鈕已移除');
     }
-  },
-
-  // 輔助方法：查找文本的所有出現位置
-  _findAllPositions(text, searchText) {
-    const positions = [];
-    let pos = 0;
-    while ((pos = text.indexOf(searchText, pos)) !== -1) {
-      positions.push(pos);
-      pos += 1;
-    }
-    return positions;
   }
 };
 
