@@ -62,7 +62,8 @@ const TextProcessor = {
    */
   async _sendRequest(endpoint, body, apiKey, isGemini) {
     console.log('準備發送 API 請求', 'shouldCancel:', window.TranslateManager.shouldCancel);
-    console.log('請求體:', JSON.stringify(body, null, 2));
+    // 限制日誌輸出的文本長度為500字
+    console.log('請求體:', JSON.stringify(body).substring(0, 500) + (JSON.stringify(body).length > 500 ? '...' : '')); 
 
     const controller = new AbortController();
     const signal = controller.signal;
@@ -153,13 +154,8 @@ const TextProcessor = {
       return textArea.value.substring(textArea.selectionStart, textArea.selectionEnd); // 如果非自動改寫，返回選中的文本
     }
 
-    // 獲取選擇的文本範圍
-    const start = Math.max(0, textArea.selectionStart - 3);
-    const end = Math.min(textArea.value.length, textArea.selectionEnd + 3);
-    const extendedText = textArea.value.substring(start, end);
-
     // 檢查是否包含特殊文本
-    const matchResult = this.findSpecialText(extendedText);
+    const matchResult = this.findSpecialText(textArea.value);
     return matchResult ? matchResult.matchedText : null;
   },
 

@@ -50,39 +50,44 @@ const GlobalSettings = {
    */
   async loadSettings() {
     try {
-      // 使用 Promise 包裝 chrome.storage.sync.get
-      const result = await new Promise((resolve) => {
-        chrome.storage.sync.get(null, (items) => {
-          resolve(items);
-        });
-      });
+      // 改用 chrome.storage.local 來儲存大型文本
+      const [syncResult, localResult] = await Promise.all([
+        new Promise((resolve) => {
+          chrome.storage.sync.get(null, (items) => resolve(items));
+        }),
+        new Promise((resolve) => {
+          chrome.storage.local.get(['translateInstruction'], (items) => resolve(items));
+        })
+      ]);
 
-      // 設置值，優先使用已保存的值，如果沒有則使用預設值
-      this.apiKeys = result.apiKeys || {};
-      this.model = result.model || 'gemini-1.5-flash';
-      this.instruction = result.instruction || (window.DefaultSettings?.fullRewriteInstruction || '');
-      this.shortInstruction = result.shortInstruction || (window.DefaultSettings?.shortRewriteInstruction || '');
-      this.fullRewriteModel = result.fullRewriteModel || this.model;
-      this.shortRewriteModel = result.shortRewriteModel || this.model;
-      this.autoRewriteModel = result.autoRewriteModel || this.model;
-      this.translateModel = result.translateModel || this.model;
-      this.translateInstruction = result.translateInstruction || (window.DefaultSettings?.translateInstruction || '');
+      // 一般設定使用 sync
+      this.apiKeys = syncResult.apiKeys || {};
+      this.model = syncResult.model || 'gemini-1.5-flash';
+      this.instruction = syncResult.instruction || (window.DefaultSettings?.fullRewriteInstruction || '');
+      this.shortInstruction = syncResult.shortInstruction || (window.DefaultSettings?.shortRewriteInstruction || '');
+      this.fullRewriteModel = syncResult.fullRewriteModel || this.model;
+      this.shortRewriteModel = syncResult.shortRewriteModel || this.model;
+      this.autoRewriteModel = syncResult.autoRewriteModel || this.model;
+      this.translateModel = syncResult.translateModel || this.model;
+      this.translateInstruction = localResult.translateInstruction || 
+                                syncResult.translateInstruction || 
+                                (window.DefaultSettings?.translateInstruction || '');
       
       // 使用 DefaultSettings 中的預設值
-      this.confirmModel = result.confirmModel === undefined ? window.DefaultSettings?.confirmModel : result.confirmModel;
-      this.confirmContent = result.confirmContent === undefined ? window.DefaultSettings?.confirmContent : result.confirmContent;
-      this.removeHash = result.removeHash === undefined ? window.DefaultSettings?.removeHash : result.removeHash;
-      this.removeStar = result.removeStar === undefined ? window.DefaultSettings?.removeStar : result.removeStar;
+      this.confirmModel = syncResult.confirmModel === undefined ? window.DefaultSettings?.confirmModel : syncResult.confirmModel;
+      this.confirmContent = syncResult.confirmContent === undefined ? window.DefaultSettings?.confirmContent : syncResult.confirmContent;
+      this.removeHash = syncResult.removeHash === undefined ? window.DefaultSettings?.removeHash : syncResult.removeHash;
+      this.removeStar = syncResult.removeStar === undefined ? window.DefaultSettings?.removeStar : syncResult.removeStar;
 
       // 更新自動改寫模式
-      if (result.autoRewritePatterns) {
-        this.updateAutoRewritePatterns(result.autoRewritePatterns);
+      if (syncResult.autoRewritePatterns) {
+        this.updateAutoRewritePatterns(syncResult.autoRewritePatterns);
       } else if (window.DefaultSettings?.autoRewritePatterns) {
         this.updateAutoRewritePatterns(window.DefaultSettings.autoRewritePatterns);
       }
 
       // 如果是首次運行，設置預設值
-      if (result.firstRun === undefined) {
+      if (syncResult.firstRun === undefined) {
         await this.saveSettings();
         chrome.storage.sync.set({ firstRun: false });
       }
@@ -127,24 +132,35 @@ const GlobalSettings = {
    */
   async saveSettings() {
     try {
-      await new Promise((resolve) => {
-        chrome.storage.sync.set({
-          apiKeys: this.apiKeys,
-          model: this.model,
-          instruction: this.instruction,
-          shortInstruction: this.shortInstruction,
-          autoRewritePatterns: this.autoRewritePatterns.map(pattern => pattern.source),
-          fullRewriteModel: this.fullRewriteModel,
-          shortRewriteModel: this.shortRewriteModel,
-          autoRewriteModel: this.autoRewriteModel,
-          translateModel: this.translateModel,
-          translateInstruction: this.translateInstruction,
-          confirmModel: this.confirmModel,
-          confirmContent: this.confirmContent,
-          removeHash: this.removeHash,
-          removeStar: this.removeStar
-        }, resolve);
-      });
+      // 分開儲存
+      await Promise.all([
+        // 一般設定使用 sync
+        new Promise((resolve) => {
+          const syncSettings = {
+            apiKeys: this.apiKeys,
+            model: this.model,
+            instruction: this.instruction,
+            shortInstruction: this.shortInstruction,
+            autoRewritePatterns: this.autoRewritePatterns.map(pattern => pattern.source),
+            fullRewriteModel: this.fullRewriteModel,
+            shortRewriteModel: this.shortRewriteModel,
+            autoRewriteModel: this.autoRewriteModel,
+            translateModel: this.translateModel,
+            confirmModel: this.confirmModel,
+            confirmContent: this.confirmContent,
+            removeHash: this.removeHash,
+            removeStar: this.removeStar
+          };
+          // 移除 translateInstruction，因為它會存在 local storage
+          chrome.storage.sync.set(syncSettings, resolve);
+        }),
+        // 長文本使用 local
+        new Promise((resolve) => {
+          chrome.storage.local.set({
+            translateInstruction: this.translateInstruction
+          }, resolve);
+        })
+      ]);
     } catch (error) {
       console.warn('保存設置時出錯:', error);
     }
@@ -158,11 +174,16 @@ const GlobalSettings = {
    */
   async saveSingleSetting(key, value) {
     try {
-      await new Promise((resolve) => {
-        const settings = {};
-        settings[key] = value;
-        chrome.storage.sync.set(settings, resolve);
-      });
+      // 檢查是否為需要使用 local storage 的大型文本
+      if (key === 'translateInstruction') {
+        await new Promise((resolve) => {
+          chrome.storage.local.set({ [key]: value }, resolve);
+        });
+      } else {
+        await new Promise((resolve) => {
+          chrome.storage.sync.set({ [key]: value }, resolve);
+        });
+      }
       // 同時更新本地值
       this[key] = value;
     } catch (error) {
