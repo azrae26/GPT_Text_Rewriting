@@ -147,3 +147,11 @@
   color: #c0c0c0;
   margin-top: 10px;
 }
+
+/* 文本區域父元素樣式 */
+textarea[name="content"] + div {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+}

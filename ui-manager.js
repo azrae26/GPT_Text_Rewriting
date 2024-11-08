@@ -1,6 +1,9 @@
 /* global GlobalSettings, TextProcessor, Notification, UndoManager */
 /** UI管理模組 */
 const UIManager = {
+  /** 初始化追蹤改寫任務的 Set */
+  _activeRewrites: new Set(),
+
   /** 添加改寫按鈕 */
   addRewriteButton() {
     console.log('開始添加改寫按鈕');
@@ -55,12 +58,6 @@ const UIManager = {
   /** 設置文本區域樣式和事件 */
   _setupTextArea(textArea, buttonContainer) {
     const parent = textArea.parentElement;
-    Object.assign(parent.style, {
-      position: 'relative',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'flex-end'
-    });
     parent.appendChild(buttonContainer);
 
     window.UndoManager.initInputHistory(textArea);
@@ -70,7 +67,7 @@ const UIManager = {
   /** 處理雙擊改寫事件 */
   async _handleDoubleClick(event, textArea) {
     const selectedText = window.getSelection().toString().trim();
-    if (!selectedText || selectedText.length > 10) return;
+    if (!selectedText) return;
 
     // 獲取選擇的文本範圍
     const range = {
@@ -78,34 +75,66 @@ const UIManager = {
       end: Math.min(textArea.value.length, textArea.selectionEnd + 4)
     };
     
-    // 獲取選擇的文本
     const text = textArea.value.substring(range.start, range.end);
     console.log('檢查文本:', text);
 
-    // 檢查是否包含特殊文本
     const matchResult = window.TextProcessor.findSpecialText(text);
     if (!matchResult) return;
 
     try {
       const settings = await window.GlobalSettings.loadSettings();
-      if (!settings.apiKeys['gemini-1.5-flash'] && !settings.apiKeys['openai']) return;
+      // 檢查 settings 是否有效
+      if (!settings || !settings.apiKeys) {
+        throw new Error('無法載入設定');
+      }
+      
+      // 檢查 API 金鑰
+      if (!settings.apiKeys['gemini-1.5-flash'] && !settings.apiKeys['openai']) {
+        throw new Error('請先設置 API 金鑰');
+      }
 
-      // 檢查模型
-      const model = settings.autoRewriteModel || window.GlobalSettings.model;
+      // 記錄這次改寫任務的位置
+      const rewriteTask = {
+        startIndex: range.start + matchResult.startIndex, // 改寫任務的開始位置
+        endIndex: range.start + matchResult.endIndex, // 改寫任務的結束位置
+        originalText: matchResult.matchedText // 改寫任務的原始文本，用於比對改寫後的文本
+      };
+      this._activeRewrites.add(rewriteTask);
 
       // 改寫文本
       const rewrittenText = await window.TextProcessor.rewriteText(matchResult.matchedText, true);
+      
       if (rewrittenText?.trim() !== matchResult.matchedText) {
-        textArea.value = textArea.value.substring(0, range.start + matchResult.startIndex) +
-                        rewrittenText +
-                        textArea.value.substring(range.start + matchResult.endIndex);
-        textArea.dispatchEvent(new Event('input', { bubbles: true }));
+        // 計算長度差
+        const lengthDiff = rewrittenText.length - matchResult.matchedText.length;
         
-        await window.Notification.showNotification('自動改寫完成', false);
+        // 更新其他改寫任務的位置
+        for (const task of this._activeRewrites) {
+          if (task !== rewriteTask && task.startIndex > rewriteTask.startIndex) {
+            task.startIndex += lengthDiff; // 更新其他改寫任務的開始位置
+            task.endIndex += lengthDiff; // 更新其他改寫任務的結束位置
+          }
+        }
+
+        // 更新文本
+        textArea.value = textArea.value.substring(0, rewriteTask.startIndex) + // 改寫前的文本，從文本開始到改寫開始位置
+                        rewrittenText + // 改寫後的文本，從改寫開始位置到文本結束
+                        textArea.value.substring(rewriteTask.endIndex); // 改寫後的文本，從改寫結束位置到文本結束
+        
+        textArea.dispatchEvent(new Event('input', { bubbles: true })); // 觸發文本區域的input事件，更新顯示
+        await window.Notification.showNotification('自動改寫完成', false); // 顯示通知
       }
+
+      // 完成後移除這個任務
+      this._activeRewrites.delete(rewriteTask);
+
     } catch (error) {
       console.error('自動改寫錯誤:', error);
       alert('自動改寫錯誤: ' + error.message);
+      // 確保 rewriteTask 存在時才刪除
+      if (typeof rewriteTask !== 'undefined') {
+        this._activeRewrites.delete(rewriteTask);
+      }
     }
   },
 
@@ -240,7 +269,7 @@ const UIManager = {
       elements.container.appendChild(button);
     });
 
-    // 如果找到股票代碼，且input值為空，則填入第一個股票代碼
+    // 如果���到股票代碼，且input值為空，則填入第一個股票代碼
     if (codes.length > 0 && !elements.input.value) {
       elements.input.value = codes[0];
       elements.input.dispatchEvent(new Event('input', { bubbles: true }));
