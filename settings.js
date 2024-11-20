@@ -43,6 +43,8 @@ const GlobalSettings = {
   translateModel: '',
   /** 翻譯指令。 */
   translateInstruction: '',
+  /** 摘要模型名稱。 */
+  summaryModel: '',
 
   /**
    * 從 Chrome 儲存空間載入設定。
@@ -56,12 +58,24 @@ const GlobalSettings = {
           chrome.storage.sync.get(null, (items) => resolve(items));
         }),
         new Promise((resolve) => {
-          chrome.storage.local.get(['translateInstruction'], (items) => resolve(items));
+          chrome.storage.local.get(['translateInstruction', 'summaryInstruction'], (items) => resolve(items));
         })
       ]);
 
+      // 確保 apiKeys 物件有正確的結構
+      this.apiKeys = {
+        'openai': '',
+        'gemini-1.5-flash': '',
+        ...(syncResult.apiKeys || {})  // 合併已保存的金鑰
+      };
+
+      // 檢查並輸出 API 金鑰狀態
+      console.log('載入的 API 金鑰:', {
+        openai: this.apiKeys.openai ? '已設置' : '未設置',
+        gemini: this.apiKeys['gemini-1.5-flash'] ? '已設置' : '未設置'
+      });
+
       // 一般設定使用 sync
-      this.apiKeys = syncResult.apiKeys || {};
       this.model = syncResult.model || 'gemini-1.5-flash';
       this.instruction = syncResult.instruction || (window.DefaultSettings?.fullRewriteInstruction || '');
       this.shortInstruction = syncResult.shortInstruction || (window.DefaultSettings?.shortRewriteInstruction || '');
@@ -72,6 +86,10 @@ const GlobalSettings = {
       this.translateInstruction = localResult.translateInstruction || 
                                 syncResult.translateInstruction || 
                                 (window.DefaultSettings?.translateInstruction || '');
+      this.summaryModel = syncResult.summaryModel || this.model;
+      this.summaryInstruction = localResult.summaryInstruction || 
+                               syncResult.summaryInstruction || 
+                               (window.DefaultSettings?.summaryInstruction || '');
       
       // 使用 DefaultSettings 中的預設值
       this.confirmModel = syncResult.confirmModel === undefined ? window.DefaultSettings?.confirmModel : syncResult.confirmModel;
@@ -94,7 +112,7 @@ const GlobalSettings = {
 
       return this;
     } catch (error) {
-      console.warn('載入設置時出錯，使用預設值:', error);
+      console.error('載入設置時出錯:', error);
       return window.DefaultSettings || {};
     }
   },
@@ -149,7 +167,8 @@ const GlobalSettings = {
             confirmModel: this.confirmModel,
             confirmContent: this.confirmContent,
             removeHash: this.removeHash,
-            removeStar: this.removeStar
+            removeStar: this.removeStar,
+            summaryModel: this.summaryModel
           };
           // 移除 translateInstruction，因為它會存在 local storage
           chrome.storage.sync.set(syncSettings, resolve);
@@ -157,7 +176,8 @@ const GlobalSettings = {
         // 長文本使用 local
         new Promise((resolve) => {
           chrome.storage.local.set({
-            translateInstruction: this.translateInstruction
+            translateInstruction: this.translateInstruction,
+            summaryInstruction: this.summaryInstruction
           }, resolve);
         })
       ]);
@@ -201,6 +221,13 @@ const GlobalSettings = {
     } catch (error) {
       console.warn('儲存模型選擇時出錯:', error);
     }
+  },
+
+  // 添加一個輔助方法來檢查 API 金鑰
+  hasApiKey(model) {
+    const isGemini = model.startsWith('gemini');
+    const key = this.apiKeys[isGemini ? 'gemini-1.5-flash' : 'openai'];
+    return Boolean(key && key.trim());
   }
 };
 

@@ -203,25 +203,31 @@ const UIManager = {
           return true;
         }
         
-        // 檢查前100字符是否包含股票資訊
-        const baseStockName = stock.name.replace(/-KY$|\*$/g, '');
+        // 先把 -KY 和 * 去掉
+        const baseStockName = stock.name.replace(/[*]|-KY$/g, '');
         const codePattern = `[（(]${stock.code}(?:[-\\s.]*(?:TW|TWO))?[）)]|_${stock.code}`;
+        
+        // 使用自定義pattern或基本名稱加上可選的KY
+        const namePattern = stock.pattern || `${baseStockName}(?:[-\\s]*KY)?`;
         
         if (first100Chars.includes(stock.name) || 
             first100Chars.includes(baseStockName) || 
             first100Chars.match(new RegExp(codePattern))) {
           
-          // 計算出現次數
-          const nameMatches = (text.match(new RegExp(`${baseStockName}(?:-KY)?`, 'g')) || []).length;
-          // @importantdonotremove 日誌：匹配的股票名稱及次數
-          console.log(`股票：${stock.name}，基本名稱：${baseStockName}，匹配次數：${nameMatches}`);
+          const nameRegex = new RegExp(namePattern, 'g');
+          const codeRegex = new RegExp(codePattern, 'g');
           
-          const codeMatches = (text.match(new RegExp(codePattern, 'g')) || []).length;
+          const nameMatches = (text.match(nameRegex) || []).length;
+          const codeMatches = (text.match(codeRegex) || []).length;
           
-          matchedStocks.set(stock.code, stock.name);
-          stockCounts.set(stock.code, nameMatches + codeMatches);
-          return true;
+          if (nameMatches > 0 || codeMatches > 0) {
+            console.log(`股票：${stock.name}，匹配模式：${namePattern}，匹配次數：${nameMatches + codeMatches}`);
+            matchedStocks.set(stock.code, stock.name);
+            stockCounts.set(stock.code, nameMatches + codeMatches);
+            return true;
+          }
         }
+        
         return false;
       })
 

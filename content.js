@@ -132,6 +132,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       });
       sendResponse({success: true});
       break;
+    case "generateSummary":
+      const textArea = document.querySelector('textarea[name="content"]');
+      if (textArea) {
+        TextProcessor.generateSummary(textArea.value)
+          .then(summary => {
+            sendResponse({ success: true, summary });
+          })
+          .catch(error => {
+            sendResponse({ success: false, error: error.message });
+          });
+        return true; // 表示我們會異步發送回應
+      }
+      break;
   }
 });
 

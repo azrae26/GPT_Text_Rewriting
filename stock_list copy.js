@@ -38,7 +38,7 @@ window.stockList = [
     { code: "1294", name: "漢田生技" },
     { code: "1295", name: "生合" },
     { code: "1301", name: "台塑" },
-    { code: "1303", name: "南亞", pattern: "(?<!東)南亞" },
+    { code: "1303", name: "南亞" },
     { code: "1304", name: "台聚" },
     { code: "1305", name: "華夏" },
     { code: "1307", name: "三芳" },
@@ -291,7 +291,7 @@ window.stockList = [
     { code: "2114", name: "鑫永銓" },
     { code: "2115", name: "六暉-KY" },
     { code: "2201", name: "裕隆" },
-    { code: "2204", name: "中華", pattern: "(?<!大)中華" },
+    { code: "2204", name: "中華" },
     { code: "2206", name: "三陽工業" },
     { code: "2207", name: "和泰車" },
     { code: "2208", name: "台船" },
@@ -559,7 +559,7 @@ window.stockList = [
     { code: "2838", name: "聯邦銀" },
     { code: "2845", name: "遠東銀" },
     { code: "2849", name: "安泰銀" },
-    { code: "2850", name: "新產", pattern: "新產(?!品|能)" },
+    { code: "2850", name: "新產" },
     { code: "2851", name: "中再保" },
     { code: "2852", name: "第一保" },
     { code: "2855", name: "統一證" },
@@ -1503,7 +1503,7 @@ window.stockList = [
     { code: "6431", name: "光麗-KY" },
     { code: "6432", name: "今展科" },
     { code: "6434", name: "達輝光電" },
-    { code: "6435", name: "大中", pattern: "大中(?!華)" },
+    { code: "6435", name: "大中" },
     { code: "6438", name: "迅得" },
     { code: "6441", name: "廣錠" },
     { code: "6442", name: "光聖" },
@@ -2189,5 +2189,5 @@ window.stockList = [
     { code: "9957", name: "燁聯" },
     { code: "9958", name: "世紀鋼" },
     { code: "9960", name: "邁達康" },
-    { code: "9962", name: "有益", pattern: "有益(?!處)" }
+    { code: "9962", name: "有益" }
 ];

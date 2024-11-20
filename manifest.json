@@ -8,7 +8,8 @@
     "activeTab"
   ],
   "host_permissions": [
-    "https://data.uanalyze.twobitto.com/*"
+    "https://data.uanalyze.twobitto.com/*",
+    "https://pro.uanalyze.com.tw/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -31,6 +32,25 @@
         "content.js"
       ],
       "css": ["content_script_uanalyze.css"]
+    },
+    {
+      "matches": [
+        "https://pro.uanalyze.com.tw/lab/*"
+      ],
+      "js": [
+        "default.js",
+        "settings.js",
+        "text-processor.js",
+        "ua_assistant/auto-click.js",
+        "ua_assistant/key-points-summary.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["images/*"],
+      "matches": ["https://pro.uanalyze.com.tw/*"]
     }
   ],
   "action": {

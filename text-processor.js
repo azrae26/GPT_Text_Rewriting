@@ -41,7 +41,7 @@ const TextProcessor = {
     const body = isGemini ? {
       contents: [{
         parts: [{
-          text: `要替換的文本：${text}。\n\n\n替換指令：${instruction}`
+          text: `${text}\n\n指令：${instruction}`
         }]
       }],
       // 添加安全設置，降低內容過濾的嚴格程度
@@ -49,10 +49,19 @@ const TextProcessor = {
     } : {
       model,
       messages: [
-        {role: "system", content: "你是一個專業的文字改寫助手。"},
-        {role: "user", content: `要替換的文本：${text}。\n\n\n指令：${instruction}`}
+        {role: "system", content: instruction},
+        {role: "user", content: text}
       ]
     };
+
+    console.log('API 請求配置:', {
+      endpoint,
+      requestBody: {
+        model,
+        systemMessage: instruction,
+        userMessage: text
+      }
+    });
 
     return { endpoint, body };
   },
@@ -60,16 +69,16 @@ const TextProcessor = {
   /**
    * 發送 API 請求
    */
-  async _sendRequest(endpoint, body, apiKey, isGemini) {
-    console.log('準備發送 API 請求', 'shouldCancel:', window.TranslateManager.shouldCancel);
+  async _sendRequest(endpoint, body, apiKey, isGemini, isTranslation = false) {
+    console.log('準備發送 API 請求');
     // 限制日誌輸出的文本長度為500字
-    console.log('請求體:', JSON.stringify(body).substring(0, 500) + (JSON.stringify(body).length > 500 ? '...' : '')); 
+    console.log('請求體:', JSON.stringify(body).substring(0, 1500) + (JSON.stringify(body).length > 1500 ? '...' : '')); 
 
     const controller = new AbortController();
     const signal = controller.signal;
 
-    // 在 TranslateManager.shouldCancel 為 true 時取消請求
-    if (window.TranslateManager.shouldCancel) {
+    // 只在翻譯模式下檢查 shouldCancel
+    if (isTranslation && window.TranslateManager?.shouldCancel) {
       controller.abort();
       console.log('翻譯請求已取消');
       throw new Error('翻譯請求已取消');
@@ -98,8 +107,8 @@ const TextProcessor = {
         throw new Error(`HTTP error! status: ${response.status}, message: ${JSON.stringify(errorData)}`);
       }
 
-      // 再次檢查是否已取消
-      if (window.TranslateManager.shouldCancel) {
+      // 只在翻譯模式下檢查是否已取消
+      if (isTranslation && window.TranslateManager?.shouldCancel) {
         console.log('翻譯已取消，忽略 API 響應');
         throw new Error('翻譯請求已取消');
       }
@@ -108,7 +117,7 @@ const TextProcessor = {
       console.log('API Response:', data);
 
       // 最後一次檢查是否已取消
-      if (window.TranslateManager.shouldCancel) {
+      if (isTranslation && window.TranslateManager?.shouldCancel) {
         console.log('翻譯已取消，忽略 API 響應');
         throw new Error('翻譯請求已取消');
       }
@@ -209,7 +218,7 @@ const TextProcessor = {
 
       // 準備API請求
       const { endpoint, body } = this._prepareApiConfig(model, originalTextToRewrite, instruction);
-      const rewrittenText = await this._sendRequest(endpoint, body, apiKey, isGemini);
+      const rewrittenText = await this._sendRequest(endpoint, body, apiKey, isGemini, false);
 
       console.log('改寫前文本:', originalTextToRewrite);
       console.log('改寫後的文本:', rewrittenText);
@@ -246,6 +255,53 @@ const TextProcessor = {
       console.error('rewriteText 函數出錯:', error);
       alert(`改寫過程中發生錯誤: ${error.message}\n請檢查您的設置並重試。`);
       window.Notification.showNotification(`改寫過程中發生錯誤: ${error.message}`, false);
+    }
+  },
+
+  /**
+   * 執行關鍵要點總結
+   */
+  async generateSummary(text) {
+    try {
+      const settings = await window.GlobalSettings.loadSettings();
+      
+      // 檢查 API 金鑰
+      const model = settings.summaryModel;
+      const isGemini = model.startsWith('gemini');
+      const apiKey = settings.apiKeys[isGemini ? 'gemini-1.5-flash' : 'openai'];
+      
+      if (!apiKey) {
+        throw new Error(`未找到 ${isGemini ? 'Gemini' : 'OpenAI'} 的 API 金鑰`);
+      }
+
+      // 顯示通知
+      await window.Notification.showNotification(`
+        模型: ${window.GlobalSettings.API.models[model] || model}<br>
+        API KEY: ${apiKey.substring(0, 5)}...<br>
+        正在生成關鍵要點總結
+      `, true);
+
+      // 準備 API 請求
+      const { endpoint, body } = this._prepareApiConfig(
+        model,
+        text,
+        settings.summaryInstruction
+      );
+
+      // 發送請求並獲取回應
+      const summary = await this._sendRequest(endpoint, body, apiKey, isGemini);
+
+      // 移除通知
+      window.Notification.removeNotification();
+      await window.Notification.showNotification('關鍵要點總結已完成', false);
+
+      return summary.trim();
+
+    } catch (error) {
+      window.Notification.removeNotification();
+      console.error('generateSummary 函數出錯:', error);
+      alert(`生成關鍵要點總結時發生錯誤: ${error.message}\n請檢查您的設置並重試。`);
+      throw error;
     }
   }
 };

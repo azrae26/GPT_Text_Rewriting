@@ -28,6 +28,7 @@
         <div class="tab" data-tab="short">10字內改寫</div>
         <div class="tab" data-tab="auto">雙擊改寫</div>
         <div class="tab" data-tab="translate">翻譯</div>
+        <div class="tab" data-tab="summary">關鍵要點</div>
       </div>
       
       <div id="full-tab" class="tab-content active">
@@ -74,6 +75,15 @@
             <span>刪除**</span>
           </label>
         </div>
+      </div>
+      
+      <div id="summary-tab" class="tab-content">
+        <select id="summaryModel" class="model-select">
+          <option value="gemini-1.5-flash">Gemini 1.5 Flash</option>
+          <option value="gpt-4o-mini">GPT-4o mini</option>
+          <option value="gpt-4">GPT-4</option>
+        </select>
+        <textarea id="summaryInstruction" placeholder="輸入關鍵要點總結要求"></textarea>
       </div>
       
       <button id="rewrite">改寫文字</button>
