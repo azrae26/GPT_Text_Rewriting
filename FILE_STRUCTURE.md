@@ -25,6 +25,10 @@
 - `notification.js`: 通知功能
 - `content_script_uanalyze.css`: 通知樣式
 
+### 文字標示功能
+- `text_highlight/highlight.js`: 文字標示核心功能
+- `content_script_uanalyze.css`: 標示樣式
+
 ## 核心功能檔案
 
 ### ui-manager.js

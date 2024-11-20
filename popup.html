@@ -9,7 +9,7 @@
 <body>
   <div class="main-tab-container">
     <div class="main-tab active" data-tab="rewrite">文字改寫</div>
-    <div class="main-tab" data-tab="empty">自動填入</div>
+    <div class="main-tab" data-tab="highlight">高亮功能</div>
   </div>
 
   <div id="rewrite-tab" class="main-tab-content active">
@@ -21,7 +21,6 @@
         </select>
         <input type="password" id="api-key" placeholder="輸入您的 API 金鑰">
       </div>
-      <button id="save">保存金鑰</button>
       
       <div class="tab-container">
         <div class="tab active" data-tab="full">全文改寫</div>
@@ -90,8 +89,19 @@
     </div>
   </div>
 
-  <div id="empty-tab" class="main-tab-content">
-    <!-- 第二個分頁的內容，暫時為空 -->
+  <div id="highlight-tab" class="main-tab-content">
+    <div class="content">
+      <textarea id="highlight-words" 
+                placeholder="請輸入要高亮的文字，每個文字一行
+支援正則表達式，使用 /pattern/ 格式
+例如：
+營收
+產品
+年增
+消費型
+/\d+%/
+/Q[1-4]/"></textarea>
+    </div>
   </div>
 
   <script src="settings.js"></script>

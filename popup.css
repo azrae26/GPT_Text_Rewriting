@@ -6,7 +6,7 @@ body {
   font-family: 'Microsoft JhengHei', 'PingFang TC', 'Heiti TC', 'Apple LiGothic Medium', 'Helvetica', 'Arial', sans-serif;
   padding: 0;
   box-sizing: border-box;
-  width: 400px;
+  width: 550px;
   margin: 0;
   display: flex;
   flex-direction: column;
@@ -45,8 +45,8 @@ input:focus, select:focus {
 }
 
 textarea {
-  flex: 1;
-  min-height: 200px;
+  flex: 0 0 auto;
+  min-height: 330px; /* 增加高度 */
   resize: none;
   border: none;
   border-radius: 0 0 4px 4px;
@@ -235,3 +235,18 @@ input[type="checkbox"] {
 .main-tab-content.active {
   display: block;
 }
+
+#highlight-words {
+  height: 500px !important;
+  flex: none !important;
+  min-height: 500px !important;
+}
+
+#highlight-tab .content {
+  height: 500px;
+  overflow-y: hidden;
+}
+
+#rewrite {
+  display: none; /* 隱藏按鈕 */
+} 

@@ -31,8 +31,10 @@ document.addEventListener('DOMContentLoaded', async function() {
   const summaryInstructionInput = document.getElementById('summaryInstruction');
   
   // 其他按鈕
-  const saveButton = document.getElementById('save');
   const aiAssistantButton = document.getElementById('aiAssistant');
+
+  // 高亮功能
+  const highlightWordsInput = document.getElementById('highlight-words');
 
   // 2. 初始化設定
   let apiKeys = {
@@ -73,6 +75,41 @@ document.addEventListener('DOMContentLoaded', async function() {
   }
   
   updateApiKeyInput();
+
+  // 載入已保存的高亮文字
+  chrome.storage.sync.get('highlightWords', function(data) {
+    if (data.highlightWords) {
+      highlightWordsInput.value = data.highlightWords;
+      updateHighlightWords(data.highlightWords); // 初始化時就更新高亮
+    }
+  });
+
+  // 新增：載入上次的分頁狀態
+  chrome.storage.sync.get(['lastMainTab', 'lastSubTab'], function(data) {
+    if (data.lastMainTab) {
+      // 切換主分頁
+      const mainTab = document.querySelector(`.main-tab[data-tab="${data.lastMainTab}"]`);
+      const mainTabContent = document.getElementById(`${data.lastMainTab}-tab`);
+      if (mainTab && mainTabContent) {
+        document.querySelectorAll('.main-tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.main-tab-content').forEach(c => c.classList.remove('active'));
+        mainTab.classList.add('active');
+        mainTabContent.classList.add('active');
+      }
+    }
+
+    if (data.lastSubTab) {
+      // 切換子分頁
+      const subTab = document.querySelector(`.tab[data-tab="${data.lastSubTab}"]`);
+      const subTabContent = document.getElementById(`${data.lastSubTab}-tab`);
+      if (subTab && subTabContent) {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        subTab.classList.add('active');
+        subTabContent.classList.add('active');
+      }
+    }
+  });
 
   // 3. API 和模型相關事件處理
   // API 金鑰輸入
@@ -161,27 +198,27 @@ document.addEventListener('DOMContentLoaded', async function() {
   });
 
   // 8. 保存按鈕事件處理
-  saveButton.addEventListener('click', async function() {
-    apiKeys[modelSelect.value] = apiKeyInput.value;
-    await GlobalSettings.saveSettings({
-      apiKeys: apiKeys, // API 金鑰
-      instruction: instructionInput.value, // 改寫指令
-      shortInstruction: shortInstructionInput.value, // 短改寫指令
-      autoRewritePatterns: autoRewritePatternsInput.value, // 自動改寫匹配模式
-      fullRewriteModel: fullRewriteModelSelect.value, // 全改寫模型
-      shortRewriteModel: shortRewriteModelSelect.value, // 短改寫模型
-      autoRewriteModel: autoRewriteModelSelect.value, // 自動改寫模型
-      translateModel: translateModelSelect.value, // 翻譯模型
-      translateInstruction: translateInstructionInput.value, // 翻譯指令
-      removeHash: removeHashCheckbox.checked, // 移除##設置
-      removeStar: removeStarCheckbox.checked, // 移除**設置
-      summaryModel: summaryModelSelect.value, // 關鍵要點模型
-      summaryInstruction: summaryInstructionInput.value // 關鍵要點指令
-    });
-    console.log('設置已保存');
-    alert('設置已保存');
-    updateContentScript();
-  });
+  // saveButton.addEventListener('click', async function() {
+  //   apiKeys[modelSelect.value] = apiKeyInput.value;
+  //   await GlobalSettings.saveSettings({
+  //     apiKeys: apiKeys, // API 金鑰
+  //     instruction: instructionInput.value, // 改寫指令
+  //     shortInstruction: shortInstructionInput.value, // 短改寫指令
+  //     autoRewritePatterns: autoRewritePatternsInput.value, // 自動改寫匹配模式
+  //     fullRewriteModel: fullRewriteModelSelect.value, // 全改寫模型
+  //     shortRewriteModel: shortRewriteModelSelect.value, // 短改寫模型
+  //     autoRewriteModel: autoRewriteModelSelect.value, // 自動改寫模型
+  //     translateModel: translateModelSelect.value, // 翻譯模型
+  //     translateInstruction: translateInstructionInput.value, // 翻譯指令
+  //     removeHash: removeHashCheckbox.checked, // 移除##設置
+  //     removeStar: removeStarCheckbox.checked, // 移除**設置
+  //     summaryModel: summaryModelSelect.value, // 關鍵要點模型
+  //     summaryInstruction: summaryInstructionInput.value // 關鍵要點指令
+  //   });
+  //   console.log('設置已保存');
+  //   alert('設置已保存');
+  //   updateContentScript();
+  // });
 
   // 9. 功能按鈕事件處理
   rewriteButton.addEventListener('click', function() {
@@ -231,13 +268,16 @@ document.addEventListener('DOMContentLoaded', async function() {
       tabContents.forEach(c => c.classList.remove('active'));
       this.classList.add('active');
       document.getElementById(`${tabName}-tab`).classList.add('active');
+      
+      // 保存子分頁狀態
+      chrome.storage.sync.set({ lastSubTab: tabName });
     });
   });
 
   // 主分頁切換功能
   const mainTabs = document.querySelectorAll('.main-tab');
   const mainTabContents = document.querySelectorAll('.main-tab-content');
-  // 主分頁切換功能
+
   mainTabs.forEach(tab => {
     tab.addEventListener('click', function() {
       const tabName = this.getAttribute('data-tab');
@@ -245,6 +285,9 @@ document.addEventListener('DOMContentLoaded', async function() {
       mainTabContents.forEach(c => c.classList.remove('active'));
       tab.classList.add('active');
       document.getElementById(`${tabName}-tab`).classList.add('active');
+      
+      // 保存主分頁狀態
+      chrome.storage.sync.set({ lastMainTab: tabName });
     });
   });
 
@@ -277,6 +320,30 @@ document.addEventListener('DOMContentLoaded', async function() {
         } else {
           console.error('更新 content.js 設置失敗');
         }
+      });
+    });
+  }
+
+  // 監聽輸入事件
+  highlightWordsInput?.addEventListener('input', function() {
+    const words = this.value;
+    
+    // 保存高亮文字
+    chrome.storage.sync.set({ highlightWords: words });
+
+    // 更新高亮
+    updateHighlightWords(words);
+  });
+
+  // 更新高亮文字的函數
+  function updateHighlightWords(text) {
+    const words = text.split('\n');
+    
+    // 發送消息到 content script
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: "updateHighlightWords",
+        words: words
       });
     });
   }

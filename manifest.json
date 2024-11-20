@@ -29,6 +29,7 @@
         "text-processor.js",
         "translate.js",
         "ui-manager.js",
+        "text_highlight/highlight.js",
         "content.js"
       ],
       "css": ["content_script_uanalyze.css"]

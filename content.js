@@ -19,6 +19,46 @@ function initializeExtension() {
       window.UIManager.addRewriteButton();
       window.UIManager.initializeStockCodeFeature();
       window.TranslateManager.initialize();
+      window.TextHighlight.initialize();
+      
+      // 新增：載入並應用已保存的高亮文字
+      chrome.storage.sync.get('highlightWords', function(data) {
+        if (data.highlightWords) {
+          const words = data.highlightWords.split('\n').filter(word => word.trim());
+          window.TextHighlight.setTargetWords(words);
+        }
+      });
+
+      // 新增：監聽文本變化
+      const textArea = document.querySelector('textarea[name="content"]');
+      if (textArea) {
+        const observer = new MutationObserver(() => {
+          chrome.storage.sync.get('highlightWords', function(data) {
+            if (data.highlightWords) {
+              const words = data.highlightWords.split('\n').filter(word => word.trim());
+              window.TextHighlight.setTargetWords(words);
+            }
+          });
+        });
+
+        observer.observe(textArea, {
+          characterData: true,
+          childList: true,
+          subtree: true,
+          attributes: true
+        });
+
+        // 監聽 input 事件
+        textArea.addEventListener('input', () => {
+          chrome.storage.sync.get('highlightWords', function(data) {
+            if (data.highlightWords) {
+              const words = data.highlightWords.split('\n').filter(word => word.trim());
+              window.TextHighlight.setTargetWords(words);
+            }
+          });
+        });
+      }
+
     } catch (error) {
       console.error('初始化UI元素時發生錯誤:', error);
     }
@@ -144,6 +184,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           });
         return true; // 表示我們會異步發送回應
       }
+      break;
+    case "updateHighlightWords":
+      window.TextHighlight.setTargetWords(request.words);
+      sendResponse({success: true});
       break;
   }
 });
