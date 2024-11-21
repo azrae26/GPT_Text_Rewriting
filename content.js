@@ -9,9 +9,45 @@ console.log('Content script starting to load');
 function initializeExtension() {
   console.log('開始初始化擴展');
 
-  /**
-   * 初始化 UI 元素，包含載入設定、添加改寫按鈕和初始化股票代碼功能。
-   */
+  // 提前初始化高亮功能
+  function initHighlight() {
+    // 在 DOM 開始載入時就初始化高亮功能
+    if (document.querySelector('textarea[name="content"]')) {
+      window.TextHighlight.initialize();
+      // 使用 Promise.all 同時處理設定載入和高亮更新
+      Promise.all([
+        new Promise(resolve => {
+          chrome.storage.sync.get('highlightWords', function(data) {
+            if (data.highlightWords) {
+              const words = data.highlightWords.split('\n').filter(word => word.trim());
+              window.TextHighlight.setTargetWords(words);
+            }
+            resolve();
+          });
+        })
+      ]).then(() => {
+        console.log('高亮功能初始化完成');
+      });
+    } else {
+      // 如果元素還沒準備好，使用 MutationObserver 等待
+      const observer = new MutationObserver((mutations, obs) => {
+        if (document.querySelector('textarea[name="content"]')) {
+          obs.disconnect();
+          initHighlight();
+        }
+      });
+
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true
+      });
+    }
+  }
+
+  // 立即開始初始化高亮功能
+  initHighlight();
+  
+  // 其他 UI 元素的初始化保持不變
   async function initUI() {
     console.log('初始化UI元素');
     try {
@@ -19,51 +55,12 @@ function initializeExtension() {
       window.UIManager.addRewriteButton();
       window.UIManager.initializeStockCodeFeature();
       window.TranslateManager.initialize();
-      window.TextHighlight.initialize();
-      
-      // 新增：載入並應用已保存的高亮文字
-      chrome.storage.sync.get('highlightWords', function(data) {
-        if (data.highlightWords) {
-          const words = data.highlightWords.split('\n').filter(word => word.trim());
-          window.TextHighlight.setTargetWords(words);
-        }
-      });
-
-      // 新增：監聽文本變化
-      const textArea = document.querySelector('textarea[name="content"]');
-      if (textArea) {
-        const observer = new MutationObserver(() => {
-          chrome.storage.sync.get('highlightWords', function(data) {
-            if (data.highlightWords) {
-              const words = data.highlightWords.split('\n').filter(word => word.trim());
-              window.TextHighlight.setTargetWords(words);
-            }
-          });
-        });
-
-        observer.observe(textArea, {
-          characterData: true,
-          childList: true,
-          subtree: true,
-          attributes: true
-        });
-
-        // 監聽 input 事件
-        textArea.addEventListener('input', () => {
-          chrome.storage.sync.get('highlightWords', function(data) {
-            if (data.highlightWords) {
-              const words = data.highlightWords.split('\n').filter(word => word.trim());
-              window.TextHighlight.setTargetWords(words);
-            }
-          });
-        });
-      }
-
     } catch (error) {
       console.error('初始化UI元素時發生錯誤:', error);
     }
   }
 
+  // 等待其他 UI 元素載入
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', initUI);
   } else {

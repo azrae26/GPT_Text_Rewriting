@@ -119,20 +119,21 @@ const TextHighlight = {
       const totalHeight = textArea.scrollHeight;
 
       this.elements.highlights.forEach((highlight) => {
-        // 獲取原始位置（不包含滾動偏移）
-        const originalTop = parseFloat(highlight.style.top);
+        const originalTop = parseFloat(highlight.dataset.originalTop);
         const highlightHeight = parseFloat(highlight.style.height);
         
-        // 計算實際應該顯示的位置
-        const adjustedTop = originalTop - scrollTop;
+        // 計算相對於視窗的位置
+        const relativeTop = originalTop - scrollTop;
         
-        // 擴大可見範圍的判斷
-        const isVisible = (adjustedTop + highlightHeight >= -highlightHeight) && 
-                         (adjustedTop <= visibleHeight + highlightHeight) &&
+        // 判斷是否在可視範圍內（加上一些緩衝空間）
+        const buffer = highlightHeight;
+        const isVisible = (relativeTop + highlightHeight >= -buffer) && 
+                         (relativeTop <= visibleHeight + buffer) &&
                          (originalTop <= totalHeight);
 
         if (isVisible) {
           highlight.style.display = 'block';
+          // 使用 transform 來調整位置
           highlight.style.transform = `translateY(${-scrollTop}px)`;
         } else {
           highlight.style.display = 'none';
@@ -145,101 +146,15 @@ const TextHighlight = {
    * 位置計算子模組 - 處理文字位置的計算
    */
   PositionCalculator: {
-    // 新增：換行規則配置
-    lineBreakRules: {
-      // 不能出現在行首的字符（使用 Unicode 轉義序列）
-      // 包含：句號、逗號、冒號、分號、感嘆號、問號、右括號、右引號、右單引號、度符號、百分號、美元符號
-      noStartChars: '\u3002\u3001\uFF0C\uFF1A\uFF1B\uFF01\uFF1F\uFF09\u300D\u300F\u3011\u300B\u2019\u201D\u2103\uFF05\uFF04', 
-      
-      // 不能出現在行尾的字符（使用 Unicode 轉義序列）
-      // 包含：左括號、左引號、左單引號、度符號、美元符號、歐元符號、英鎊符號
-      noEndChars: '\uFF08\u300C\u300E\u3010\u300A\u2018\u201C\u0024\u00A5\u20AC\u00A3',
-      
-      // 不能被拆開的模式
-      noBreakPatterns: [
-        /[A-Za-z]+/g,  // 英文單字
-        /\d+/g,        // 數字序列
-        /\d+年/g,      // 年份
-        /\d+%/g,       // 百分比
-        /[$¥€£]\d+/g,  // 貨幣金額
-        /\d+[kKmMgG][bB]/g,  // 容量單位
-        /\d+[kK][gG]/g,      // 重量單位
-        /[一二三四五六七八九十百千萬億兆]+/g  // 中文數字
-      ]
+    // 新增快取對象
+    cache: {
+      div: null,
+      lastText: '',
+      positions: new Map(),
     },
 
     /**
-     * 檢查字符是否可以作為行首
-     */
-    canStartLine(char) {
-      return !this.lineBreakRules.noStartChars.includes(char);
-    },
-
-    /**
-     * 檢查字符是否可以作為行尾
-     */
-    canEndLine(char) {
-      return !this.lineBreakRules.noEndChars.includes(char);
-    },
-
-    /**
-     * 檢查是否需要保持在同一行
-     */
-    shouldKeepTogether(text, startIndex, endIndex) {
-      const subText = text.substring(startIndex, endIndex);
-      return this.lineBreakRules.noBreakPatterns.some(pattern => {
-        pattern.lastIndex = 0;  // 重置正則表達式
-        return pattern.test(subText);
-      });
-    },
-
-    /**
-     * 找到合適的換行點
-     */
-    findBreakPoint(text, startIndex, maxWidth, styles) {
-      let currentWidth = 0;
-      let lastSafeBreakPoint = startIndex;
-      let i = startIndex;
-
-      while (i < text.length) {
-        const char = text[i];
-        const charWidth = this.getTextWidth(char, styles.font);
-
-        // 如果添加這個字符會超出寬度
-        if (currentWidth + charWidth > maxWidth) {
-          // 如果找到了安全的換行點，就在那裡換行
-          if (lastSafeBreakPoint > startIndex) {
-            return lastSafeBreakPoint;
-          }
-          // 否則在當前位置換行
-          return i;
-        }
-
-        // 更新寬度
-        currentWidth += charWidth;
-
-        // 檢查是否是安全的換行點
-        if (this.canEndLine(char) && 
-            (i + 1 >= text.length || this.canStartLine(text[i + 1])) &&
-            !this.shouldKeepTogether(text, startIndex, i + 1)) {
-          lastSafeBreakPoint = i + 1;
-        }
-
-        i++;
-      }
-
-      return text.length;
-    },
-
-    /**
-     * 判斷是否為中文字元
-     */
-    isChinese(char) {
-      return /[\u4E00-\u9FFF]/.test(char);
-    },
-
-    /**
-     * 獲取文本區域的樣式息
+     * 獲取文本區域的樣式信息
      */
     getTextAreaStyles(textArea) {
       const computedStyle = window.getComputedStyle(textArea);
@@ -254,52 +169,90 @@ const TextHighlight = {
     },
 
     /**
-     * 使用 Range API 獲取文字的精確位置
+     * 優化後的位置計算方法
      */
     calculatePosition(textArea, index, text, matchedText, styles) {
-      const div = document.createElement('div');
-      const computedStyle = window.getComputedStyle(textArea);
-      div.style.cssText = `
-        position: absolute;
-        visibility: hidden;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-        overflow-wrap: break-word;
-        width: ${textArea.clientWidth}px;
-        font: ${computedStyle.font};
-        line-height: ${computedStyle.lineHeight};
-        padding: ${computedStyle.padding};
-        border: ${computedStyle.border};
-        box-sizing: border-box;
-        margin: 0;
-        overflow: hidden;
-        background: none;
-        pointer-events: none;
-      `;
-      div.textContent = text;
-      textArea.parentElement.appendChild(div);
+      // 如果文字太長，先進行快速檢查是否可能存在匹配
+      if (text.length > 1000) {
+        const visibleStart = Math.max(0, index - 500);
+        const visibleEnd = Math.min(text.length, index + 500);
+        const visibleText = text.substring(visibleStart, visibleEnd);
+        if (!visibleText.includes(matchedText)) {
+          return null;
+        }
+      }
+
+      // 檢查快取
+      const cacheKey = `${index}-${matchedText}`;
+      if (this.cache.lastText === text && this.cache.positions.has(cacheKey)) {
+        return this.cache.positions.get(cacheKey);
+      }
+
+      // 重用或創建 div
+      if (!this.cache.div) {
+        this.cache.div = document.createElement('div');
+        const computedStyle = window.getComputedStyle(textArea);
+        this.cache.div.style.cssText = `
+          position: absolute;
+          visibility: hidden;
+          white-space: pre-wrap;
+          width: ${textArea.clientWidth}px;
+          font: ${computedStyle.font};
+          line-height: ${computedStyle.lineHeight};
+          padding: ${computedStyle.padding};
+          border: ${computedStyle.border};
+          box-sizing: border-box;
+          margin: 0;
+          overflow: hidden;
+          background: none;
+          pointer-events: none;
+        `;
+        textArea.parentElement.appendChild(this.cache.div);
+      }
+
+      // 只在文字變更時更新內容
+      if (this.cache.lastText !== text) {
+        this.cache.div.textContent = text;
+        this.cache.lastText = text;
+        this.cache.positions.clear();
+      }
 
       const range = document.createRange();
-      const textNode = div.firstChild;
+      const textNode = this.cache.div.firstChild;
       range.setStart(textNode, index);
       range.setEnd(textNode, index + matchedText.length);
 
       const rects = range.getClientRects();
-      const divRect = div.getBoundingClientRect();
+      const divRect = this.cache.div.getBoundingClientRect();
 
-      div.remove();
       range.detach();
 
       if (rects.length > 0) {
         const rect = rects[0];
-        return {
-          top: rect.top - divRect.top + textArea.scrollTop, // paddingTop 的值
-          left: rect.left - divRect.left + 14, // 14 是 paddingLeft 的值
-          width: rect.width
+        const top = rect.top - divRect.top;
+        const position = {
+          top: top,
+          left: rect.left - divRect.left + 14,
+          width: rect.width,
+          originalTop: top
         };
+
+        // 儲存到快取
+        this.cache.positions.set(cacheKey, position);
+        return position;
       }
 
       return null;
+    },
+
+    // 清理快取的方法
+    clearCache() {
+      if (this.cache.div) {
+        this.cache.div.remove();
+        this.cache.div = null;
+      }
+      this.cache.lastText = '';
+      this.cache.positions.clear();
     }
   },
 
@@ -358,16 +311,16 @@ const TextHighlight = {
    * 高亮顏色配置 - 循環使用的顏色陣列
    */
   highlightColors: [
-    'rgba(255, 165, 0, 0.3)',  // 橙色
-    'rgba(255, 105, 180, 0.3)', // 粉紅
     'rgba(50, 205, 50, 0.3)',   // 綠色
+    'rgba(255, 105, 180, 0.3)', // 粉紅
     'rgba(30, 144, 255, 0.3)',  // 藍色
+    'rgba(255, 165, 0, 0.3)',  // 橙色
     'rgba(238, 130, 238, 0.3)', // 紫色
+    'rgba(255, 99, 71, 0.3)',   // 蕃茄紅
+    'rgba(218, 112, 214, 0.3)',  // 蘭花紫
     'rgba(255, 215, 0, 0.3)',   // 金色
     'rgba(64, 224, 208, 0.3)',  // 綠松石色
-    'rgba(255, 99, 71, 0.3)',   // 蕃茄紅
     'rgba(135, 206, 235, 0.3)', // 天藍色
-    'rgba(218, 112, 214, 0.3)'  // 蘭花紫
   ],
 
   // 要高亮的文字陣列
@@ -395,16 +348,22 @@ const TextHighlight = {
       const highlight = document.createElement('div');
       highlight.className = 'text-highlight';
       
+      // 保存原始位置
+      const originalTop = position.top;
+      
       highlight.style.cssText = `
         position: absolute;
         background-color: ${TextHighlight.getColorForIndex(colorIndex)};
         height: ${lineHeight}px;
         width: ${width}px;
         left: ${position.left}px;
-        top: ${position.top}px;
+        top: ${originalTop}px;
         pointer-events: none;
         will-change: transform;
       `;
+
+      // 保存原始位置到 dataset
+      highlight.dataset.originalTop = originalTop;
 
       return highlight;
     }
@@ -431,28 +390,21 @@ const TextHighlight = {
     }
 
     this._rafId = requestAnimationFrame(() => {
-      console.log('\n=== 開始更新高亮 ===');
-      
-      // 先清除所有現有的高亮
-      this.DOMManager.clearHighlights();
-
       const text = textArea.value;
       const styles = this.PositionCalculator.getTextAreaStyles(textArea);
+      
+      // 如果文字沒有變化且沒有滾動，可以跳過更新
+      if (this._lastText === text && this._lastScrollTop === textArea.scrollTop) {
+        return;
+      }
+      
+      this._lastText = text;
+      this._lastScrollTop = textArea.scrollTop;
 
-      // 更新容器尺寸，使用完整的 scrollHeight
-      container.style.width = `${textArea.offsetWidth}px`;
-      container.style.height = `${textArea.scrollHeight}px`;
-      console.log('容器尺寸:', {
-        width: textArea.offsetWidth,
-        height: textArea.scrollHeight,
-        scrollHeight: textArea.scrollHeight,
-        clientHeight: textArea.clientHeight,
-        scrollTop: textArea.scrollTop
-      });
-
+      this.DOMManager.clearHighlights();
       const fragment = document.createDocumentFragment();
 
-      // 處理所有匹配，不論是否在可視範圍內
+      // 批次處理所有目標文字
       this.targetWords.forEach((targetWord, wordIndex) => {
         if (!targetWord.trim()) return;
 
@@ -461,24 +413,12 @@ const TextHighlight = {
             // 正則表達式處理
             const regexStr = targetWord.slice(1, -1);
             console.log(`\n處理正則表達式: "${regexStr}"`);
-            const regex = new RegExp(regexStr, 'gm');
-            let matchCount = 0;
 
-            const matches = Array.from(text.matchAll(regex));
-            console.log(`正則表達式匹配結果:`, matches.map(m => ({
-              text: m[0],
-              index: m.index
-            })));
+            const matches = Array.from(text.matchAll(new RegExp(regexStr, 'gm')));
+            console.log(`找到 ${matches.length} 個正則匹配`);
 
             for (const match of matches) {
               if (match[0]) {
-                console.log(`\n找到正則匹配:`, {
-                  文字: match[0],
-                  位置: match.index,
-                  前後文: text.substring(Math.max(0, match.index - 20), 
-                                      Math.min(text.length, match.index + match[0].length + 20))
-                });
-
                 const position = this.PositionCalculator.calculatePosition(
                   textArea, 
                   match.index, 
@@ -488,11 +428,10 @@ const TextHighlight = {
                 );
                 
                 if (position) {
-                  console.log('計算出的位置和尺寸:', {
+                  console.log(`正則匹配: "${match[0]}" 位置:`, {
                     top: position.top,
                     left: position.left,
-                    width: position.width,
-                    lineHeight: styles.lineHeight
+                    width: position.width
                   });
 
                   const highlight = this.Renderer.createHighlight(
@@ -505,47 +444,37 @@ const TextHighlight = {
                   if (highlight) {
                     fragment.appendChild(highlight);
                     this.DOMManager.elements.highlights.push(highlight);
-                    matchCount++;
                   }
                 }
               }
             }
-            console.log(`正則表達式 "${targetWord}" 總共匹配到 ${matchCount} 次`);
           } else {
+            // 使用 indexOf 快速查找所有匹配位置
+            const positions = [];
             let index = 0;
             while ((index = text.indexOf(targetWord, index)) !== -1) {
-              console.log(`\n處理匹配:`, {
-                文字: targetWord,
-                位置: index,
-                前後文: text.substring(Math.max(0, index - 20), 
-                                    Math.min(text.length, index + targetWord.length + 20))
-              });
+              positions.push(index);
+              index += 1; // 使用較小的步進值以避免遺漏重疊匹配
+            }
 
+            // 批次處理所有找到的位置
+            positions.forEach(index => {
               const position = this.PositionCalculator.calculatePosition(
-                textArea, 
-                index, 
-                text, 
-                targetWord, 
-                styles
+                textArea, index, text, targetWord, styles
               );
-              
               if (position) {
-                // 移除可見性檢查，創建所有高亮框
                 const highlight = this.Renderer.createHighlight(
                   position,
                   position.width,
                   styles.lineHeight,
                   wordIndex
                 );
-                
                 if (highlight) {
                   fragment.appendChild(highlight);
                   this.DOMManager.elements.highlights.push(highlight);
                 }
               }
-              
-              index += targetWord.length;
-            }
+            });
           }
         } catch (error) {
           console.error('高亮處理錯誤:', error);
@@ -553,8 +482,6 @@ const TextHighlight = {
       });
 
       container.appendChild(fragment);
-      
-      // 更新可見性
       this.DOMManager.updateHighlightsVisibility();
     });
   }
