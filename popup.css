@@ -236,10 +236,36 @@ input[type="checkbox"] {
   display: block;
 }
 
+.highlight-container {
+  position: relative;
+  height: 454px;
+}
+
+.highlight-overlay {
+  position: absolute;
+  width: 496px;
+  overflow: hidden;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
 #highlight-words {
-  height: 500px !important;
-  flex: none !important;
-  min-height: 500px !important;
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  width: 97%;
+  height: 439px;
+}
+
+.highlight-preview {
+  position: absolute;
+  pointer-events: none;
+  z-index: 0;
+  height: 21px;
 }
 
 #highlight-tab .content {
@@ -249,4 +275,34 @@ input[type="checkbox"] {
 
 #rewrite {
   display: none; /* 隱藏按鈕 */
+}
+
+.color-picker {
+  display: flex;
+  gap: 5px;
+  padding: 5px;
+  background: #fff;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
+.color-box {
+  width: 25px;
+  height: 25px;
+  border-radius: 4px;
+  cursor: pointer;
+  border: 1px solid #ddd;
+}
+
+.color-box:hover {
+  transform: scale(1.1);
+}
+
+.highlight-preview {
+  position: absolute;
+  left: 8px;  /* 對應 textarea 的 padding */
+  right: 8px;
+  pointer-events: none;  /* 讓滑鼠事件穿透到文字區 */
+  z-index: 0;
+  height: 21px;  /* 大約一行的高度 */
 } 

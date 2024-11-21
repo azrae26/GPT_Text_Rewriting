@@ -337,14 +337,234 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // 更新高亮文字的函數
   function updateHighlightWords(text) {
-    const words = text.split('\n');
+    const words = text.split('\n').filter(word => word.trim());
     
-    // 發送消息到 content script
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       chrome.tabs.sendMessage(tabs[0].id, {
         action: "updateHighlightWords",
-        words: words
+        words: words,
+        colors: wordColors || {}
       });
     });
   }
+
+  let selectedLine = -1;
+  let wordColors = {};
+
+  // 載入已保存的顏色設置
+  chrome.storage.sync.get('highlightColors', function(data) {
+    if (data.highlightColors) {
+      wordColors = data.highlightColors;
+    }
+  });
+
+  // 初始化顏色選擇器
+  const colorBoxes = document.querySelectorAll('.color-box');
+  colorBoxes.forEach(box => {
+    const color = box.dataset.color;
+    box.style.backgroundColor = color;
+    
+    box.addEventListener('click', () => {
+      if (selectedLine >= 0) {
+        const words = highlightWordsInput.value.split('\n');
+        const word = words[selectedLine];
+        if (word) {
+          wordColors[word] = color;
+          // 保存顏色設置
+          chrome.storage.sync.set({ highlightColors: wordColors });
+          
+          // 更新預覽
+          updatePreview();
+          
+          // 更新內容頁的高亮
+          chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+            chrome.tabs.sendMessage(tabs[0].id, {
+              action: "updateHighlightWords",
+              words: words,
+              colors: wordColors
+            }, function() {
+              // 強制觸發一次更新
+              chrome.tabs.sendMessage(tabs[0].id, {
+                action: "forceUpdateHighlights"
+              });
+            });
+          });
+        }
+      }
+    });
+  });
+
+  // 修改 highlightWordsInput 的點擊事件
+  highlightWordsInput.addEventListener('click', function(e) {
+    const text = this.value;
+    const start = this.selectionStart;
+    const lines = text.substr(0, start).split('\n');
+    selectedLine = lines.length - 1;
+  });
+
+  // 修改 updateHighlightWords 函數
+  function updateHighlightWords(text) {
+    const words = text.split('\n').filter(word => word.trim());
+    
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: "updateHighlightWords",
+        words: words,
+        colors: wordColors || {}
+      });
+    });
+  }
+
+  // 修改 updatePreview 函數
+  function updatePreview() {
+    // 清除舊的預覽
+    const oldPreviews = document.querySelectorAll('.highlight-preview');
+    oldPreviews.forEach(p => p.remove());
+
+    const textarea = highlightWordsInput;
+    const overlay = document.querySelector('.highlight-overlay');
+    const text = textarea.value;
+    const lines = text.split('\n');
+
+    // 創建一個隱藏的 div 來計算位置
+    const div = document.createElement('div');
+    div.style.cssText = `
+      position: absolute;
+      visibility: hidden;
+      white-space: pre-wrap;
+      width: ${textarea.clientWidth}px;
+      font: ${getComputedStyle(textarea).font};
+      line-height: ${getComputedStyle(textarea).lineHeight};
+      padding: ${getComputedStyle(textarea).padding};
+    `;
+    textarea.parentElement.appendChild(div);
+
+    // 使用完整文字來計算位置
+    div.textContent = text;
+    const range = document.createRange();
+    const textNode = div.firstChild;
+
+    lines.forEach((line, index) => {
+      if (!line.trim()) return;
+
+      // 找到這一行的開始位置
+      let lineStart = 0;
+      for (let i = 0; i < index; i++) {
+        lineStart += lines[i].length + 1;
+      }
+
+      // 使用 Range API 計算位置
+      range.setStart(textNode, lineStart);
+      range.setEnd(textNode, lineStart + line.length);
+      
+      // 獲取所有的 ClientRect
+      const rects = range.getClientRects();
+      const divRect = div.getBoundingClientRect();
+
+      // 為每一個 rect 創建一個預覽元素
+      for (let i = 0; i < rects.length; i++) {
+        const rect = rects[i];
+        
+        // 創建預覽元素
+        const preview = document.createElement('div');
+        preview.className = 'highlight-preview';
+        preview.style.top = `${rect.top - divRect.top}px`;
+        preview.style.left = `${rect.left - divRect.left}px`; //  是左邊距
+        preview.style.width = `${rect.width}px`;
+        preview.style.backgroundColor = wordColors[line] || 'rgba(50, 205, 50, 0.3)';
+        
+        // 保存原始位置
+        preview.dataset.originalTop = rect.top - divRect.top;
+        
+        // 將預覽元素添加到 overlay 中
+        overlay.appendChild(preview);
+      }
+    });
+
+    range.detach();
+    div.remove();
+    
+    // 立即更新滾動位置
+    updatePreviewsPosition();
+  }
+
+  // 修改 updatePreviewsPosition 函數
+  function updatePreviewsPosition() {
+    const textarea = highlightWordsInput;
+    const scrollTop = textarea.scrollTop;
+    const visibleHeight = textarea.clientHeight;
+    const totalHeight = textarea.scrollHeight;
+
+    const previews = document.querySelectorAll('.highlight-preview');
+    previews.forEach(preview => {
+      const originalTop = parseFloat(preview.dataset.originalTop);
+      const previewHeight = parseFloat(preview.style.height) || 21;
+      
+      // 計算相對於視窗的位置
+      const relativeTop = originalTop - scrollTop;
+      
+      // 判斷是否在可視範圍內（加上一些緩衝空間）
+      const buffer = previewHeight;
+      const isVisible = (relativeTop + previewHeight >= -buffer) && 
+                       (relativeTop <= visibleHeight + buffer) &&
+                       (originalTop <= totalHeight);
+
+      if (isVisible) {
+        preview.style.display = 'block';
+        preview.style.transform = `translateY(${scrollTop - 2.5}px)`; // 固定偏移 -2.5px
+      } else {
+        preview.style.display = 'none';
+      }
+    });
+  }
+
+  // 修改滾動事件處理
+  highlightWordsInput.addEventListener('scroll', function() {
+    requestAnimationFrame(() => {
+      const textarea = this;
+      const scrollTop = textarea.scrollTop;
+      const visibleHeight = textarea.clientHeight;
+      const totalHeight = textarea.scrollHeight;
+
+      const previews = document.querySelectorAll('.highlight-preview');
+      previews.forEach(preview => {
+        const originalTop = parseFloat(preview.dataset.originalTop);
+        const previewHeight = parseFloat(preview.style.height) || 21;
+        
+        // 計算相對於視窗的位置
+        const relativeTop = originalTop - scrollTop;
+        
+        // 保留可見性判斷
+        const buffer = previewHeight;
+        const isVisible = (relativeTop + previewHeight >= -buffer) && 
+                         (relativeTop <= visibleHeight + buffer) &&
+                         (originalTop <= totalHeight);
+
+        if (isVisible) {
+          preview.style.display = 'block';
+          // 修改這裡：使用原始位置來計算偏移
+          const translateY = -2.5 + (originalTop - scrollTop - originalTop); // 改為固定偏移 -2.5px
+          preview.style.transform = `translateY(${translateY}px)`;
+        } else {
+          preview.style.display = 'none';
+        }
+      });
+    });
+  });
+
+  // 在載入時初始化預覽
+  chrome.storage.sync.get(['highlightWords', 'highlightColors'], function(data) {
+    if (data.highlightColors) {
+      wordColors = data.highlightColors;
+    }
+    if (data.highlightWords) {
+      highlightWordsInput.value = data.highlightWords;
+    }
+    updatePreview();
+  });
+
+  // 監聽文字變更以更新預覽
+  highlightWordsInput.addEventListener('input', function() {
+    updatePreview();
+  });
 });

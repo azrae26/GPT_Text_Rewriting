@@ -14,13 +14,14 @@ function initializeExtension() {
     // 在 DOM 開始載入時就初始化高亮功能
     if (document.querySelector('textarea[name="content"]')) {
       window.TextHighlight.initialize();
-      // 使用 Promise.all 同時處理設定載入和高亮更新
+      // 使用 Promise.all 同時載入文字和顏色設置
       Promise.all([
         new Promise(resolve => {
-          chrome.storage.sync.get('highlightWords', function(data) {
+          chrome.storage.sync.get(['highlightWords', 'highlightColors'], function(data) {
             if (data.highlightWords) {
               const words = data.highlightWords.split('\n').filter(word => word.trim());
-              window.TextHighlight.setTargetWords(words);
+              // 同時設置文字和顏色
+              window.TextHighlight.setTargetWords(words, data.highlightColors || {});
             }
             resolve();
           });
@@ -183,7 +184,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
       break;
     case "updateHighlightWords":
-      window.TextHighlight.setTargetWords(request.words);
+      TextHighlight.setTargetWords(request.words, request.colors || {});
+      sendResponse({success: true});
+      break;
+    case "forceUpdateHighlights":
+      TextHighlight.forceUpdate();
       sendResponse({success: true});
       break;
   }

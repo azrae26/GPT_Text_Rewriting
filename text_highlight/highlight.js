@@ -307,28 +307,13 @@ const TextHighlight = {
     }
   },
 
-  /**
-   * 高亮顏色配置 - 循環使用的顏色陣列
-   */
-  highlightColors: [
-    'rgba(50, 205, 50, 0.3)',   // 綠色
-    'rgba(255, 105, 180, 0.3)', // 粉紅
-    'rgba(30, 144, 255, 0.3)',  // 藍色
-    'rgba(255, 165, 0, 0.3)',  // 橙色
-    'rgba(238, 130, 238, 0.3)', // 紫色
-    'rgba(255, 99, 71, 0.3)',   // 蕃茄紅
-    'rgba(218, 112, 214, 0.3)',  // 蘭花紫
-    'rgba(255, 215, 0, 0.3)',   // 金色
-    'rgba(64, 224, 208, 0.3)',  // 綠松石色
-    'rgba(135, 206, 235, 0.3)', // 天藍色
-  ],
-
   // 要高亮的文字陣列
   targetWords: [],
 
   // 設置要高亮的文字
-  setTargetWords(words) {
-    this.targetWords = words.filter(word => word.trim()); // 過濾空白文字
+  setTargetWords(words, colors = {}) {
+    this.targetWords = words.filter(word => word.trim());
+    this.wordColors = colors;
     this.updateHighlights();
   },
 
@@ -344,27 +329,22 @@ const TextHighlight = {
     /**
      * 創建標示元素
      */
-    createHighlight(position, width, lineHeight, colorIndex) {
+    createHighlight(position, width, lineHeight, color) {
       const highlight = document.createElement('div');
       highlight.className = 'text-highlight';
       
-      // 保存原始位置
-      const originalTop = position.top;
-      
       highlight.style.cssText = `
         position: absolute;
-        background-color: ${TextHighlight.getColorForIndex(colorIndex)};
+        background-color: ${color};
         height: ${lineHeight}px;
         width: ${width}px;
         left: ${position.left}px;
-        top: ${originalTop}px;
+        top: ${position.top}px;
         pointer-events: none;
         will-change: transform;
       `;
 
-      // 保存原始位置到 dataset
-      highlight.dataset.originalTop = originalTop;
-
+      highlight.dataset.originalTop = position.top;
       return highlight;
     }
   },
@@ -393,7 +373,7 @@ const TextHighlight = {
       const text = textArea.value;
       const styles = this.PositionCalculator.getTextAreaStyles(textArea);
       
-      // 如果文字沒有變化且沒有滾動，可以跳過更新
+      // 保留這個檢查
       if (this._lastText === text && this._lastScrollTop === textArea.scrollTop) {
         return;
       }
@@ -408,6 +388,9 @@ const TextHighlight = {
       this.targetWords.forEach((targetWord, wordIndex) => {
         if (!targetWord.trim()) return;
 
+        // 使用自定義顏色或預設顏色
+        const color = this.wordColors[targetWord] || 'rgba(50, 205, 50, 0.3)';
+        
         try {
           if (targetWord.startsWith('/') && targetWord.endsWith('/')) {
             // 正則表達式處理
@@ -438,7 +421,7 @@ const TextHighlight = {
                     position,
                     position.width,
                     styles.lineHeight,
-                    wordIndex
+                    color  // 直接傳入顏色而不是索引
                   );
                   
                   if (highlight) {
@@ -454,7 +437,7 @@ const TextHighlight = {
             let index = 0;
             while ((index = text.indexOf(targetWord, index)) !== -1) {
               positions.push(index);
-              index += 1; // 使用較小的步進值以避免遺漏重疊匹配
+              index += 1; // 使用較小的步值以避免遺漏重疊匹配
             }
 
             // 批次處理所有找到的位置
@@ -467,7 +450,7 @@ const TextHighlight = {
                   position,
                   position.width,
                   styles.lineHeight,
-                  wordIndex
+                  color  // 直接傳入顏色而不是索引
                 );
                 if (highlight) {
                   fragment.appendChild(highlight);
@@ -484,6 +467,18 @@ const TextHighlight = {
       container.appendChild(fragment);
       this.DOMManager.updateHighlightsVisibility();
     });
+  },
+
+  // 添加新的方法來更新顏色映射
+  setWordColors(colors) {
+    this.wordColors = colors;
+  },
+
+  // 在 TextHighlight 模組中添加強制更新方法
+  forceUpdate() {
+    this._lastText = null;      // 清除文字記錄
+    this._lastScrollTop = null; // 清除滾動位置記錄
+    this.updateHighlights();
   }
 };
 

@@ -91,8 +91,22 @@
 
   <div id="highlight-tab" class="main-tab-content">
     <div class="content">
-      <textarea id="highlight-words" 
-                placeholder="請輸入要高亮的文字，每個文字一行
+      <div class="color-picker">
+        <div class="color-box" data-color="rgba(50, 205, 50, 0.3)"></div>
+        <div class="color-box" data-color="rgba(255, 105, 180, 0.3)"></div>
+        <div class="color-box" data-color="rgba(30, 144, 255, 0.3)"></div>
+        <div class="color-box" data-color="rgba(255, 165, 0, 0.3)"></div>
+        <div class="color-box" data-color="rgba(238, 130, 238, 0.3)"></div>
+        <div class="color-box" data-color="rgba(255, 99, 71, 0.3)"></div>
+        <div class="color-box" data-color="rgba(218, 112, 214, 0.3)"></div>
+        <div class="color-box" data-color="rgba(255, 215, 0, 0.3)"></div>
+        <div class="color-box" data-color="rgba(64, 224, 208, 0.3)"></div>
+        <div class="color-box" data-color="rgba(135, 206, 235, 0.3)"></div>
+      </div>
+      <div class="highlight-container">
+        <div class="highlight-overlay"></div>
+        <textarea id="highlight-words" 
+                  placeholder="請輸入要高亮的文字，每個文字一行
 支援正則表達式，使用 /pattern/ 格式
 例如：
 營收
@@ -101,6 +115,7 @@
 消費型
 /\d+%/
 /Q[1-4]/"></textarea>
+      </div>
     </div>
   </div>
 
