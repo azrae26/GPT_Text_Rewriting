@@ -59,14 +59,16 @@ const TextHighlight = {
         overflow: hidden;
       `;
 
-      // 設置內層容器樣式
+      // 設置內層容器樣式，使用 max-height 限制高度
       container.style.cssText = `
         position: absolute;
         top: 0;
         left: 0;
         width: 100%;
         height: 100%;
+        max-height: ${textArea.offsetHeight}px;
         pointer-events: none;
+        overflow: hidden;
       `;
 
       // 將內層容器添加到外層容器
@@ -206,6 +208,11 @@ const TextHighlight = {
           overflow: hidden;
           background: none;
           pointer-events: none;
+          top: 0;
+          left: 14px;
+          transform: none;
+          max-height: ${textArea.offsetHeight}px;
+          height: ${textArea.offsetHeight}px;
         `;
         textArea.parentElement.appendChild(this.cache.div);
       }
@@ -217,8 +224,44 @@ const TextHighlight = {
         this.cache.positions.clear();
       }
 
+      // 添加可用區域的尺寸日誌
+      console.log('可用區域尺寸:', {
+        文本框: {
+          可視寬度: textArea.clientWidth,
+          可視高度: textArea.clientHeight,
+          實際寬度: textArea.offsetWidth,
+          實際高度: textArea.offsetHeight,
+          內容寬度: textArea.scrollWidth,
+          內容高度: textArea.scrollHeight,
+          捲軸位置: textArea.scrollTop,
+          水平捲軸: textArea.scrollLeft,
+          是否有捲軸: textArea.scrollHeight > textArea.clientHeight
+        },
+        測量容器: {
+          可視寬度: this.cache.div.clientWidth,
+          可視高度: this.cache.div.clientHeight,
+          內容寬度: this.cache.div.scrollWidth,
+          內容高度: this.cache.div.scrollHeight
+        }
+      });
+
+      // 重新設置 div 的尺寸以匹配當前的 textArea
+      if (this.cache.div) {
+        this.cache.div.style.width = `${textArea.clientWidth}px`;
+        // 清除舊的內容並重新設置
+        this.cache.div.textContent = text;
+        this.cache.lastText = text;
+      }
+
+      // 添加每個字的位置分析
       const range = document.createRange();
       const textNode = this.cache.div.firstChild;
+
+      // 分析每個字的位置
+      // console.log('\n=== 文字位置分析 ===');
+      // console.log(`字符 "${text[i]}" 位置:`, {...});
+
+      // 重新設置 range 到目標文字
       range.setStart(textNode, index);
       range.setEnd(textNode, index + matchedText.length);
 
@@ -229,16 +272,17 @@ const TextHighlight = {
 
       if (rects.length > 0) {
         const rect = rects[0];
-        const top = rect.top - divRect.top;
+        const textAreaRect = textArea.getBoundingClientRect();
+        
+        // 直接使用固定的計算公式
         const position = {
-          top: top,
-          left: rect.left - divRect.left + 14,
+          // 只需要減去參考點位置，再加上固定偏移
+          top: rect.top - textAreaRect.top + 17,  // 固定的上偏移
+          left: rect.left - textAreaRect.left + 14, // 固定的左偏移
           width: rect.width,
-          originalTop: top
+          originalTop: rect.top - textAreaRect.top + 17  // 保存相同的位置
         };
 
-        // 儲存到快取
-        this.cache.positions.set(cacheKey, position);
         return position;
       }
 
@@ -469,7 +513,7 @@ const TextHighlight = {
     });
   },
 
-  // 添加新的方法來更新顏色映射
+  // 添加新的方法來新顏色映射
   setWordColors(colors) {
     this.wordColors = colors;
   },
