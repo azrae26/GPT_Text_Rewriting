@@ -6,7 +6,157 @@ const ReplaceManager = {
     MIN_WIDTH: 75,  // 最小寬度
     MAX_WIDTH: 300, // 最大寬度
     PADDING: 24,    // padding總寬度
-    STORAGE_KEY: 'replacePosition' // 添加儲存位置的 key
+    STORAGE_KEY: 'replacePosition', // 添加儲存位置的 key
+    AUTO_REPLACE_KEY: 'autoReplaceRules', // 添加自動替換規則的存儲鍵
+    MANUAL_REPLACE_KEY: 'manualReplaceValues' // 添加手動替換組的存儲鍵
+  },
+
+  /** 自動替換規則 */
+  autoReplaceRules: [],
+
+  /** 創建手動替換組 */
+  _createManualReplaceGroup(textArea, options = {}) {
+    const { enableSelection = false, storageKey = null } = options;
+    
+    const group = document.createElement('div');
+    group.className = 'replace-main-group';
+
+    const fromInput = document.createElement('input');
+    fromInput.type = 'text';
+    fromInput.placeholder = '替換文字';
+    fromInput.className = 'replace-input';
+    fromInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+
+    const toInput = document.createElement('input');
+    toInput.type = 'text';
+    toInput.placeholder = '替換為';
+    toInput.className = 'replace-input';
+    toInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+
+    const replaceButton = document.createElement('button');
+    replaceButton.className = 'replace-button disabled';
+    this._updateReplaceButton(replaceButton, 0);
+
+    // 添加輸入事件來調整寬度
+    const adjustWidth = (input) => {
+      const text = input.value;
+      if (!text) {
+        input.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+        return;
+      }
+      
+      const span = document.createElement('span');
+      span.style.visibility = 'hidden';
+      span.style.position = 'absolute';
+      span.style.whiteSpace = 'pre';
+      span.style.font = window.getComputedStyle(input).font;
+      span.textContent = text;
+      document.body.appendChild(span);
+      
+      const textWidth = span.offsetWidth;
+      const width = Math.min(
+        Math.max(this.CONFIG.MIN_WIDTH, textWidth + this.CONFIG.PADDING),
+        this.CONFIG.MAX_WIDTH
+      );
+      input.style.cssText = `width: ${width}px !important;`;
+      
+      span.remove();
+    };
+
+    // 更新按鈕狀態
+    const updateButton = () => {
+      const text = textArea.value;
+      const searchText = fromInput.value.trim();
+      
+      if (!searchText) {
+        this._updateReplaceButton(replaceButton, 0);
+        return;
+      }
+
+      let count = 0;
+      try {
+        if (searchText.startsWith('/') && searchText.match(/\/[gimy]*$/)) {
+          const lastSlash = searchText.lastIndexOf('/');
+          const pattern = searchText.slice(1, lastSlash);
+          const flags = searchText.slice(lastSlash + 1);
+          const regex = new RegExp(pattern, flags);
+          count = (text.match(regex) || []).length;
+        } else {
+          count = (text.match(new RegExp(this._escapeRegExp(searchText), 'g')) || []).length;
+        }
+      } catch (error) {
+        console.error('計算匹配數量時出錯:', error);
+        count = 0;
+      }
+
+      this._updateReplaceButton(replaceButton, count);
+    };
+
+    // 綁定事件
+    [fromInput, toInput].forEach(input => {
+      input.addEventListener('input', () => {
+        adjustWidth(input);
+        updateButton();
+        if (storageKey) {
+          this._saveManualReplaceValues(fromInput.value, toInput.value, storageKey);
+        }
+      });
+    });
+
+    // 如果啟用選擇功能，添加選擇文字處理
+    if (enableSelection) {
+      const handleSelection = () => {
+        const selectedText = textArea.value.substring(
+          textArea.selectionStart,
+          textArea.selectionEnd
+        ).trim();
+        
+        if (selectedText) {
+          console.log('選中文字:', selectedText);
+          fromInput.value = selectedText;
+          fromInput.dispatchEvent(new Event('input'));
+        } else {
+          fromInput.value = '';
+          toInput.value = '';
+          fromInput.dispatchEvent(new Event('input'));
+        }
+      };
+
+      textArea.addEventListener('mouseup', handleSelection);
+      textArea.addEventListener('keyup', (e) => {
+        if (e.shiftKey || e.key === 'Shift') {
+          handleSelection();
+        }
+      });
+    }
+
+    replaceButton.addEventListener('click', () => {
+      this._handleReplace(textArea, fromInput.value, toInput.value);
+    });
+
+    // 如果有存儲鍵，載入保存的值
+    if (storageKey) {
+      chrome.storage.sync.get([storageKey], (result) => {
+        if (result[storageKey]) {
+          const { from, to } = result[storageKey];
+          fromInput.value = from || '';
+          toInput.value = to || '';
+          if (from) {
+            adjustWidth(fromInput);
+            updateButton();
+          }
+          if (to) {
+            adjustWidth(toInput);
+          }
+        }
+      });
+    }
+
+    group.appendChild(fromInput);
+    group.appendChild(toInput);
+    group.appendChild(replaceButton);
+
+    return group;
   },
 
   /** 初始化替換介面 */
@@ -90,126 +240,21 @@ const ReplaceManager = {
       document.removeEventListener('mouseup', handleMouseUp);
     };
 
-    // 創建輸入框和按鈕
-    const fromInput = document.createElement('input');
-    fromInput.type = 'text';
-    fromInput.placeholder = '替換文字';
-    fromInput.className = 'replace-input';
-    fromInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
-
-    const toInput = document.createElement('input');
-    toInput.type = 'text';
-    toInput.placeholder = '替換為';
-    toInput.className = 'replace-input';
-    toInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
-
-    const replaceButton = document.createElement('button');
-    replaceButton.id = 'replace-button';
-    replaceButton.className = 'replace-button disabled';
-    this._updateReplaceButton(replaceButton, 0);
-    
-    // 綁定事件
-    const updateButton = () => {
-      const text = textArea.value;
-      const searchText = fromInput.value.trim();
-      
-      if (!searchText) {
-        this._updateReplaceButton(replaceButton, 0);
-        return;
-      }
-
-      let count = 0;
-      try {
-        // 檢查是否為正則表達式格式
-        if (searchText.startsWith('/') && searchText.match(/\/[gimy]*$/)) {
-          const lastSlash = searchText.lastIndexOf('/');
-          const pattern = searchText.slice(1, lastSlash);
-          const flags = searchText.slice(lastSlash + 1);
-          const regex = new RegExp(pattern, flags);
-          count = (text.match(regex) || []).length;
-          console.log('使用正則表達式計數:', regex, count);
-        } else {
-          // 普通文字匹配
-          count = (text.match(new RegExp(this._escapeRegExp(searchText), 'g')) || []).length;
-          console.log('使用普通文字計數:', count);
-        }
-      } catch (error) {
-        console.error('計算匹配數量時出錯:', error);
-        count = 0;
-      }
-
-      this._updateReplaceButton(replaceButton, count);
-    };
-
-    // 添加輸入事件來調整寬度
-    const adjustWidth = (input) => {
-      const text = input.value;
-      if (!text) {
-        input.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
-        return;
-      }
-      
-      const span = document.createElement('span');
-      span.style.visibility = 'hidden';
-      span.style.position = 'absolute';
-      span.style.whiteSpace = 'pre';
-      span.style.font = window.getComputedStyle(input).font;
-      span.textContent = text;
-      document.body.appendChild(span);
-      
-      const textWidth = span.offsetWidth;
-      const width = Math.min(
-        Math.max(this.CONFIG.MIN_WIDTH, textWidth + this.CONFIG.PADDING),
-        this.CONFIG.MAX_WIDTH
-      );
-      input.style.cssText = `width: ${width}px !important;`;
-      
-      span.remove();
-    };
-
-    // 處理選中文字
-    const handleSelection = () => {
-      const selectedText = textArea.value.substring(
-        textArea.selectionStart,
-        textArea.selectionEnd
-      ).trim();
-      
-      if (selectedText) {
-        console.log('選中文字:', selectedText);
-        fromInput.value = selectedText;
-        fromInput.dispatchEvent(new Event('input'));
-      } else {
-        fromInput.value = '';
-        toInput.value = '';
-        fromInput.dispatchEvent(new Event('input'));
-      }
-    };
-
-    // 綁定事件監聽器
-    [fromInput, toInput].forEach(input => {
-      input.addEventListener('input', () => {
-        adjustWidth(input);
-        updateButton();
-      });
+    // 創建兩個手動替換組
+    const mainGroup = this._createManualReplaceGroup(textArea, { 
+      enableSelection: true 
+    });
+    const secondGroup = this._createManualReplaceGroup(textArea, { 
+      storageKey: this.CONFIG.MANUAL_REPLACE_KEY 
     });
 
-    textArea.addEventListener('input', updateButton);
-    textArea.addEventListener('mouseup', handleSelection);
-    textArea.addEventListener('keyup', (e) => {
-      if (e.shiftKey || e.key === 'Shift') {
-        handleSelection();
-      }
-    });
-
-    replaceButton.addEventListener('click', () => {
-      this._handleReplace(textArea, fromInput.value, toInput.value);
-    });
-
-    // 添加元素
+    // 將拖動圖示和替換組添加到主容器
     container.appendChild(dragHandle);
-    container.appendChild(fromInput);
-    container.appendChild(toInput);
-    container.appendChild(replaceButton);
+    container.appendChild(mainGroup);
+    container.appendChild(secondGroup);
+
+    // 添加自動替換組
+    this._initializeAutoReplaceGroups(container, textArea);
 
     // 插入到文本區域上方
     const parent = textArea.parentElement;
@@ -240,19 +285,14 @@ const ReplaceManager = {
     const originalText = textArea.value;
     
     try {
-      // 檢查是否為正則表達式格式 (以 / 開始和結束)
       let regex;
       if (fromText.startsWith('/') && fromText.match(/\/[gimy]*$/)) {
-        // 從字符串創建正則表達式，例如 "/pattern/gi"
         const lastSlash = fromText.lastIndexOf('/');
         const pattern = fromText.slice(1, lastSlash);
         const flags = fromText.slice(lastSlash + 1);
         regex = new RegExp(pattern, flags);
-        console.log('使用正則表達式替換:', regex);
       } else {
-        // 使用普通文字替換
         regex = new RegExp(this._escapeRegExp(fromText), 'g');
-        console.log('使用普通文字替換');
       }
 
       const newText = textArea.value.replace(regex, toText);
@@ -260,14 +300,41 @@ const ReplaceManager = {
       if (originalText !== newText) {
         textArea.value = newText;
         textArea.dispatchEvent(new Event('input', { bubbles: true }));
-        window.UndoManager.saveState(textArea);
+        
+        // 觸發所有替換組的按鈕更新
+        document.querySelectorAll('.replace-main-group').forEach(group => {
+          const fromInput = group.querySelector('input:first-child');
+          const button = group.querySelector('.replace-button');
+          if (fromInput && button) {
+            const searchText = fromInput.value.trim();
+            if (searchText) {
+              let count = 0;
+              try {
+                if (searchText.startsWith('/') && searchText.match(/\/[gimy]*$/)) {
+                  const lastSlash = searchText.lastIndexOf('/');
+                  const pattern = searchText.slice(1, lastSlash);
+                  const flags = searchText.slice(lastSlash + 1);
+                  const regex = new RegExp(pattern, flags);
+                  count = (newText.match(regex) || []).length;
+                } else {
+                  count = (newText.match(new RegExp(this._escapeRegExp(searchText), 'g')) || []).length;
+                }
+              } catch (error) {
+                console.error('計算匹配數量時出錯:', error);
+                count = 0;
+              }
+              this._updateReplaceButton(button, count);
+            }
+          }
+        });
+        
         console.log('替換完成');
       } else {
         console.log('沒有內容被替換');
       }
     } catch (error) {
       console.error('替換錯誤:', error);
-      alert('正則表達式格式錯誤: ' + error.message);
+      alert('替換錯誤: ' + error.message);
     }
   },
 
@@ -284,6 +351,165 @@ const ReplaceManager = {
       container.remove();
       console.log('替換介面已移除');
     }
+  },
+
+  /** 初始化自動替換組 */
+  _initializeAutoReplaceGroups(container, textArea) {
+    // 創建垂直容器
+    const autoContainer = document.createElement('div');
+    autoContainer.className = 'auto-replace-container';
+
+    // 載入保存的規則
+    chrome.storage.sync.get([this.CONFIG.AUTO_REPLACE_KEY], (result) => {
+      this.autoReplaceRules = result[this.CONFIG.AUTO_REPLACE_KEY] || [];
+      
+      // 創建3組自動替換框
+      for (let i = 0; i < 3; i++) {
+        const group = this._createAutoReplaceGroup(textArea, i);
+        autoContainer.appendChild(group);
+        
+        // 如果有保存的規則，填入內容並設置狀態
+        if (this.autoReplaceRules[i]) {
+          const { from, to, enabled } = this.autoReplaceRules[i];
+          const inputs = group.querySelectorAll('input[type="text"]');
+          inputs[0].value = from;
+          inputs[1].value = to;
+          group.querySelector('input[type="checkbox"]').checked = enabled;
+        }
+      }
+
+      // 在初始化完成後立即執行一次自動替換
+      this._handleAutoReplace(textArea);
+    });
+
+    container.appendChild(autoContainer);
+
+    // 監聽文本變化，執行自動替換
+    textArea.addEventListener('input', () => this._handleAutoReplace(textArea));
+  },
+
+  /** 創建單個自動替換組 */
+  _createAutoReplaceGroup(textArea, index) {
+    const group = document.createElement('div');
+    group.className = 'auto-replace-group';
+
+    const fromInput = document.createElement('input');
+    fromInput.type = 'text';
+    fromInput.placeholder = '自動替換';
+    fromInput.className = 'replace-input';
+    fromInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+
+    const toInput = document.createElement('input');
+    toInput.type = 'text';
+    toInput.placeholder = '替換為';
+    toInput.className = 'replace-input';
+    toInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'auto-replace-checkbox';
+
+    // 添加輸入事件來調整寬度
+    const adjustWidth = (input) => {
+      const text = input.value;
+      if (!text) {
+        input.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+        return;
+      }
+      
+      const span = document.createElement('span');
+      span.style.visibility = 'hidden';
+      span.style.position = 'absolute';
+      span.style.whiteSpace = 'pre';
+      span.style.font = window.getComputedStyle(input).font;
+      span.textContent = text;
+      document.body.appendChild(span);
+      
+      const textWidth = span.offsetWidth;
+      const width = Math.min(
+        Math.max(this.CONFIG.MIN_WIDTH, textWidth + this.CONFIG.PADDING),
+        this.CONFIG.MAX_WIDTH
+      );
+      input.style.cssText = `width: ${width}px !important;`;
+      
+      span.remove();
+    };
+
+    // 綁定事件
+    [fromInput, toInput].forEach(input => {
+      // 輸入時調整寬度和保存
+      input.addEventListener('input', () => {
+        adjustWidth(input);  // 使用局部的 adjustWidth 函數
+        this._saveAutoReplaceRules();
+      });
+
+      // 失去焦點時執行替換
+      input.addEventListener('blur', () => {
+        if (checkbox.checked && fromInput.value.trim() && toInput.value.trim()) {
+          this._handleAutoReplace(textArea);
+        }
+      });
+    });
+
+    checkbox.addEventListener('change', () => {
+      this._saveAutoReplaceRules();
+      if (checkbox.checked && fromInput.value.trim() && toInput.value.trim()) {
+        this._handleAutoReplace(textArea);
+      }
+    });
+
+    group.appendChild(fromInput);
+    group.appendChild(toInput);
+    group.appendChild(checkbox);
+
+    return group;
+  },
+
+  /** 保存自動替換規則 */
+  _saveAutoReplaceRules() {
+    const rules = Array.from(document.querySelectorAll('.auto-replace-group')).map(group => {
+      const inputs = group.querySelectorAll('input[type="text"]');
+      return {
+        from: inputs[0].value,
+        to: inputs[1].value,
+        enabled: group.querySelector('input[type="checkbox"]').checked
+      };
+    });
+
+    this.autoReplaceRules = rules;
+    chrome.storage.sync.set({ [this.CONFIG.AUTO_REPLACE_KEY]: rules });
+  },
+
+  /** 執行自動替換 */
+  _handleAutoReplace(textArea) {
+    let text = textArea.value;
+    let changed = false;
+
+    this.autoReplaceRules.forEach(rule => {
+      if (rule.enabled && rule.from.trim()) {
+        const regex = new RegExp(this._escapeRegExp(rule.from), 'g');
+        const newText = text.replace(regex, rule.to);
+        if (newText !== text) {
+          text = newText;
+          changed = true;
+        }
+      }
+    });
+
+    if (changed) {
+      textArea.value = text;
+      textArea.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  },
+
+  /** 保存手動替換值 */
+  _saveManualReplaceValues(from, to, key) {
+    chrome.storage.sync.set({
+      [key]: {
+        from: from,
+        to: to
+      }
+    });
   }
 };
 
