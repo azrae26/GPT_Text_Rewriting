@@ -1,12 +1,10 @@
 /** 手動替換管理模組 */
 const ManualReplaceManager = {
   CONFIG: {
-    MIN_WIDTH: 75,
-    MAX_WIDTH: 300,
-    PADDING: 24,
-    STORAGE_KEY: 'replacePosition',
-    MANUAL_REPLACE_KEY: 'manualReplaceValues',
-    EXTRA_GROUPS_KEY: 'extraManualGroups'
+    MIN_WIDTH: 75, // 最小寬度
+    MAX_WIDTH: 300, // 最大寬度
+    PADDING: 24, // 內邊距
+    MANUAL_REPLACE_KEY: 'manualReplaceRules' // 儲存鍵名稱
   },
 
   /** UI 創建相關方法 */
@@ -30,11 +28,10 @@ const ManualReplaceManager = {
     },
 
     /** 創建控制按鈕 */
-    createControlButtons(isSecondGroup, addCallback, removeCallback) {
+    createControlButtons(addCallback, removeCallback) {
       const container = document.createElement('div');
       container.className = 'replace-group-controls';
 
-      // 先創建加號按鈕
       const addButton = document.createElement('button');
       addButton.textContent = '+';
       addButton.className = 'replace-control-button';
@@ -42,7 +39,6 @@ const ManualReplaceManager = {
       addButton.onclick = addCallback;
       container.appendChild(addButton);
 
-      // 再創建減號按鈕
       const removeButton = document.createElement('button');
       removeButton.textContent = '-';
       removeButton.className = 'replace-control-button';
@@ -54,249 +50,41 @@ const ManualReplaceManager = {
     }
   },
 
-  /** 事件處理相關方法 */
-  EventHandlers: {
-    /** 處理輸入框寬度調整 */
-    handleInputWidth(input, config) {
-      const text = input.value;
-      if (!text) {
-        input.style.cssText = `width: ${config.MIN_WIDTH}px !important;`;
-        return;
-      }
-
-      const span = document.createElement('span');
-      span.style.cssText = `
-        visibility: hidden;
-        position: absolute;
-        white-space: pre;
-        font: ${window.getComputedStyle(input).font};
-      `;
-      span.textContent = text;
-      document.body.appendChild(span);
-
-      const width = Math.min(
-        Math.max(config.MIN_WIDTH, span.offsetWidth + config.PADDING),
-        config.MAX_WIDTH
-      );
-      input.style.cssText = `width: ${width}px !important;`;
-
-      span.remove();
-    },
-
-    /** 處理文字選擇 */
-    handleTextSelection(textArea, fromInput, toInput) {
-      const selectedText = textArea.value.substring(
-        textArea.selectionStart,
-        textArea.selectionEnd
-      ).trim();
-
-      if (selectedText) {
-        console.log('選中文字:', selectedText);
-        fromInput.value = selectedText;
-        fromInput.dispatchEvent(new Event('input'));
-      } else {
-        fromInput.value = '';
-        toInput.value = '';
-        fromInput.dispatchEvent(new Event('input'));
-      }
-    }
-  },
-
-  /** 存儲相關方法 */
-  Storage: {
-    /** 保存替換值 */
-    saveReplaceValues(from, to, key) {
-      chrome.storage.sync.set({
-        [key]: { from, to }
-      });
-    },
-
-    /** 載入替換值 */
-    loadReplaceValues(key, callback) {
-      chrome.storage.sync.get([key], (result) => {
-        if (result[key]) {
-          callback(result[key]);
-        }
-      });
-    },
-
-    /** 清理存儲數據 */
-    clearStorage(pattern) {
-      chrome.storage.sync.get(null, (items) => {
-        Object.keys(items)
-          .filter(key => key.startsWith(pattern))
-          .forEach(key => chrome.storage.sync.remove(key));
-      });
-    }
-  },
-
-  /** 替換操作相關方法 */
-  ReplaceOperations: {
-    /** 執行替換 */
-    executeReplace(textArea, fromText, toText, updateButtonCallback) {
-      fromText = fromText.trim();
-      if (!fromText || !textArea.value) {
-        console.log('替換條件不符合');
-        return;
-      }
-
-      console.log(`執行替換操作: "${fromText}" -> "${toText}"`);
-      try {
-        const regex = this.createRegex(fromText);
-        const newText = textArea.value.replace(regex, toText);
-
-        if (newText !== textArea.value) {
-          textArea.value = newText;
-          textArea.dispatchEvent(new Event('input', { bubbles: true }));
-          requestAnimationFrame(() => updateButtonCallback(textArea));
-          console.log('替換完成');
-        } else {
-          console.log('沒有內容被替換');
-        }
-      } catch (error) {
-        console.error('替換錯誤:', error);
-        alert('替換錯誤: ' + error.message);
-      }
-    },
-
-    /** 創建正則表達式 */
-    createRegex(text) {
-      if (text.startsWith('/') && text.match(/\/[gim]*$/)) {
-        const lastSlash = text.lastIndexOf('/');
-        const pattern = text.slice(1, lastSlash);
-        const flags = text.slice(lastSlash + 1);
-        return new RegExp(pattern, flags || 'g');
-      }
-      return new RegExp(this.escapeRegExp(text), 'g');
-    },
-
-    /** 轉義正則表達式特殊字符 */
-    escapeRegExp(string) {
-      return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    }
-  },
-
-  /** 按鈕狀態管理相關方法 */
-  ButtonState: {
-    /** 更新按鈕狀態 */
-    updateButtonState(searchText, text, button) {
-      searchText = searchText.trim();
-      if (!searchText) {
-        this.setButtonState(button, 0);
-        return;
-      }
-
-      try {
-        const regex = ManualReplaceManager.ReplaceOperations.createRegex(searchText);
-        const count = (text.match(regex) || []).length;
-        this.setButtonState(button, count);
-      } catch (error) {
-        console.error('計算匹配數量時出錯:', error);
-        this.setButtonState(button, 0);
-      }
-    },
-
-    /** 設置按鈕狀態 */
-    setButtonState(button, count) {
-      button.textContent = count > 0 ? `替換 (${count})` : '替換';
-      button.classList.toggle('disabled', count === 0);
-    },
-
-    /** 更新所有按鈕狀態 */
-    updateAllButtonStates(textArea) {
-      document.querySelectorAll('.replace-main-group, .replace-extra-group').forEach(group => {
-        const fromInput = group.querySelector('input:first-child');
-        const button = group.querySelector('.replace-button');
-        if (fromInput && button) {
-          this.updateButtonState(fromInput.value, textArea.value, button);
-        }
-      });
-    }
-  },
-
   /** 組管理相關方法 */
   GroupManager: {
     /** 添加新組 */
     addGroup(referenceGroup, textArea) {
       const container = referenceGroup.parentElement;
-      const groups = Array.from(container.querySelectorAll('.replace-extra-group'));
-      
-      const newGroup = ManualReplaceManager.createReplaceGroup(textArea, {
-        storageKey: `${ManualReplaceManager.CONFIG.MANUAL_REPLACE_KEY}_${groups.length}`,
-        showControls: true
-      });
-
-      container.appendChild(newGroup);
-      this.saveGroups(container);
+      const group = ManualReplaceManager.createReplaceGroup(textArea);
+      container.appendChild(group);
+      ManualReplaceManager.saveReplaceRules(container);
     },
 
     /** 移除組 */
     removeGroup(group) {
       const container = group.parentElement;
-      group.remove();
-      this.saveGroups(container);
-    },
-
-    /** 保存所有組 */
-    saveGroups(container) {
-      const groups = this.getValidGroups(container);
-      this.saveGroupsToStorage(groups);
-    },
-
-    /** 獲取有效的組 */
-    getValidGroups(container) {
-      return Array.from(container.querySelectorAll('.replace-extra-group'))
-        .filter(group => {
-          const controls = group.querySelector('.replace-group-controls');
-          return controls && controls.children.length > 1;
-        })
-        .map(group => {
-          const inputs = group.querySelectorAll('input[type="text"]');
-          return {
-            from: inputs[0].value.trim(),
-            to: inputs[1].value.trim()
-          };
-        })
-        .filter(group => group.from || group.to);
-    },
-
-    /** 保存組到存儲 */
-    saveGroupsToStorage(groups) {
-      const storageData = {
-        [ManualReplaceManager.CONFIG.EXTRA_GROUPS_KEY]: groups.map((group, index) => {
-          const storageKey = `${ManualReplaceManager.CONFIG.MANUAL_REPLACE_KEY}_${index}`;
-          return {
-            ...group,
-            storageKey
-          };
-        })
-      };
-
-      groups.forEach((group, index) => {
-        const storageKey = `${ManualReplaceManager.CONFIG.MANUAL_REPLACE_KEY}_${index}`;
-        storageData[storageKey] = { from: group.from, to: group.to };
-      });
-
-      chrome.storage.sync.set(storageData);
+      const groups = container.querySelectorAll('.replace-extra-group');
+      
+      if (groups.length === 1) {
+        const inputs = group.querySelectorAll('input[type="text"]');
+        inputs.forEach(input => input.value = '');
+        group.querySelector('.replace-button').textContent = '替換';
+        group.querySelector('.replace-button').classList.add('disabled');
+      } else {
+        group.remove();
+      }
+      
+      ManualReplaceManager.saveReplaceRules(container);
     }
   },
 
   /** 創建替換組 */
-  createReplaceGroup(textArea, options = {}) {
-    const {
-      enableSelection = false,
-      storageKey = null,
-      showControls = false,
-      initialData = null,
-      isSecondGroup = storageKey === this.CONFIG.MANUAL_REPLACE_KEY
-    } = options;
-
+  createReplaceGroup(textArea, isMainGroup = false, initialData = null) {
     const group = document.createElement('div');
-    group.className = enableSelection ? 'replace-main-group' : 'replace-extra-group';
+    group.className = isMainGroup ? 'replace-main-group' : 'replace-extra-group';
 
-    if (showControls) {
+    if (!isMainGroup) {
       const controlButtons = this.UI.createControlButtons(
-        isSecondGroup,
         () => this.GroupManager.addGroup(group, textArea),
         () => this.GroupManager.removeGroup(group)
       );
@@ -307,19 +95,13 @@ const ManualReplaceManager = {
     const toInput = this.UI.createInput('替換為', this.CONFIG.MIN_WIDTH);
     const replaceButton = this.UI.createReplaceButton();
 
-    this.setupGroupEvents(group, textArea, fromInput, toInput, replaceButton, {
-      enableSelection,
-      isSecondGroup,
-      storageKey
-    });
-
     if (initialData) {
-      this.initializeGroupData(fromInput, toInput, replaceButton, initialData, textArea);
-    } else if (storageKey) {
-      this.Storage.loadReplaceValues(storageKey, data => {
-        this.initializeGroupData(fromInput, toInput, replaceButton, data, textArea);
-      });
+      fromInput.value = initialData.from || '';
+      toInput.value = initialData.to || '';
+      this.updateButtonState(fromInput.value, textArea.value, replaceButton);
     }
+
+    this.setupGroupEvents(group, textArea, fromInput, toInput, replaceButton, isMainGroup);
 
     group.appendChild(fromInput);
     group.appendChild(toInput);
@@ -329,95 +111,194 @@ const ManualReplaceManager = {
   },
 
   /** 設置組事件 */
-  setupGroupEvents(group, textArea, fromInput, toInput, replaceButton, options) {
-    const { enableSelection, isSecondGroup, storageKey } = options;
+  setupGroupEvents(group, textArea, fromInput, toInput, replaceButton, isMainGroup) {
+    const handleInput = (input) => {
+      this.adjustInputWidth(input);
+      this.updateButtonState(fromInput.value, textArea.value, replaceButton);
+      if (!isMainGroup) {
+        this.saveReplaceRules(group.parentElement);
+      }
+    };
 
-    // 輸入事件
     [fromInput, toInput].forEach(input => {
-      input.addEventListener('input', () => {
-        this.EventHandlers.handleInputWidth(input, this.CONFIG);
-        this.ButtonState.updateButtonState(fromInput.value, textArea.value, replaceButton);
-        
-        if (!enableSelection && !isSecondGroup) {
-          this.GroupManager.saveGroups(group.parentElement);
-        } else if (storageKey) {
-          this.Storage.saveReplaceValues(fromInput.value, toInput.value, storageKey);
-        }
-      });
+      input.addEventListener('input', () => handleInput(input));
     });
 
-    // 文本區域變化事件
+    // 文本區域變化時更新按鈕狀態
     textArea.addEventListener('input', () => {
-      this.ButtonState.updateButtonState(fromInput.value, textArea.value, replaceButton);
+      this.updateButtonState(fromInput.value, textArea.value, replaceButton);
     });
 
-    // 替換按鈕事件
     replaceButton.addEventListener('click', () => {
-      this.ReplaceOperations.executeReplace(
-        textArea,
-        fromInput.value,
-        toInput.value,
-        () => this.ButtonState.updateAllButtonStates(textArea)
-      );
+      this.executeReplace(textArea, fromInput.value, toInput.value, replaceButton);
     });
 
-    // 選擇文字功能
-    if (enableSelection) {
+    // 主組添加文字選擇功能
+    if (isMainGroup) {
       textArea.addEventListener('mouseup', () => {
-        this.EventHandlers.handleTextSelection(textArea, fromInput, toInput);
+        this.handleTextSelection(textArea, fromInput, toInput);
       });
 
       textArea.addEventListener('keyup', (e) => {
         if (e.shiftKey || e.key === 'Shift') {
-          this.EventHandlers.handleTextSelection(textArea, fromInput, toInput);
+          this.handleTextSelection(textArea, fromInput, toInput);
         }
+      });
+
+      // 添加失去焦點事件
+      textArea.addEventListener('blur', () => {
+        this.handleTextSelection(textArea, fromInput, toInput);
       });
     }
   },
 
-  /** 初始化組數據 */
-  initializeGroupData(fromInput, toInput, replaceButton, data, textArea) {
-    if (data.from) {
-      fromInput.value = data.from;
-      this.EventHandlers.handleInputWidth(fromInput, this.CONFIG);
-      this.ButtonState.updateButtonState(data.from, textArea.value, replaceButton);
+  /** 處理文字選擇 */
+  handleTextSelection(textArea, fromInput, toInput) {
+    const selectedText = textArea.value.substring(
+      textArea.selectionStart,
+      textArea.selectionEnd
+    ).trim();
+
+    if (selectedText) {
+      fromInput.value = selectedText;
+      fromInput.dispatchEvent(new Event('input'));
+    } else {
+      // 當沒有選中文字時清空輸入框
+      fromInput.value = '';
+      toInput.value = '';
+      fromInput.dispatchEvent(new Event('input'));
     }
-    if (data.to) {
-      toInput.value = data.to;
-      this.EventHandlers.handleInputWidth(toInput, this.CONFIG);
+  },
+
+  /** 調整輸入框寬度 */
+  adjustInputWidth(input) {
+    const text = input.value;
+    if (!text) {
+      input.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+      return;
     }
+
+    const span = document.createElement('span');
+    span.style.cssText = `
+      visibility: hidden;
+      position: absolute;
+      white-space: pre;
+      font: ${window.getComputedStyle(input).font};
+    `;
+    span.textContent = text;
+    document.body.appendChild(span);
+
+    const width = Math.min(
+      Math.max(this.CONFIG.MIN_WIDTH, span.offsetWidth + this.CONFIG.PADDING),
+      this.CONFIG.MAX_WIDTH
+    );
+    input.style.cssText = `width: ${width}px !important;`;
+
+    span.remove();
+  },
+
+  /** 更新按鈕狀態 */
+  updateButtonState(searchText, text, button) {
+    // 先檢查搜索文字是否為空
+    searchText = searchText.trim();
+    if (!searchText) {
+      button.textContent = '替換';
+      button.classList.add('disabled');
+      return;
+    }
+
+    try {
+      const regex = this.createRegex(searchText);
+      const count = (text.match(regex) || []).length;
+      button.textContent = count > 0 ? `替換 (${count})` : '替換';
+      button.classList.toggle('disabled', count === 0);
+    } catch (error) {
+      button.textContent = '替換';
+      button.classList.add('disabled');
+    }
+  },
+
+  /** 更新所有按鈕狀態 */
+  updateAllButtonStates(textArea) {
+    document.querySelectorAll('.replace-main-group, .replace-extra-group').forEach(group => {
+      const fromInput = group.querySelector('input:first-child');
+      const button = group.querySelector('.replace-button');
+      if (fromInput && button) {
+        this.updateButtonState(fromInput.value, textArea.value, button);
+      }
+    });
+  },
+
+  /** 執行替換 */
+  executeReplace(textArea, fromText, toText, button) {
+    fromText = fromText.trim();
+    if (!fromText || !textArea.value) return;
+
+    try {
+      const regex = this.createRegex(fromText);
+      const newText = textArea.value.replace(regex, toText);
+
+      if (newText !== textArea.value) {
+        textArea.value = newText;
+        textArea.dispatchEvent(new Event('input', { bubbles: true }));
+        // 直接更新當前按鈕狀態
+        this.updateButtonState(fromText, newText, button);
+      }
+    } catch (error) {
+      console.error('替換錯誤:', error);
+    }
+  },
+
+  /** 創建正則表達式 */
+  createRegex(text) {
+    if (text.startsWith('/') && text.match(/\/[gim]*$/)) {
+      const lastSlash = text.lastIndexOf('/');
+      const pattern = text.slice(1, lastSlash);
+      const flags = text.slice(lastSlash + 1);
+      return new RegExp(pattern, flags || 'g');
+    }
+    return new RegExp(this.escapeRegExp(text), 'g');
+  },
+
+  /** 轉義正則表達式特殊字符 */
+  escapeRegExp(string) {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   },
 
   /** 初始化手動替換組 */
-  initializeManualGroups(container, textArea) {
+  initializeManualGroups(mainContainer, otherContainer, textArea) {
+    // 創建主組
+    mainContainer.appendChild(this.createReplaceGroup(textArea, true));
+
     const manualContainer = document.createElement('div');
     manualContainer.className = 'manual-replace-container';
 
-    // 創建主組
-    manualContainer.appendChild(this.createReplaceGroup(textArea, { 
-      enableSelection: true 
-    }));
-
     // 載入額外組
-    this.Storage.loadReplaceValues(this.CONFIG.EXTRA_GROUPS_KEY, (result) => {
-      const groups = (result || []).filter(group => group.from.trim() || group.to.trim());
+    chrome.storage.sync.get([this.CONFIG.MANUAL_REPLACE_KEY], (result) => {
+      const rules = (result[this.CONFIG.MANUAL_REPLACE_KEY] || [])
+        .filter(rule => rule.from?.trim() || rule.to?.trim());
       
-      // 至少創建一個額外組
-      if (groups.length === 0) {
-        groups.push({});
-      }
-
-      // 創建所有組
-      groups.forEach(groupData => {
-        manualContainer.appendChild(this.createReplaceGroup(textArea, {
-          showControls: true,
-          initialData: groupData
-        }));
+      if (rules.length === 0) rules.push({});
+      
+      rules.forEach(rule => {
+        manualContainer.appendChild(this.createReplaceGroup(textArea, false, rule));
       });
     });
 
-    container.appendChild(manualContainer);
-    return manualContainer;
+    otherContainer.appendChild(manualContainer);
+  },
+
+  /** 保存替換規則 */
+  saveReplaceRules(container) {
+    const rules = Array.from(container.querySelectorAll('.replace-extra-group')).map(group => {
+      const inputs = group.querySelectorAll('input[type="text"]');
+      return {
+        from: inputs[0].value,
+        to: inputs[1].value
+      };
+    });
+
+    chrome.storage.sync.set({ [this.CONFIG.MANUAL_REPLACE_KEY]: rules });
   }
 };
 

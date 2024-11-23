@@ -36,14 +36,21 @@
 /* 改寫按鈕樣式 */
 #gpt-rewrite-button, #gpt-translate-button {
   padding: 5px 10px;
-  background-color: #4CAF50;
+  background-color: #5b8cdb;
   color: white;
   border: none;
   border-radius: 4px;
   cursor: pointer;
   font-size: 14px;
+  transition: 0.2s ease;
 }
 
+/* 改寫按鈕懸停效果 */
+#gpt-rewrite-button:hover, #gpt-translate-button:hover {
+  background-color: #1a73e8;
+}
+
+/* 取消按鈕樣式 */
 #gpt-translate-button.canceling {
   background-color: #dc3545;
 }

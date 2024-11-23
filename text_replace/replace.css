@@ -1,100 +1,28 @@
-/* 替換功能主容器 - 控制整體位置和排列方式 */
-.replace-controls {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+/* ===== 容器樣式 ===== */
+/* 主組容器 */
+.replace-controls-main {
   position: absolute;
   left: 14px;
   top: -22px;
   z-index: 2000;
 }
 
-/* 拖動圖示 - 用於移動整個替換功能組 */
-.replace-drag-handle {
-  position: absolute;
-  left: 5px;
-  top: 0;
+/* 其他組容器 */
+.replace-controls {
   display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 26px;
-  cursor: move;
-  color: #999;
-  user-select: none;
+  flex-direction: column;
+  gap: 6px;
+  position: fixed;
+  left: 50px;
+  top: 50px;
+  z-index: 2000;
 }
 
-/* 拖動圖示的點點樣式 */
-.replace-drag-handle::before {
-  content: "⋮⋮";
-  font-size: 13px !important;
-  line-height: 14px;
-  z-index: 1000;
-}
-
-/* 輸入框基本樣式 */
-.replace-input {
-  padding: 2px 8px !important;
-  border: 1px solid rgb(177, 177, 177) !important;
-  border-radius: 4px !important;
-  height: 26px;
-  box-sizing: border-box;
-  font-size: 13px !important;
-  line-height: 24px;
-  background-color: rgb(243, 244, 246) !important;
-  color: #333333;
-  -webkit-appearance: none !important;
-  -moz-appearance: none !important;
-  appearance: none !important;
-  transition: width 0.2s ease;
-}
-
-/* 輸入框懸停效果 */
-.replace-input:hover {
-  border-color: #5687b6 !important;
-}
-
-/* 輸入框焦點效果 */
-.replace-input:focus {
-  outline: none;
-  border-color: #5687b6 !important;
-}
-
-/* 輸入框佔位符文字樣式 */
-.replace-input::placeholder {
-  color: #b8b8b8;
-  font-size: 13px !important;
-}
-
-/* 替換按鈕基本樣式 */
-.replace-button {
-  padding: 2px 8px;
-  border: none;
-  border-radius: 4px;
-  background-color: #4CAF50;
-  color: white;
-  cursor: pointer;
-  height: 26px;
-  box-sizing: border-box;
-  font-size: 13px !important;
-  font-weight: 500;
-}
-
-/* 替換按鈕懸停效果 */
-.replace-button:hover {
-  background-color: #45a049;
-}
-
-/* 禁用狀態的替換按鈕 */
-.replace-button.disabled {
-  background-color: #e0e0e0;
-  color: #999999;
-  cursor: not-allowed;
-}
-
-/* 禁用狀態的替換按鈕懸停效果 */
-.replace-button.disabled:hover {
-  background-color: #e0e0e0;
+/* 手動替換組容器 */
+.manual-replace-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 /* 自動替換組容器 */
@@ -102,6 +30,22 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* ===== 組樣式 ===== */
+/* 主組樣式 */
+.replace-main-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+/* 額外手動組樣式 */
+.replace-extra-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-left: -11px;
 }
 
 /* 自動替換組樣式 */
@@ -112,30 +56,123 @@
   margin-left: -11px;
 }
 
-/* 自動替換組的複選框 */
-.auto-replace-checkbox {
+/* ===== 拖動圖示 ===== */
+.replace-drag-handle {
+  position: absolute;
+  left: -13px;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 16px;
-  height: 16px;
+  height: 26px;
+  cursor: move;
+  color: rgb(87 87 87);
+  font-weight: 600;
+  user-select: none;
+}
+
+.replace-drag-handle::before {
+  content: "⋮⋮";
+  font-size: 13px !important;
+  line-height: 14px;
+  z-index: 1000;
+}
+
+/* ===== 主輸入框樣式 ===== */
+.replace-main-group .replace-input {
+  padding: 1px 10px 2px !important;
+  border: 1px solid rgb(177, 177, 177) !important;
+  border-radius: 4px !important;
+  height: 32px;
+  box-sizing: border-box;
+  font-size: 15px !important;
+  line-height: 28px;
+  background-color: rgb(243, 244, 246) !important;
+  color: #333333;
+  transition: width 0.2s ease, border-color 0.2s ease;
+}
+
+.replace-main-group .replace-input::placeholder {
+  color: #b8b8b8;
+  font-size: 14.5px !important;
+}
+
+/* ===== 其他輸入框樣式 ===== */
+.replace-input {
+  padding: 2px 8px !important;
+  border: 1px solid rgb(177, 177, 177) !important;
+  border-radius: 4px !important;
+  height: 26px;
+  box-sizing: border-box;
+  font-size: 13px !important;
+  line-height: 24px;
+  background-color: rgb(243, 244, 246) !important;
+  color: #333333;
+  transition: width 0.2s ease, border-color 0.2s ease;
+}
+
+.replace-input::placeholder {
+    color: #b8b8b8;
+    font-size: 13px !important;
+  }
+
+/* ===== 共用輸入框樣式 ===== */
+.replace-main-group .replace-input:hover {
+  border-color: #1a73e8 !important;
+}
+
+.replace-input:focus {
+  outline: none;
+  border-color: #5b8cdb !important;
+}
+
+/* ===== 主替換按鈕樣式 ===== */
+.replace-main-group .replace-button {
+  padding: 5px 10px;
+  border: none;
+  border-radius: 4px;
+  background-color: #5b8cdb;
+  color: white;
   cursor: pointer;
+  height: 32px;
+  box-sizing: border-box;
+  font-size: 14px !important;
+  font-weight: 500;
+  transition: 0.2s ease;
 }
 
-/* 手動替換組基本樣式 */
-.replace-main-group {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  margin-left: 24px;
+/* ===== 其他替換按鈕樣式 ===== */
+.replace-button {
+  padding: 2px 8px;
+  border: none;
+  border-radius: 4px;
+  background-color: #5b8cdb;
+  color: white;
+  cursor: pointer;
+  height: 26px;
+  box-sizing: border-box;
+  font-size: 13px !important;
+  font-weight: 500;
+  transition: 0.2s ease;
 }
 
-/* 第二組及後續組的樣式 */
-.replace-extra-group {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  margin-left: -11px;
+/* ===== 共用替換按鈕樣式 ===== */
+.replace-button:hover {
+  background-color: #1a73e8;
 }
 
-/* 手動替換組的控制按鈕容器 */
+.replace-button.disabled {
+  background-color: #e0e0e0;
+  color: #999999;
+  cursor: not-allowed;
+}
+
+.replace-button.disabled:hover {
+  background-color: #e0e0e0;
+}
+
+/* ===== 控制按鈕樣式 ===== */
 .replace-group-controls {
   display: flex;
   flex-direction: row;
@@ -143,7 +180,6 @@
   gap: 4px;
 }
 
-/* 按鈕基本樣式 */
 .replace-control-button {
   padding: 0;
   width: 14px;
@@ -161,7 +197,6 @@
   pointer-events: none;
 }
 
-/* 按鈕內容區域 */
 .replace-control-button::before {
   content: attr(textContent);
   position: absolute;
@@ -173,7 +208,6 @@
   pointer-events: inherit;
 }
 
-/* 加號按鈕樣式 - 預設透明且無法點擊 */
 #replace-add-button {
   opacity: 0;
   pointer-events: none;
@@ -181,20 +215,17 @@
   z-index: 1000;
 }
 
-/* 最後一組的加號按鈕永遠顯示且可點擊 */
 .auto-replace-group:last-child #replace-add-button,
 .replace-extra-group:last-child #replace-add-button {
   opacity: 0.3;
   pointer-events: auto;
 }
 
-/* 加號按鈕懸停效果 */
 .auto-replace-group:last-child #replace-add-button:hover,
 .replace-extra-group:last-child #replace-add-button:hover {
   opacity: 1;
 }
 
-/* 減號按鈕樣式 - 所有組都顯示 */
 #replace-remove-button {
   pointer-events: inherit;
   margin-top: -3px;
@@ -206,20 +237,18 @@
   transition: all 0.2s ease;
 }
 
-/* 減號按鈕懸停效果 */
 #replace-remove-button:hover {
   opacity: 1;
 }
 
-/* 按鈕點擊效果 */
 .replace-control-button:active {
   transform: scale(0.9) !important;
 }
 
-/* 手動替換組容器 */
-.manual-replace-container {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+/* ===== 複選框樣式 ===== */
+.auto-replace-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
  

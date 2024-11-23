@@ -6,57 +6,53 @@ const ReplaceManager = {
 
   /** 初始化替換介面 */
   initializeReplaceUI() {
-    console.log('開始初始化替換介面');
-    if (!window.shouldEnableFeatures() || document.getElementById('text-replace-container')) {
-      console.log('不符合初始化替換介面條件');
-      return;
-    }
+    if (!window.shouldEnableFeatures() || document.getElementById('text-replace-container')) return;
 
     const textArea = document.querySelector('textarea[name="content"]');
-    if (!textArea) {
-      console.log('找不到文本區域');
-      return;
-    }
+    if (!textArea) return;
 
-    // 創建容器
-    const container = document.createElement('div');
-    container.id = 'text-replace-container';
-    container.className = 'replace-controls';
+    // 創建主組容器（第一組）
+    const mainContainer = document.createElement('div');
+    mainContainer.id = 'text-replace-main';
+    mainContainer.className = 'replace-controls-main';
 
-    // 載入儲存的位置
+    // 創建其他組容器（第二組和自動組）
+    const otherContainer = document.createElement('div');
+    otherContainer.id = 'text-replace-container';
+    otherContainer.className = 'replace-controls';
+
+    // 載入儲存的位置，如果沒有則使用預設位置
     chrome.storage.sync.get([this.CONFIG.STORAGE_KEY], (result) => {
-      if (result[this.CONFIG.STORAGE_KEY]) {
-        const { left, top } = result[this.CONFIG.STORAGE_KEY];
-        container.style.left = `${left}px`;
-        container.style.top = `${top}px`;
-      }
+      const position = result[this.CONFIG.STORAGE_KEY];
+      otherContainer.style.cssText = position 
+        ? `left: ${position.left}px; top: ${position.top}px;`
+        : 'right: 20px; top: 20px;';
     });
 
     // 添加拖動圖示
-    const dragHandle = document.createElement('div');
-    dragHandle.className = 'replace-drag-handle';
-    container.appendChild(dragHandle);
+    otherContainer.appendChild(document.createElement('div')).className = 'replace-drag-handle';
 
-    // 實現拖動功能
-    this._initializeDragFeature(container, dragHandle);
+    // 初始化替換組
+    window.ManualReplaceManager.initializeManualGroups(mainContainer, otherContainer, textArea);
+    window.AutoReplaceManager.initializeAutoReplaceGroups(otherContainer, textArea);
 
-    // 創建手動替換組
-    window.ManualReplaceManager.initializeManualGroups(container, textArea);
+    // 插入到頁面
+    textArea.parentElement.insertBefore(mainContainer, textArea);
+    document.body.appendChild(otherContainer);
 
-    // 添加自動替換組
-    window.AutoReplaceManager.initializeAutoReplaceGroups(container, textArea);
-
-    // 插入到文本區域上方
-    const parent = textArea.parentElement;
-    parent.insertBefore(container, textArea);
-    console.log('替換介面初始化完成');
+    // 簡化的拖動功能
+    this._initializeDragFeature(otherContainer);
   },
 
   /** 初始化拖動功能 */
-  _initializeDragFeature(container, dragHandle) {
+  _initializeDragFeature(container) {
     let isDragging = false;
     let startX, startY, startLeft, startTop;
 
+    // 找到拖動圖示元素
+    const dragHandle = container.querySelector('.replace-drag-handle');
+
+    // 只在拖動圖示上綁定事件
     dragHandle.addEventListener('mousedown', (e) => {
       isDragging = true;
       startX = e.clientX;
@@ -100,11 +96,13 @@ const ReplaceManager = {
   /** 移除替換介面 */
   removeReplaceUI() {
     console.log('移除替換介面');
-    const container = document.getElementById('text-replace-container');
-    if (container) {
-      container.remove();
-      console.log('替換介面已移除');
-    }
+    const mainContainer = document.getElementById('text-replace-main');
+    const otherContainer = document.getElementById('text-replace-container');
+    
+    if (mainContainer) mainContainer.remove();
+    if (otherContainer) otherContainer.remove();
+    
+    console.log('替換介面已移除');
   }
 };
 
