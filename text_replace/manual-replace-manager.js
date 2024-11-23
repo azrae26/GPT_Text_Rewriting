@@ -34,6 +34,7 @@ const ManualReplaceManager = {
       const container = document.createElement('div');
       container.className = 'replace-group-controls';
 
+      // 先創建加號按鈕
       const addButton = document.createElement('button');
       addButton.textContent = '+';
       addButton.className = 'replace-control-button';
@@ -41,14 +42,13 @@ const ManualReplaceManager = {
       addButton.onclick = addCallback;
       container.appendChild(addButton);
 
-      if (!isSecondGroup) {
-        const removeButton = document.createElement('button');
-        removeButton.textContent = '-';
-        removeButton.className = 'replace-control-button';
-        removeButton.id = 'replace-remove-button';
-        removeButton.onclick = removeCallback;
-        container.appendChild(removeButton);
-      }
+      // 再創建減號按鈕
+      const removeButton = document.createElement('button');
+      removeButton.textContent = '-';
+      removeButton.className = 'replace-control-button';
+      removeButton.id = 'replace-remove-button';
+      removeButton.onclick = removeCallback;
+      container.appendChild(removeButton);
 
       return container;
     }
@@ -262,19 +262,22 @@ const ManualReplaceManager = {
 
     /** 保存組到存儲 */
     saveGroupsToStorage(groups) {
-      ManualReplaceManager.Storage.clearStorage(ManualReplaceManager.CONFIG.MANUAL_REPLACE_KEY);
-      
+      const storageData = {
+        [ManualReplaceManager.CONFIG.EXTRA_GROUPS_KEY]: groups.map((group, index) => {
+          const storageKey = `${ManualReplaceManager.CONFIG.MANUAL_REPLACE_KEY}_${index}`;
+          return {
+            ...group,
+            storageKey
+          };
+        })
+      };
+
       groups.forEach((group, index) => {
         const storageKey = `${ManualReplaceManager.CONFIG.MANUAL_REPLACE_KEY}_${index}`;
-        ManualReplaceManager.Storage.saveReplaceValues(group.from, group.to, storageKey);
+        storageData[storageKey] = { from: group.from, to: group.to };
       });
 
-      chrome.storage.sync.set({
-        [ManualReplaceManager.CONFIG.EXTRA_GROUPS_KEY]: groups.map((group, index) => ({
-          ...group,
-          storageKey: `${ManualReplaceManager.CONFIG.MANUAL_REPLACE_KEY}_${index}`
-        }))
-      });
+      chrome.storage.sync.set(storageData);
     }
   },
 
@@ -390,33 +393,27 @@ const ManualReplaceManager = {
     const manualContainer = document.createElement('div');
     manualContainer.className = 'manual-replace-container';
 
-    // 創建第一組（支持選擇文字的組）
-    const mainGroup = this.createReplaceGroup(textArea, { 
+    // 創建主組
+    manualContainer.appendChild(this.createReplaceGroup(textArea, { 
       enableSelection: true 
-    });
-    manualContainer.appendChild(mainGroup);
+    }));
 
-    // 載入所有額外組（包括原來的第二組）
+    // 載入額外組
     this.Storage.loadReplaceValues(this.CONFIG.EXTRA_GROUPS_KEY, (result) => {
-      const extraGroups = result || [];
-      const validGroups = extraGroups.filter(group => group.from.trim() || group.to.trim());
-
-      // 如果沒有有效的組，創建一個空組
-      if (validGroups.length === 0) {
-        const emptyGroup = this.createReplaceGroup(textArea, {
-          showControls: true
-        });
-        manualContainer.appendChild(emptyGroup);
-      } else {
-        // 添加所有有效的組
-        validGroups.forEach((groupData, index) => {
-          const group = this.createReplaceGroup(textArea, {
-            showControls: true,
-            initialData: groupData
-          });
-          manualContainer.appendChild(group);
-        });
+      const groups = (result || []).filter(group => group.from.trim() || group.to.trim());
+      
+      // 至少創建一個額外組
+      if (groups.length === 0) {
+        groups.push({});
       }
+
+      // 創建所有組
+      groups.forEach(groupData => {
+        manualContainer.appendChild(this.createReplaceGroup(textArea, {
+          showControls: true,
+          initialData: groupData
+        }));
+      });
     });
 
     container.appendChild(manualContainer);

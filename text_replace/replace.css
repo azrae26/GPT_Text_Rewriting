@@ -132,13 +132,13 @@
   display: flex;
   gap: 6px;
   align-items: center;
-  margin-left: 6px;
+  margin-left: -11px;
 }
 
 /* 手動替換組的控制按鈕容器 */
 .replace-group-controls {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   margin-right: -2px;
   gap: 4px;
 }
@@ -170,27 +170,36 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  pointer-events: inherit;
+}
+
+/* 加號按鈕樣式 - 預設透明且無法點擊 */
+#replace-add-button {
+  opacity: 0;
+  pointer-events: none;
+  transition: all 0.2s ease;
+  z-index: 1000;
+}
+
+/* 當替換組數量大於1時，最後一組的加號按鈕才顯示且可點擊 */
+.replace-extra-group:last-child #replace-add-button {
+  opacity: 0.3;
   pointer-events: auto;
 }
 
-/* 加號按鈕樣式 */
-#replace-add-button {
-  opacity: 0.3;
-  transition: all 0.2s ease;
-}
-
 /* 加號按鈕懸停效果 */
-#replace-add-button:hover {
+.replace-extra-group:last-child #replace-add-button:hover {
   opacity: 1;
 }
 
-/* 減號按鈕樣式 */
+/* 減號按鈕樣式 - 所有組都顯示 */
 #replace-remove-button {
-  margin-top: -4px;
-  margin-left: -1px;
+  pointer-events: inherit;
+  margin-top: -3px;
+  margin-left: -2px;
   font-size: 22px !important;
   font-weight: 700 !important;
-  transform: scale(1.6, 1);
+  transform: scale(1.5, 1);
   opacity: 0.3;
   transition: all 0.2s ease;
 }
