@@ -97,7 +97,7 @@ window.stockList = [
     { code: "1455", name: "集盛" },
     { code: "1456", name: "怡華" },
     { code: "1457", name: "宜進" },
-    { code: "1459", name: "聯發" },
+    { code: "1459", name: "聯發", pattern: "聯發(?!科)" },
     { code: "1460", name: "宏遠" },
     { code: "1463", name: "強盛新" },
     { code: "1464", name: "得力" },
