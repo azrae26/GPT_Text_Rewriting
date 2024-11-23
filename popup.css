@@ -1,108 +1,120 @@
-/* 引入字體 */
+/* 引入 Noto Sans TC 字體，用於主分頁標題 */
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@700&display=swap');
 
-/* 基本彈出視窗樣式 */
+/* 基本彈出視窗樣式設定 */
 body {
+  /* 設定字體順序，依序使用系統可用字體 */
   font-family: 'Microsoft JhengHei', 'PingFang TC', 'Heiti TC', 'Apple LiGothic Medium', 'Helvetica', 'Arial', sans-serif;
   padding: 0;
   box-sizing: border-box;
-  width: 550px;
+  width: 550px;          /* 固定彈出視窗寬度 */
   margin: 0;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
-  background-color: #f8f8f8; /* 更淺的背景顏色 */
+  overflow: hidden;      /* 防止整體出現捲軸 */
+  background-color: #f8f8f8; /* 淺灰色背景 */
 }
 
+/* 標題樣式 */
 h1 {
   font-size: 22px;
   margin: 0 0 6px 0;
   color: #333;
 }
 
+/* 內容區域樣式 */
 .content {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow-y: auto;
+  overflow-y: auto;     /* 允許垂直捲動 */
   padding: 0px 5px;
 }
 
-/* 表單元素樣式 */
+/* 表單元素通用樣式 */
 input, button, select {
   width: 100%;
   padding: 8px;
   box-sizing: border-box;
   font-size: 14px;
   border-radius: 4px;
-  border: 1px solid #ddd; /* 更淺的邊框顏色 */
+  border: 1px solid #ddd;
   height: 36px;
 }
 
+/* 表單元素焦點狀態 */
 input:focus, select:focus {
   outline: none;
-  border-color: #bbb; /* 更淺的焦點邊框顏色 */
+  border-color: #bbb;
 }
 
+/* 文本區域樣式 */
 textarea {
   flex: 0 0 auto;
-  min-height: 330px; /* 增加高度 */
-  resize: none;
+  min-height: 330px;    /* 固定最小高度 */
+  resize: none;         /* 禁止手動調整大小 */
   border: none;
   border-radius: 0 0 4px 4px;
   background-color: #fff;
   margin-top: 0;
   padding: 8px;
   font-size: 14px;
-  /* 新增捲軸樣式 */
+  
+  /* 自定義捲軸樣式 */
   &::-webkit-scrollbar {
-    width: 8px; /* 我已自行修改 */
+    width: 8px;         /* 捲軸寬度 */
   }
   &::-webkit-scrollbar-thumb {
-    background-color: #c2c2c2; /* 我已自行修改 */
+    background-color: #c2c2c2;  /* 捲軸滑塊顏色 */
     border-radius: 6px;
   }
   &::-webkit-scrollbar-track {
-    background-color: #f5f5f5; /* 更淺的軌跡顏色 */
+    background-color: #f5f5f5;  /* 捲軸軌道顏色 */
     border-radius: 6px;
   }
 }
 
+/* 文本區域焦點狀態 */
 textarea:focus {
   outline: none;
 }
 
+/* 按鈕樣式 */
 button {
-  background-color: #3498db; /* 藍色按鈕 */
+  background-color: #3498db;  /* 藍色按鈕背景 */
   color: white;
   border: none;
   cursor: pointer;
   font-size: 14px;
   padding: 6px;
   margin-top: 10px;
-  transition: background-color 0.3s;
+  transition: background-color 0.3s;  /* 顏色漸變效果 */
 }
 
+/* 按鈕懸停效果 */
 button:hover {
-  background-color: #2980b9; /* 更深的藍色 */
+  background-color: #2980b9;
 }
 
-/* 輸入群組樣式 */
+/* 輸入群組容器樣式 */
 .input-group {
   display: flex;
   align-items: stretch;
   margin-top: 8px;
 }
 
+/* 核取方塊樣式 */
 input[type="checkbox"] {
   height: 32px;
 }
 
+/* 模型選擇下拉選單 */
 #model-select {
   width: 30%;
   margin-right: 10px;
 }
 
+/* API 金鑰輸入框 */
 #api-key {
   width: 70%;
 }
@@ -111,67 +123,75 @@ input[type="checkbox"] {
 .tab-container {
   display: flex;
   margin-top: 15px;
-  border: 1px solid #ddd; /* 更淺的邊框顏色 */
+  border: 1px solid #ddd;
   border-bottom: none;
   border-radius: 4px 4px 0 0;
   overflow: hidden;
 }
 
+/* 分頁標籤樣式 */
 .tab {
   flex: auto;
   text-align: center;
   padding: 8px;
-  background-color: #eee; /* 更淺的背景顏色 */
+  background-color: #eee;
   cursor: pointer;
   transition: all 0.3s;
   color: #444;
   font-weight: bold;
-  border-right: 1px solid #ddd; /* 更淺的邊框顏色 */
+  border-right: 1px solid #ddd;
   border-bottom: 1px solid #00000000;
   font-size: 14px;
 }
 
+/* 最後一個分頁標籤 */
 .tab:last-child {
   border-right: none;
 }
 
+/* 當前選中的分頁標籤 */
 .tab.active {
   background-color: #fff;
-  color: #3498db; /* 藍色 */
+  color: #3498db;
   border-bottom: 1px solid #fff;
   margin-bottom: -1px;
 }
 
+/* 分頁標籤懸停效果 */
 .tab:hover:not(.active) {
-  background-color: #ccc; /* 更淺的顏色 */
+  background-color: #ccc;
 }
 
+/* 分頁內容區域 */
 .tab-content {
   display: none;
   flex: 1;
-  border: 1px solid #ddd; /* 更淺的邊框顏色 */
+  border: 1px solid #ddd;
   border-top: none;
   border-radius: 0 0 4px 4px;
   background: #f7f7f7;
 }
 
+/* 當前顯示的分頁內容 */
 .tab-content.active {
   display: flex;
   flex-direction: column;
 }
 
-/* 核取方塊群組樣式 */
+/* 核取方塊群組容器 */
 .checkbox-group {
   margin-top: 10px;
   display: flex;
   justify-content: flex-start;
 }
 
+/* 翻譯分頁的核取方塊群組 */
 #translate-tab .checkbox-group {
   padding: 0px 10px;
   margin: 4px 0px;
 }
 
+/* 核取方塊標籤樣式 */
 .checkbox-label {
   display: inline-flex;
   align-items: center;
@@ -179,22 +199,26 @@ input[type="checkbox"] {
   cursor: pointer;
 }
 
+/* 核取方塊內的輸入框 */
 .checkbox-label input[type="checkbox"] {
   margin-right: 5px;
   width: auto;
 }
 
+/* 核取方塊文字標籤 */
 .checkbox-label span {
   font-size: 14.5px;
   color: #333;
 }
 
+/* 獨立核取方塊樣式 */
 input[type="checkbox"] {
   width: auto;
   padding: 0;
   margin: 0 5px 0 0;
 }
 
+/* 模型選擇下拉選單通用樣式 */
 .model-select {
   width: 100%;
   margin-bottom: 0;
@@ -206,42 +230,48 @@ input[type="checkbox"] {
   margin-bottom: 0;
 }
 
+/* 主分頁標籤樣式 */
 .main-tab {
   flex: 1;
   text-align: center;
   padding: 10px;
-  background-color: #eee; /* 更淺的背景顏色 */
+  background-color: #eee;
   cursor: pointer;
   transition: all 0.3s;
   color: #444;
   font-weight: 700;
   border: none;
-  border-bottom: 1px solid #ddd; /* 更淺的邊框顏色 */
+  border-bottom: 1px solid #ddd;
   font-size: 16px;
   font-family: 'Noto Sans TC', sans-serif;
 }
 
+/* 當前選中的主分頁 */
 .main-tab.active {
-  background-color: #f8f8f8; /* 更淺的背景顏色 */
-  color: #3498db; /* 藍色 */
+  background-color: #f8f8f8;
+  color: #3498db;
   border-bottom: none;
 }
 
+/* 主分頁內容區域 */
 .main-tab-content {
   display: none;
   padding: 15px;
 }
 
+/* 當前顯示的主分頁內容 */
 .main-tab-content.active {
   display: block;
 }
 
+/* 高亮功能容器 */
 .highlight-container {
   position: relative;
   height: 454px;
   background: #ffffff;
 }
 
+/* 高亮覆蓋層 */
 .highlight-overlay {
   position: absolute;
   width: 496px;
@@ -250,10 +280,11 @@ input[type="checkbox"] {
   left: 0;
   right: 0;
   bottom: 0;
-  pointer-events: none;
+  pointer-events: none;  /* 允許點擊穿透到底層 */
   z-index: 0;
 }
 
+/* 高亮文字輸入區域 */
 #highlight-words {
   position: relative;
   z-index: 1;
@@ -262,22 +293,28 @@ input[type="checkbox"] {
   height: 439px;
 }
 
+/* 高亮預覽元素 */
 .highlight-preview {
   position: absolute;
   pointer-events: none;
   z-index: 0;
   height: 21px;
+  left: 8px;
+  right: 8px;
 }
 
+/* 高亮分頁內容區域 */
 #highlight-tab .content {
   height: 500px;
   overflow-y: hidden;
 }
 
+/* 隱藏改寫按鈕 */
 #rewrite {
-  display: none; /* 隱藏按鈕 */
+  display: none;
 }
 
+/* 顏色選擇器容器 */
 .color-picker {
   display: flex;
   gap: 5px;
@@ -287,23 +324,16 @@ input[type="checkbox"] {
   margin-bottom: 8px;
 }
 
+/* 顏色方塊 */
 .color-box {
-  width: 25px;
-  height: 25px;
+  width: 26.5px;
+  height: 26.5px;
   border-radius: 4px;
   cursor: pointer;
   border: 1px solid #ddd;
 }
 
+/* 顏色方塊懸停效果 */
 .color-box:hover {
-  transform: scale(1.1);
-}
-
-.highlight-preview {
-  position: absolute;
-  left: 8px;  /* 對應 textarea 的 padding */
-  right: 8px;
-  pointer-events: none;  /* 讓滑鼠事件穿透到文字區 */
-  z-index: 0;
-  height: 21px;  /* 大約一行的高度 */
+  transform: scale(1.2);  /* 懸停時放大效果 */
 } 

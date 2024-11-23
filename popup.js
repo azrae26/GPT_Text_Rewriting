@@ -325,14 +325,43 @@ document.addEventListener('DOMContentLoaded', async function() {
   }
 
   // 監聽輸入事件
-  highlightWordsInput?.addEventListener('input', function() {
-    const words = this.value;
+  highlightWordsInput?.addEventListener('input', function(e) {
+    const oldLines = this.value.split('\n');
+    const cursorPosition = this.selectionStart;
+    
+    // 找出被修改的是哪一行
+    let currentLineNumber = 0;
+    let charCount = 0;
+    while (charCount <= cursorPosition && currentLineNumber < oldLines.length) {
+      charCount += oldLines[currentLineNumber].length + 1;
+      currentLineNumber++;
+    }
+    currentLineNumber--;
+    
+    // 取得修改前的所有文字
+    const previousText = this._previousValue || '';
+    const previousLines = previousText.split('\n');
+    
+    // 如果有這一行的舊文字，且有對應的顏色
+    if (previousLines[currentLineNumber] && wordColors[previousLines[currentLineNumber]]) {
+      const oldColor = wordColors[previousLines[currentLineNumber]];
+      delete wordColors[previousLines[currentLineNumber]];
+      wordColors[oldLines[currentLineNumber]] = oldColor;
+      chrome.storage.sync.set({ highlightColors: wordColors });
+    }
+    
+    // 儲存當前文字，供下次比對用
+    this._previousValue = this.value;
     
     // 保存高亮文字
+    const words = this.value;
     chrome.storage.sync.set({ highlightWords: words });
-
+    
     // 更新高亮
     updateHighlightWords(words);
+    
+    // 更新預覽
+    updatePreview();
   });
 
   // 更新高亮文字的函數
@@ -492,63 +521,22 @@ document.addEventListener('DOMContentLoaded', async function() {
   function updatePreviewsPosition() {
     const textarea = highlightWordsInput;
     const scrollTop = textarea.scrollTop;
-    const visibleHeight = textarea.clientHeight;
-    const totalHeight = textarea.scrollHeight;
 
     const previews = document.querySelectorAll('.highlight-preview');
     previews.forEach(preview => {
       const originalTop = parseFloat(preview.dataset.originalTop);
-      const previewHeight = parseFloat(preview.style.height) || 21;
       
-      // 計算相對於視窗的位置
-      const relativeTop = originalTop - scrollTop;
-      
-      // 判斷是否在可視範圍內（加上一些緩衝空間）
-      const buffer = previewHeight;
-      const isVisible = (relativeTop + previewHeight >= -buffer) && 
-                       (relativeTop <= visibleHeight + buffer) &&
-                       (originalTop <= totalHeight);
-
-      if (isVisible) {
-        preview.style.display = 'block';
-        preview.style.transform = `translateY(${scrollTop - 2.5}px)`; // 固定偏移 -2.5px
-      } else {
-        preview.style.display = 'none';
-      }
+      // 使用與 highlight.js 相同的邏輯
+      preview.style.display = 'block';
+      // 直接使用 transform 來調整位置
+      preview.style.transform = `translateY(${-scrollTop}px)`;
     });
   }
 
   // 修改滾動事件處理
   highlightWordsInput.addEventListener('scroll', function() {
     requestAnimationFrame(() => {
-      const textarea = this;
-      const scrollTop = textarea.scrollTop;
-      const visibleHeight = textarea.clientHeight;
-      const totalHeight = textarea.scrollHeight;
-
-      const previews = document.querySelectorAll('.highlight-preview');
-      previews.forEach(preview => {
-        const originalTop = parseFloat(preview.dataset.originalTop);
-        const previewHeight = parseFloat(preview.style.height) || 21;
-        
-        // 計算相對於視窗的位置
-        const relativeTop = originalTop - scrollTop;
-        
-        // 保留可見性判斷
-        const buffer = previewHeight;
-        const isVisible = (relativeTop + previewHeight >= -buffer) && 
-                         (relativeTop <= visibleHeight + buffer) &&
-                         (originalTop <= totalHeight);
-
-        if (isVisible) {
-          preview.style.display = 'block';
-          // 修改這裡：使用原始位置來計算偏移
-          const translateY = -2.5 + (originalTop - scrollTop - originalTop); // 改為固定偏移 -2.5px
-          preview.style.transform = `translateY(${translateY}px)`;
-        } else {
-          preview.style.display = 'none';
-        }
-      });
+      updatePreviewsPosition();
     });
   });
 

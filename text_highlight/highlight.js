@@ -316,15 +316,34 @@ const TextHighlight = {
     setupTextAreaEvents() {
       const textArea = TextHighlight.DOMManager.elements.textArea;
       if (!textArea) return;
-
-      textArea.addEventListener('input', () => TextHighlight.updateHighlights());
       
-      // 修改滾動事件處理
+      // 保留原有的滾動事件處理
       textArea.addEventListener('scroll', () => {
         requestAnimationFrame(() => {
           TextHighlight.DOMManager.updateHighlightsVisibility();
         });
       });
+
+      // 使用 requestAnimationFrame 來做輪詢
+      let lastValue = textArea.value;
+      let rafId;
+
+      function checkValue() {
+        // 檢查文字是否變化
+        if (textArea.value !== lastValue) {
+          lastValue = textArea.value;
+          TextHighlight.updateHighlights();
+        }
+        // 請求下一次檢查
+        rafId = requestAnimationFrame(checkValue);
+      }
+      
+      checkValue();
+
+      // 清理函數（在需要時調用）
+      this.cleanup = () => {
+        cancelAnimationFrame(rafId);
+      };
     },
 
     /**
