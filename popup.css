@@ -54,6 +54,7 @@ textarea {
   min-height: 330px;    /* 固定最小高度 */
   resize: none;         /* 禁止手動調整大小 */
   border: none;
+  color: #333;
   border-radius: 0 0 4px 4px;
   background-color: #fff;
   margin-top: 0;
@@ -336,4 +337,178 @@ input[type="checkbox"] {
 /* 顏色方塊懸停效果 */
 .color-box:hover {
   transform: scale(1.2);  /* 懸停時放大效果 */
+}
+
+/* 自動替換容器捲軸樣式 */
+.auto-replace-container {
+  background: #fff;
+  border-radius: 4px;
+  padding: 10px;
+  height: 454px;
+  overflow-y: auto;
+
+  /* 自定義捲軸樣式 */
+  &::-webkit-scrollbar {
+    width: 8px;         /* 捲軸寬度 */
+  }
+  
+  &::-webkit-scrollbar-thumb {
+    background-color: #c2c2c2;  /* 捲軸滑塊顏色 */
+    border-radius: 6px;
+  }
+  
+  &::-webkit-scrollbar-track {
+    background-color: #f5f5f5;  /* 捲軸軌道顏色 */
+    border-radius: 6px;
+  }
+}
+
+.auto-replace-group {
+  display: flex;
+  align-items: center;
+  margin-bottom: 10px;
+  gap: 8px;
+}
+
+/* 修改輸入框基本樣式 */
+.replace-input {
+  color: #333;
+  height: 32px;
+  padding: 4px 8px;
+  border: 1px solid #cccccc;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: all 0.3s;
+  /* 移除寬度限制，讓 JavaScript 動態控制寬度 */
+}
+
+/* 輸入框焦點樣式 */
+.replace-input:focus {
+  border-color: #3498db;
+  outline: none;
+}
+
+/* ===== 複選框樣式 ===== */
+/* 提高選擇器優先級 */
+.auto-replace-container input[type="checkbox"].auto-replace-checkbox {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  width: 16px !important;
+  height: 16px !important;
+  border: 1px solid #b1b1b1 !important;
+  border-radius: 3px !important;
+  cursor: pointer !important;
+  position: relative !important;
+  background-color: rgb(243, 244, 246) !important;
+  transition: all 0.2s ease !important;
+  outline: none !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+/* 勾選框懸停效果 */
+.auto-replace-container input[type="checkbox"].auto-replace-checkbox:hover {
+  border-color: #5b8cdb !important;
+}
+
+/* 勾選框被選中狀態 */
+.auto-replace-container input[type="checkbox"].auto-replace-checkbox:checked {
+  background-color: #5b8cdb !important;
+  border-color: #5b8cdb !important;
+}
+
+/* 勾選框被選中時的勾選符號 */
+.auto-replace-container input[type="checkbox"].auto-replace-checkbox:checked::after {
+  content: '' !important;
+  position: absolute !important;
+  left: 5px !important;
+  top: 1px !important;
+  width: 3px !important;
+  height: 8px !important;
+  border: solid white !important;
+  border-width: 0 2px 2px 0 !important;
+  transform: rotate(45deg) !important;
+}
+
+/* 修改控制按鈕容器樣式 */
+.replace-group-controls {
+  display: flex;
+  flex-direction: row;
+  margin-right: -2px;
+  gap: 4px;
+}
+
+/* 修改控制按鈕基本樣式 */
+.replace-control-button {
+  padding: 0;
+  width: 14px;
+  height: 14px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  font-size: 18px !important;
+  font-weight: 900 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  pointer-events: none;
+}
+
+/* 添加按鈕樣式 */
+#replace-add-button {
+  opacity: 0.3;
+  pointer-events: auto;
+  transition: all 0.2s ease;
+  z-index: 1000;
+  color: #333;
+}
+
+/* 添加按鈕懸停效果 */
+#replace-add-button:hover {
+  opacity: 0.6;
+}
+
+/* 移除按鈕樣式 */
+#replace-remove-button {
+  pointer-events: inherit;
+  margin-top: -1px;
+  margin-left: -2px;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  transform: scale(1.5, 1);
+  opacity: 0.3;
+  transition: all 0.2s ease;
+  color: #333;
+}
+
+/* 移除按鈕懸停效果 */
+#replace-remove-button:hover {
+  opacity: 0.6;
+}
+
+/* 按鈕點擊效果 */
+.replace-control-button:active {
+  transform: scale(0.9) !important;
+}
+
+/* 移除之前的按鈕樣式 */
+.replace-control-button {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  margin: 0;
+  font-size: 16px;
+  line-height: 1;
+  border: none;
+  background: none;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+/* 移除之前的按鈕懸停樣式 */
+.replace-control-button:hover {
+  background: none;
+  border-color: transparent;
 } 

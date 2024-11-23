@@ -555,4 +555,16 @@ document.addEventListener('DOMContentLoaded', async function() {
   highlightWordsInput.addEventListener('input', function() {
     updatePreview();
   });
+
+  // 初始化自動替換功能
+  const autoReplaceContainer = document.querySelector('#auto-replace-tab .auto-replace-container');
+  if (autoReplaceContainer) {
+    // 引入 AutoReplaceManager
+    const script = document.createElement('script');
+    script.src = 'text_replace/auto-replace-manager.js';
+    script.onload = function() {
+      AutoReplaceManager.initializeAutoReplaceGroups(autoReplaceContainer, document.createElement('textarea'));
+    };
+    document.head.appendChild(script);
+  }
 });

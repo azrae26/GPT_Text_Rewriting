@@ -10,6 +10,7 @@
   <div class="main-tab-container">
     <div class="main-tab active" data-tab="rewrite">文字改寫</div>
     <div class="main-tab" data-tab="highlight">文字高亮</div>
+    <div class="main-tab" data-tab="auto-replace">自動替換</div>
   </div>
 
   <div id="rewrite-tab" class="main-tab-content active">
@@ -137,6 +138,15 @@
     </div>
   </div>
 
+  <div id="auto-replace-tab" class="main-tab-content">
+    <div class="content">
+      <div class="auto-replace-container">
+        <!-- 自動替換組會在這裡動態生成 -->
+      </div>
+    </div>
+  </div>
+
+  <script src="text_replace/auto-replace-manager.js"></script>
   <script src="settings.js"></script>
   <script src="default.js"></script>
   <script src="translate.js"></script>

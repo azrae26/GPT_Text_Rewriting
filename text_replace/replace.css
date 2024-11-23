@@ -50,7 +50,7 @@
 
 /* 自動替換組樣式 */
 .auto-replace-group {
-  display: flex;
+  display: none;
   gap: 6px;
   align-items: center;
   margin-left: -11px;
@@ -163,8 +163,8 @@
 }
 
 .replace-button.disabled {
-  background-color: #e0e0e0;
-  color: #999999;
+  background-color: #d1d1d1;
+  color: #646464;
   cursor: not-allowed;
 }
 
@@ -180,6 +180,7 @@
   gap: 4px;
 }
 
+/* 控制按鈕樣式 */
 .replace-control-button {
   padding: 0;
   width: 14px;
@@ -197,6 +198,7 @@
   pointer-events: none;
 }
 
+/* 控制按鈕內容樣式 */
 .replace-control-button::before {
   content: attr(textContent);
   position: absolute;
@@ -208,6 +210,7 @@
   pointer-events: inherit;
 }
 
+/* 添加按鈕樣式 */
 #replace-add-button {
   opacity: 0;
   pointer-events: none;
@@ -215,20 +218,23 @@
   z-index: 1000;
 }
 
+/* 添加按鈕顯示樣式 */
 .auto-replace-group:last-child #replace-add-button,
 .replace-extra-group:last-child #replace-add-button {
   opacity: 0.3;
   pointer-events: auto;
 }
 
+/* 添加按鈕懸停樣式 */
 .auto-replace-group:last-child #replace-add-button:hover,
 .replace-extra-group:last-child #replace-add-button:hover {
   opacity: 1;
 }
 
+/* 移除按鈕樣式 */
 #replace-remove-button {
   pointer-events: inherit;
-  margin-top: -3px;
+  margin-top: -2px;
   margin-left: -2px;
   font-size: 22px !important;
   font-weight: 700 !important;
@@ -237,18 +243,77 @@
   transition: all 0.2s ease;
 }
 
+/* 移除按鈕懸停樣式 */
 #replace-remove-button:hover {
   opacity: 1;
 }
 
+/* 控制按鈕點擊樣式 */
 .replace-control-button:active {
   transform: scale(0.9) !important;
 }
 
 /* ===== 複選框樣式 ===== */
 .auto-replace-checkbox {
-  width: 16px;
-  height: 16px;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid #b1b1b1;
+  border-radius: 3px !important;
   cursor: pointer;
+  position: relative;
+  background-color: rgb(243, 244, 246);
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+/* 移除所有 focus 相關的樣式 */
+.auto-replace-checkbox:focus,
+.auto-replace-checkbox:focus-visible,
+.auto-replace-checkbox:focus-within {
+  outline: none !important;
+  box-shadow: none !important;
+  border-color: #b1b1b1 !important;
+}
+
+/* 勾選框懸停效果 */
+.auto-replace-checkbox:hover {
+  border-color: #5b8cdb;
+}
+
+/* 勾選框被選中狀態 */
+.auto-replace-checkbox:checked {
+  background-color: #5b8cdb !important;
+  border-color: #5b8cdb !important;
+}
+
+/* 勾選框禁用狀態 */
+.auto-replace-checkbox:disabled {
+  background-color: #e0e0e0;
+  border-color: #b1b1b1;
+  cursor: not-allowed;
+}
+
+/* ===== 大型輸入框樣式 ===== */
+.replace-large-input {
+  position: absolute;
+  width: 450px;
+  height: 120px;
+  padding: 8px 12px !important;
+  border: 1px solid #5b8cdb !important;
+  border-radius: 4px !important;
+  background-color: rgb(243, 244, 246) !important;
+  color: #333333;
+  font-size: 14px !important;
+  line-height: 1.5;
+  resize: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  z-index: 2001;
+}
+
+.replace-large-input:focus {
+  outline: none;
+  border-color: #1a73e8 !important;
 }
  

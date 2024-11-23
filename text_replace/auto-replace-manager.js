@@ -1,8 +1,8 @@
 /** 自動替換管理模組 */
 const AutoReplaceManager = {
   CONFIG: {
-    MIN_WIDTH: 75,
-    MAX_WIDTH: 300,
+    MIN_WIDTH: 80,
+    MAX_WIDTH: 350,
     PADDING: 24,
     AUTO_REPLACE_KEY: 'autoReplaceRules'
   },
@@ -94,9 +94,9 @@ const AutoReplaceManager = {
 
     this.setupGroupEvents(group, textArea, fromInput, toInput, checkbox);
 
+    group.appendChild(checkbox);
     group.appendChild(fromInput);
     group.appendChild(toInput);
-    group.appendChild(checkbox);
 
     return group;
   },
@@ -106,17 +106,32 @@ const AutoReplaceManager = {
     const handleInput = (input) => {
       this.adjustInputWidth(input);
       this.saveAutoReplaceRules(group.parentElement);
+      
+      // 更新到 content script
+      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          action: "updateAutoReplaceRules"
+        });
+      });
     };
 
+    // 為兩個輸入框添加輸入事件監聽
     [fromInput, toInput].forEach(input => {
+      // 監聽輸入事件，實時調整寬度
       input.addEventListener('input', () => handleInput(input));
+      
+      // 原有的失去焦點事件
       input.addEventListener('blur', () => {
         if (checkbox.checked && fromInput.value.trim() && toInput.value.trim()) {
           this.handleAutoReplace(textArea);
         }
       });
+
+      // 初始調整寬度
+      this.adjustInputWidth(input);
     });
 
+    // 原有的複選框事件
     checkbox.addEventListener('change', () => {
       this.saveAutoReplaceRules(group.parentElement);
       if (checkbox.checked && fromInput.value.trim() && toInput.value.trim()) {
@@ -154,9 +169,6 @@ const AutoReplaceManager = {
 
   /** 初始化自動替換組 */
   initializeAutoReplaceGroups(container, textArea) {
-    const autoContainer = document.createElement('div');
-    autoContainer.className = 'auto-replace-container';
-
     chrome.storage.sync.get([this.CONFIG.AUTO_REPLACE_KEY], (result) => {
       const rules = (result[this.CONFIG.AUTO_REPLACE_KEY] || [])
         .filter(rule => rule.from?.trim() || rule.to?.trim());
@@ -164,13 +176,19 @@ const AutoReplaceManager = {
       if (rules.length === 0) rules.push({});
       
       rules.forEach(rule => {
-        autoContainer.appendChild(this.createAutoReplaceGroup(textArea, rule));
+        const group = this.createAutoReplaceGroup(textArea, rule);
+        container.appendChild(group);
+        
+        // 立即調整所有輸入框的寬度
+        const inputs = group.querySelectorAll('.replace-input');
+        inputs.forEach(input => {
+          this.adjustInputWidth(input);
+        });
       });
 
       this.handleAutoReplace(textArea);
     });
 
-    container.appendChild(autoContainer);
     textArea.addEventListener('input', () => this.handleAutoReplace(textArea));
   },
 
@@ -190,6 +208,17 @@ const AutoReplaceManager = {
 
   /** 執行自動替換 */
   handleAutoReplace(textArea) {
+    // 如果在 popup 頁面中，發送消息到 content script
+    if (window.location.pathname.endsWith('popup.html')) {
+      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          action: "triggerAutoReplace"
+        });
+      });
+      return;
+    }
+
+    // 原有的替換邏輯保持不變
     let text = textArea.value;
     let changed = false;
 

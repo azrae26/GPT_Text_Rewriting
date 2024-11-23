@@ -1,7 +1,7 @@
 /** 手動替換管理模組 */
 const ManualReplaceManager = {
   CONFIG: {
-    MIN_WIDTH: 75, // 最小寬度
+    MIN_WIDTH: 80, // 最小寬度
     MAX_WIDTH: 300, // 最大寬度
     PADDING: 24, // 內邊距
     MANUAL_REPLACE_KEY: 'manualReplaceRules' // 儲存鍵名稱
