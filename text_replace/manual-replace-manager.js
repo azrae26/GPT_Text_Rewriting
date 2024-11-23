@@ -161,11 +161,11 @@ const ManualReplaceManager = {
 
     /** 創建正則表達式 */
     createRegex(text) {
-      if (text.startsWith('/') && text.match(/\/[gimy]*$/)) {
+      if (text.startsWith('/') && text.match(/\/[gim]*$/)) {
         const lastSlash = text.lastIndexOf('/');
         const pattern = text.slice(1, lastSlash);
         const flags = text.slice(lastSlash + 1);
-        return new RegExp(pattern, flags);
+        return new RegExp(pattern, flags || 'g');
       }
       return new RegExp(this.escapeRegExp(text), 'g');
     },

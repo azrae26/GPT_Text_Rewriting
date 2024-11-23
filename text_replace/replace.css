@@ -109,7 +109,7 @@
   display: flex;
   gap: 6px;
   align-items: center;
-  margin-left: 24px;
+  margin-left: -11px;
 }
 
 /* 自動替換組的複選框 */
@@ -181,13 +181,15 @@
   z-index: 1000;
 }
 
-/* 當替換組數量大於1時，最後一組的加號按鈕才顯示且可點擊 */
+/* 最後一組的加號按鈕永遠顯示且可點擊 */
+.auto-replace-group:last-child #replace-add-button,
 .replace-extra-group:last-child #replace-add-button {
   opacity: 0.3;
   pointer-events: auto;
 }
 
 /* 加號按鈕懸停效果 */
+.auto-replace-group:last-child #replace-add-button:hover,
 .replace-extra-group:last-child #replace-add-button:hover {
   opacity: 1;
 }

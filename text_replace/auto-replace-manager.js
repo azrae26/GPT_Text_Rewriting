@@ -7,111 +7,92 @@ const AutoReplaceManager = {
     AUTO_REPLACE_KEY: 'autoReplaceRules'
   },
 
-  /** 自動替換規則 */
-  autoReplaceRules: [],
+  /** UI 創建相關方法 */
+  UI: {
+    /** 創建輸入框 */
+    createInput(placeholder, width) {
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.placeholder = placeholder;
+      input.className = 'replace-input';
+      input.style.cssText = `width: ${width}px !important;`;
+      return input;
+    },
 
-  /** 初始化自動替換組 */
-  initializeAutoReplaceGroups(container, textArea) {
-    // 創建垂直容器
-    const autoContainer = document.createElement('div');
-    autoContainer.className = 'auto-replace-container';
+    /** 創建控制按鈕 */
+    createControlButtons(addCallback, removeCallback) {
+      const container = document.createElement('div');
+      container.className = 'replace-group-controls';
 
-    // 載入保存的規則
-    chrome.storage.sync.get([this.CONFIG.AUTO_REPLACE_KEY], (result) => {
-      this.autoReplaceRules = result[this.CONFIG.AUTO_REPLACE_KEY] || [];
-      
-      // 創建3組自動替換框
-      for (let i = 0; i < 3; i++) {
-        const group = this._createAutoReplaceGroup(textArea, i);
-        autoContainer.appendChild(group);
-        
-        // 如果有保存的規則，填入內容並設置狀態
-        if (this.autoReplaceRules[i]) {
-          const { from, to, enabled } = this.autoReplaceRules[i];
-          const inputs = group.querySelectorAll('input[type="text"]');
-          inputs[0].value = from;
-          inputs[1].value = to;
-          group.querySelector('input[type="checkbox"]').checked = enabled;
-        }
-      }
+      const addButton = document.createElement('button');
+      addButton.textContent = '+';
+      addButton.className = 'replace-control-button';
+      addButton.id = 'replace-add-button';
+      addButton.onclick = addCallback;
+      container.appendChild(addButton);
 
-      // 在初始化完成後立即執行一次自動替換
-      this._handleAutoReplace(textArea);
-    });
+      const removeButton = document.createElement('button');
+      removeButton.textContent = '-';
+      removeButton.className = 'replace-control-button';
+      removeButton.id = 'replace-remove-button';
+      removeButton.onclick = removeCallback;
+      container.appendChild(removeButton);
 
-    container.appendChild(autoContainer);
-
-    // 監聽文本變化，執行自動替換
-    textArea.addEventListener('input', () => this._handleAutoReplace(textArea));
+      return container;
+    }
   },
 
-  /** 創建單個自動替換組 */
-  _createAutoReplaceGroup(textArea, index) {
+  /** 組管理相關方法 */
+  GroupManager: {
+    /** 添加新組 */
+    addGroup(referenceGroup, textArea) {
+      const container = referenceGroup.parentElement;
+      const group = AutoReplaceManager.createAutoReplaceGroup(textArea);
+      container.appendChild(group);
+      AutoReplaceManager.saveAutoReplaceRules(container);
+    },
+
+    /** 移除組 */
+    removeGroup(group) {
+      const container = group.parentElement;
+      const groups = container.querySelectorAll('.auto-replace-group');
+      
+      if (groups.length === 1) {
+        const inputs = group.querySelectorAll('input[type="text"]');
+        inputs.forEach(input => input.value = '');
+        group.querySelector('input[type="checkbox"]').checked = false;
+      } else {
+        group.remove();
+      }
+      
+      AutoReplaceManager.saveAutoReplaceRules(container);
+    }
+  },
+
+  /** 創建自動替換組 */
+  createAutoReplaceGroup(textArea, initialData = null) {
     const group = document.createElement('div');
     group.className = 'auto-replace-group';
 
-    const fromInput = document.createElement('input');
-    fromInput.type = 'text';
-    fromInput.placeholder = '自動替換';
-    fromInput.className = 'replace-input';
-    fromInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+    const controlButtons = this.UI.createControlButtons(
+      () => this.GroupManager.addGroup(group, textArea),
+      () => this.GroupManager.removeGroup(group)
+    );
+    group.appendChild(controlButtons);
 
-    const toInput = document.createElement('input');
-    toInput.type = 'text';
-    toInput.placeholder = '替換為';
-    toInput.className = 'replace-input';
-    toInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
-
+    const fromInput = this.UI.createInput('自動替換', this.CONFIG.MIN_WIDTH);
+    const toInput = this.UI.createInput('替換為', this.CONFIG.MIN_WIDTH);
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.className = 'auto-replace-checkbox';
 
-    // 添加輸入事件來調整寬度
-    const adjustWidth = (input) => {
-      const text = input.value;
-      if (!text) {
-        input.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
-        return;
-      }
-      
-      const span = document.createElement('span');
-      span.style.visibility = 'hidden';
-      span.style.position = 'absolute';
-      span.style.whiteSpace = 'pre';
-      span.style.font = window.getComputedStyle(input).font;
-      span.textContent = text;
-      document.body.appendChild(span);
-      
-      const textWidth = span.offsetWidth;
-      const width = Math.min(
-        Math.max(this.CONFIG.MIN_WIDTH, textWidth + this.CONFIG.PADDING),
-        this.CONFIG.MAX_WIDTH
-      );
-      input.style.cssText = `width: ${width}px !important;`;
-      
-      span.remove();
-    };
+    if (initialData) {
+      fromInput.value = initialData.from || '';
+      toInput.value = initialData.to || '';
+      checkbox.checked = initialData.enabled || false;
+    }
 
-    // 綁定事件
-    [fromInput, toInput].forEach(input => {
-      input.addEventListener('input', () => {
-        adjustWidth(input);
-        this._saveAutoReplaceRules();
-      });
-
-      input.addEventListener('blur', () => {
-        if (checkbox.checked && fromInput.value.trim() && toInput.value.trim()) {
-          this._handleAutoReplace(textArea);
-        }
-      });
-    });
-
-    checkbox.addEventListener('change', () => {
-      this._saveAutoReplaceRules();
-      if (checkbox.checked && fromInput.value.trim() && toInput.value.trim()) {
-        this._handleAutoReplace(textArea);
-      }
-    });
+    this.setupGroupEvents(group, textArea, fromInput, toInput, checkbox);
 
     group.appendChild(fromInput);
     group.appendChild(toInput);
@@ -120,9 +101,82 @@ const AutoReplaceManager = {
     return group;
   },
 
+  /** 設置組事件 */
+  setupGroupEvents(group, textArea, fromInput, toInput, checkbox) {
+    const handleInput = (input) => {
+      this.adjustInputWidth(input);
+      this.saveAutoReplaceRules(group.parentElement);
+    };
+
+    [fromInput, toInput].forEach(input => {
+      input.addEventListener('input', () => handleInput(input));
+      input.addEventListener('blur', () => {
+        if (checkbox.checked && fromInput.value.trim() && toInput.value.trim()) {
+          this.handleAutoReplace(textArea);
+        }
+      });
+    });
+
+    checkbox.addEventListener('change', () => {
+      this.saveAutoReplaceRules(group.parentElement);
+      if (checkbox.checked && fromInput.value.trim() && toInput.value.trim()) {
+        this.handleAutoReplace(textArea);
+      }
+    });
+  },
+
+  /** 調整輸入框寬度 */
+  adjustInputWidth(input) {
+    const text = input.value;
+    if (!text) {
+      input.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+      return;
+    }
+
+    const span = document.createElement('span');
+    span.style.cssText = `
+      visibility: hidden;
+      position: absolute;
+      white-space: pre;
+      font: ${window.getComputedStyle(input).font};
+    `;
+    span.textContent = text;
+    document.body.appendChild(span);
+
+    const width = Math.min(
+      Math.max(this.CONFIG.MIN_WIDTH, span.offsetWidth + this.CONFIG.PADDING),
+      this.CONFIG.MAX_WIDTH
+    );
+    input.style.cssText = `width: ${width}px !important;`;
+
+    span.remove();
+  },
+
+  /** 初始化自動替換組 */
+  initializeAutoReplaceGroups(container, textArea) {
+    const autoContainer = document.createElement('div');
+    autoContainer.className = 'auto-replace-container';
+
+    chrome.storage.sync.get([this.CONFIG.AUTO_REPLACE_KEY], (result) => {
+      const rules = (result[this.CONFIG.AUTO_REPLACE_KEY] || [])
+        .filter(rule => rule.from?.trim() || rule.to?.trim());
+      
+      if (rules.length === 0) rules.push({});
+      
+      rules.forEach(rule => {
+        autoContainer.appendChild(this.createAutoReplaceGroup(textArea, rule));
+      });
+
+      this.handleAutoReplace(textArea);
+    });
+
+    container.appendChild(autoContainer);
+    textArea.addEventListener('input', () => this.handleAutoReplace(textArea));
+  },
+
   /** 保存自動替換規則 */
-  _saveAutoReplaceRules() {
-    const rules = Array.from(document.querySelectorAll('.auto-replace-group')).map(group => {
+  saveAutoReplaceRules(container) {
+    const rules = Array.from(container.querySelectorAll('.auto-replace-group')).map(group => {
       const inputs = group.querySelectorAll('input[type="text"]');
       return {
         from: inputs[0].value,
@@ -131,22 +185,31 @@ const AutoReplaceManager = {
       };
     });
 
-    this.autoReplaceRules = rules;
     chrome.storage.sync.set({ [this.CONFIG.AUTO_REPLACE_KEY]: rules });
   },
 
   /** 執行自動替換 */
-  _handleAutoReplace(textArea) {
+  handleAutoReplace(textArea) {
     let text = textArea.value;
     let changed = false;
 
-    this.autoReplaceRules.forEach(rule => {
-      if (rule.enabled && rule.from.trim()) {
-        const regex = new RegExp(this._escapeRegExp(rule.from), 'g');
-        const newText = text.replace(regex, rule.to);
-        if (newText !== text) {
-          text = newText;
-          changed = true;
+    document.querySelectorAll('.auto-replace-group').forEach(group => {
+      const inputs = group.querySelectorAll('input[type="text"]');
+      const from = inputs[0].value.trim();
+      const to = inputs[1].value.trim();
+      const enabled = group.querySelector('input[type="checkbox"]').checked;
+
+      if (enabled && from) {
+        try {
+          // 支持正則表達式
+          const regex = this.createRegex(from);
+          const newText = text.replace(regex, to);
+          if (newText !== text) {
+            text = newText;
+            changed = true;
+          }
+        } catch (error) {
+          console.error('替換錯誤:', error);
         }
       }
     });
@@ -157,8 +220,19 @@ const AutoReplaceManager = {
     }
   },
 
+  /** 創建正則表達式 */
+  createRegex(text) {
+    if (text.startsWith('/') && text.match(/\/[gim]*$/)) {
+      const lastSlash = text.lastIndexOf('/');
+      const pattern = text.slice(1, lastSlash);
+      const flags = text.slice(lastSlash + 1);
+      return new RegExp(pattern, flags || 'g');
+    }
+    return new RegExp(this.escapeRegExp(text), 'g');
+  },
+
   /** 轉義正則表達式特殊字符 */
-  _escapeRegExp(string) {
+  escapeRegExp(string) {
     return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 };
