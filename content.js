@@ -53,8 +53,7 @@ function initializeExtension() {
     console.log('初始化UI元素');
     try {
       await window.GlobalSettings.loadSettings();
-      window.UIManager.addRewriteButton();
-      window.UIManager.initializeStockCodeFeature();
+      window.UIManager.initializeAllUI();
       window.TranslateManager.initialize();
     } catch (error) {
       console.error('初始化UI元素時發生錯誤:', error);

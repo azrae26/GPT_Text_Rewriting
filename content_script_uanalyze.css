@@ -1,4 +1,8 @@
 /* 針對 https://data.uanalyze.twobitto.com/research-reports/ 頁面的樣式修改 */
+.px-6 {
+  margin-left: min(calc((1920px - 100vw) - 300px), 0px) !important; /* calc((1920px - 100vw) - 300px) 但不能大於0 */
+}
+
 .container.mx-auto.mt-10 {
   margin-top: 1rem !important;
 }

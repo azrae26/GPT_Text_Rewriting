@@ -290,6 +290,20 @@ const UIManager = {
       container.remove();
       console.log('改寫按鈕已移除');
     }
+  },
+
+  /** 初始化所有UI元素 */
+  initializeAllUI() {
+    this.addRewriteButton();
+    this.initializeStockCodeFeature();
+    window.ReplaceManager.initializeReplaceUI();
+  },
+
+  /** 移除所有UI元素 */
+  removeAllUI() {
+    this.removeRewriteButton();
+    this.removeStockCodeFeature();
+    window.ReplaceManager.removeReplaceUI();
   }
 };
 

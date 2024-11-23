@@ -224,27 +224,6 @@ const TextHighlight = {
         this.cache.positions.clear();
       }
 
-      // 添加可用區域的尺寸日誌
-      console.log('可用區域尺寸:', {
-        文本框: {
-          可視寬度: textArea.clientWidth,
-          可視高度: textArea.clientHeight,
-          實際寬度: textArea.offsetWidth,
-          實際高度: textArea.offsetHeight,
-          內容寬度: textArea.scrollWidth,
-          內容高度: textArea.scrollHeight,
-          捲軸位置: textArea.scrollTop,
-          水平捲軸: textArea.scrollLeft,
-          是否有捲軸: textArea.scrollHeight > textArea.clientHeight
-        },
-        測量容器: {
-          可視寬度: this.cache.div.clientWidth,
-          可視高度: this.cache.div.clientHeight,
-          內容寬度: this.cache.div.scrollWidth,
-          內容高度: this.cache.div.scrollHeight
-        }
-      });
-
       // 重新設置 div 的尺寸以匹配當前的 textArea
       if (this.cache.div) {
         this.cache.div.style.width = `${textArea.clientWidth}px`;
@@ -458,10 +437,8 @@ const TextHighlight = {
           if (targetWord.startsWith('/') && targetWord.endsWith('/')) {
             // 正則表達式處理
             const regexStr = targetWord.slice(1, -1);
-            console.log(`\n處理正則表達式: "${regexStr}"`);
 
             const matches = Array.from(text.matchAll(new RegExp(regexStr, 'gm')));
-            console.log(`找到 ${matches.length} 個正則匹配`);
 
             for (const match of matches) {
               if (match[0]) {
@@ -474,12 +451,6 @@ const TextHighlight = {
                 );
                 
                 if (position) {
-                  console.log(`正則匹配: "${match[0]}" 位置:`, {
-                    top: position.top,
-                    left: position.left,
-                    width: position.width
-                  });
-
                   const highlight = this.Renderer.createHighlight(
                     position,
                     position.width,
