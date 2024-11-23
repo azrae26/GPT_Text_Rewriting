@@ -31,6 +31,8 @@
         "ui-manager.js",
         "text_highlight/highlight.js",
         "content.js",
+        "text_replace/manual-replace-manager.js",
+        "text_replace/auto-replace-manager.js",
         "text_replace/replace-manager.js"
       ],
       "css": ["content_script_uanalyze.css", "text_replace/replace.css"]

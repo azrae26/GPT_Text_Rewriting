@@ -1,3 +1,4 @@
+/* 替換功能主容器 - 控制整體位置和排列方式 */
 .replace-controls {
   display: flex;
   flex-direction: column;
@@ -5,23 +6,25 @@
   position: absolute;
   left: 14px;
   top: -22px;
-  z-index: 1000;
+  z-index: 2000;
 }
 
+/* 拖動圖示 - 用於移動整個替換功能組 */
 .replace-drag-handle {
   position: absolute;
-  left: 0;
+  left: 5px;
   top: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 16px;
-  height: 30px;
+  height: 26px;
   cursor: move;
   color: #999;
   user-select: none;
 }
 
+/* 拖動圖示的點點樣式 */
 .replace-drag-handle::before {
   content: "⋮⋮";
   font-size: 13px !important;
@@ -29,11 +32,12 @@
   z-index: 1000;
 }
 
+/* 輸入框基本樣式 */
 .replace-input {
   padding: 2px 8px !important;
   border: 1px solid rgb(177, 177, 177) !important;
   border-radius: 4px !important;
-  height: 30px;
+  height: 26px;
   box-sizing: border-box;
   font-size: 13px !important;
   line-height: 24px;
@@ -45,55 +49,62 @@
   transition: width 0.2s ease;
 }
 
+/* 輸入框懸停效果 */
 .replace-input:hover {
   border-color: #5687b6 !important;
 }
 
+/* 輸入框焦點效果 */
 .replace-input:focus {
   outline: none;
   border-color: #5687b6 !important;
 }
 
+/* 輸入框佔位符文字樣式 */
 .replace-input::placeholder {
   color: #b8b8b8;
   font-size: 13px !important;
 }
 
+/* 替換按鈕基本樣式 */
 .replace-button {
-  padding: 4px 10px;
+  padding: 2px 8px;
   border: none;
   border-radius: 4px;
   background-color: #4CAF50;
   color: white;
   cursor: pointer;
-  height: 30px;
+  height: 26px;
   box-sizing: border-box;
   font-size: 13px !important;
   font-weight: 500;
-  line-height: 24px;
 }
 
+/* 替換按鈕懸停效果 */
 .replace-button:hover {
   background-color: #45a049;
 }
 
+/* 禁用狀態的替換按鈕 */
 .replace-button.disabled {
   background-color: #e0e0e0;
   color: #999999;
   cursor: not-allowed;
 }
 
+/* 禁用狀態的替換按鈕懸停效果 */
 .replace-button.disabled:hover {
   background-color: #e0e0e0;
 }
 
-/* 添加自動替換相關樣式 */
+/* 自動替換組容器 */
 .auto-replace-container {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
+/* 自動替換組樣式 */
 .auto-replace-group {
   display: flex;
   gap: 6px;
@@ -101,16 +112,103 @@
   margin-left: 24px;
 }
 
+/* 自動替換組的複選框 */
 .auto-replace-checkbox {
   width: 16px;
   height: 16px;
   cursor: pointer;
 }
 
-/* 第一組和第二組替換框的容器共用樣式 */
+/* 手動替換組基本樣式 */
 .replace-main-group {
   display: flex;
   gap: 6px;
   align-items: center;
   margin-left: 24px;
-} 
+}
+
+/* 第二組及後續組的樣式 */
+.replace-extra-group {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-left: 6px;
+}
+
+/* 手動替換組的控制按鈕容器 */
+.replace-group-controls {
+  display: flex;
+  flex-direction: column;
+  margin-right: -2px;
+  gap: 4px;
+}
+
+/* 按鈕基本樣式 */
+.replace-control-button {
+  padding: 0;
+  width: 14px;
+  height: 14px;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: Arial, sans-serif;
+  font-size: 18px !important;
+  font-weight: 900 !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  pointer-events: none;
+}
+
+/* 按鈕內容區域 */
+.replace-control-button::before {
+  content: attr(textContent);
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+/* 加號按鈕樣式 */
+#replace-add-button {
+  opacity: 0.3;
+  transition: all 0.2s ease;
+}
+
+/* 加號按鈕懸停效果 */
+#replace-add-button:hover {
+  opacity: 1;
+}
+
+/* 減號按鈕樣式 */
+#replace-remove-button {
+  margin-top: -4px;
+  margin-left: -1px;
+  font-size: 22px !important;
+  font-weight: 700 !important;
+  transform: scale(1.6, 1);
+  opacity: 0.3;
+  transition: all 0.2s ease;
+}
+
+/* 減號按鈕懸停效果 */
+#replace-remove-button:hover {
+  opacity: 1;
+}
+
+/* 按鈕點擊效果 */
+.replace-control-button:active {
+  transform: scale(0.9) !important;
+}
+
+/* 手動替換組容器 */
+.manual-replace-container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+ 
