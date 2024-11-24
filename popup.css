@@ -51,7 +51,7 @@ input:focus, select:focus {
 /* 文本區域樣式 */
 textarea {
   flex: 0 0 auto;
-  min-height: 330px;    /* 固定最小高度 */
+  min-height: 170px;    /* 固定最小高度 */
   resize: none;         /* 禁止手動調整大小 */
   border: none;
   color: #333;
@@ -192,7 +192,7 @@ input[type="checkbox"] {
   margin: 4px 0px;
 }
 
-/* 核取方塊標��樣式 */
+/* 核取方塊標樣式 */
 .checkbox-label {
   display: inline-flex;
   align-items: center;
@@ -592,5 +592,42 @@ input[type="checkbox"] {
   height: 2px;
   background: yellow;     /* 黃色標記頂部內容區域 */
   z-index: 1000;
+}
+
+/* 設定分頁樣式 */
+.settings-container {
+  padding: 15px;
+}
+
+.settings-section {
+  margin-bottom: 20px;
+}
+
+.settings-section h3 {
+  margin: 0 0 15px 0;
+  color: #333;
+  font-size: 16px;
+}
+
+.settings-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+/* 修改設定按鈕樣式以匹配改寫按鈕 */
+.settings-button {
+  background-color: #3498db;  /* 使用與改寫按鈕相同的藍色 */
+  color: white;
+  border: none;
+  cursor: pointer;
+  font-size: 15px;           /* 與改寫按鈕相同的字體大小 */
+  padding: 6px 16px;
+  border-radius: 4px;
+  height: 36px;              /* 與改寫按鈕相同的高度 */
+  transition: background-color 0.3s;  /* 添加過渡效果 */
+}
+
+.settings-button:hover {
+  background-color: #2980b9;  /* 使用與改寫按鈕相同的懸停顏色 */
 }
   

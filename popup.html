@@ -11,6 +11,7 @@
     <div class="main-tab active" data-tab="rewrite">改寫</div>
     <div class="main-tab" data-tab="highlight">高亮</div>
     <div class="main-tab" data-tab="auto-replace">替換</div>
+    <div class="main-tab" data-tab="settings">設定</div>
   </div>
 
   <div id="rewrite-tab" class="main-tab-content active">
@@ -146,6 +147,22 @@
     </div>
   </div>
 
+  <div id="settings-tab" class="main-tab-content">
+    <div class="content">
+      <div class="settings-container">
+        <div class="settings-section">
+          <h3>設定管理</h3>
+          <div class="settings-buttons">
+            <button id="export-settings" class="settings-button">匯出設定</button>
+            <button id="import-settings" class="settings-button">匯入設定</button>
+            <input type="file" id="import-file" accept=".json" style="display: none;">
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="settings/settings-manager.js"></script>
   <script src="text_replace/auto-replace-manager.js"></script>
   <script src="settings.js"></script>
   <script src="default.js"></script>
