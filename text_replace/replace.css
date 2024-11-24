@@ -93,6 +93,7 @@
   transition: width 0.2s ease, border-color 0.2s ease;
 }
 
+/* 主輸入框 placeholder 樣式 */
 .replace-main-group .replace-input::placeholder {
   color: #b8b8b8;
   font-size: 14.5px !important;

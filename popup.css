@@ -1,4 +1,4 @@
-/* 引入 Noto Sans TC 字體，用於主分頁標題 */
+/* 入 Noto Sans TC 字體，用於主分頁標題 */
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@700&display=swap');
 
 /* 基本彈出視窗樣式設定 */
@@ -192,7 +192,7 @@ input[type="checkbox"] {
   margin: 4px 0px;
 }
 
-/* 核取方塊標籤樣式 */
+/* 核取方塊標樣式 */
 .checkbox-label {
   display: inline-flex;
   align-items: center;
@@ -343,7 +343,7 @@ input[type="checkbox"] {
 .auto-replace-container {
   background: #fff;
   border-radius: 4px;
-  padding: 10px;
+  padding: 10px 8px 10px 5px;
   height: 454px;
   overflow-y: auto;
 
@@ -363,29 +363,55 @@ input[type="checkbox"] {
   }
 }
 
+/* 自動替換組樣式 */
 .auto-replace-group {
   display: flex;
-  align-items: center;
+  align-items: flex-start;  /* 改為頂部對齊 */
   margin-bottom: 10px;
-  gap: 8px;
+  gap: 4px;
+  background: #fff;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 /* 修改輸入框基本樣式 */
 .replace-input {
   color: #333;
   height: 32px;
-  padding: 4px 8px;
+  min-height: 32px;
+  padding: 6px 8px;
   border: 1px solid #cccccc;
   border-radius: 4px;
   font-size: 14px;
-  transition: all 0.3s;
-  /* 移除寬度限制，讓 JavaScript 動態控制寬度 */
+  line-height: 20px;
+  transition: height 0.3s ease;  /* 只對高度應用過渡效果 */
+  resize: none;
+  background-color: rgb(255, 255, 255);
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  box-sizing: border-box;
+  transform-origin: top;    /* 設置變形原點在頂部 */
 }
 
 /* 輸入框焦點樣式 */
 .replace-input:focus {
   border-color: #3498db;
   outline: none;
+  height: auto;
+  min-height: 32px;
+  white-space: pre-wrap;
+  overflow: hidden;
+  padding: 6px 8px;
+  display: block;
+  align-items: initial;
+}
+
+/* 修改輸入框 placeholder 樣式 */
+.replace-input::placeholder {
+  color: #b8b8b8;
+  font-size: 14px;
 }
 
 /* ===== 複選框樣式 ===== */
@@ -400,10 +426,10 @@ input[type="checkbox"] {
   cursor: pointer !important;
   position: relative !important;
   background-color: rgb(243, 244, 246) !important;
-  transition: all 0.2s ease !important;
+  transition: all 0.1s ease !important;
   outline: none !important;
   padding: 0 !important;
-  margin: 0 !important;
+  margin: 0px 2px 0px 3px !important;
 }
 
 /* 勾選框懸停效果 */
@@ -511,4 +537,42 @@ input[type="checkbox"] {
 .replace-control-button:hover {
   background: none;
   border-color: transparent;
+}
+
+/* 拖曳把手樣式 */
+.replace-drag-handle {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 26px;
+  cursor: move;
+  color: rgb(0, 0, 0);
+  font-weight: 600;
+  user-select: none;
+  opacity: 0.3;
+  transition: opacity 0.2s ease;
+}
+
+/* 拖曳把手懸停效果 */
+.replace-drag-handle:hover {
+  opacity: 0.6;
+}
+
+/* 拖曳把手內容 */
+.replace-drag-handle::before {
+  content: "⋮⋮";
+  font-size: 13px !important;
+  line-height: 14px;
+  z-index: 1000;
+}
+
+/* 控制元素容器樣式 */
+.controls-container {
+  display: flex;
+  align-items: center;
+  padding-top: 3px;          /* 調整上邊距以對齊 32px 高度的輸入框 */
+  gap: 4px;
+  margin-right: 2px;
 } 

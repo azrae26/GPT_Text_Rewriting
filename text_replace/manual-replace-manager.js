@@ -235,13 +235,21 @@ const ManualReplaceManager = {
     if (!fromText || !textArea.value) return;
 
     try {
+      // 保存當前游標位置
+      const selectionStart = textArea.selectionStart;
+      const selectionEnd = textArea.selectionEnd;
+
       const regex = this.createRegex(fromText);
       const newText = textArea.value.replace(regex, toText);
 
       if (newText !== textArea.value) {
         textArea.value = newText;
         textArea.dispatchEvent(new Event('input', { bubbles: true }));
-        // 直接更新當前按鈕狀態
+        
+        // 恢復游標位置
+        textArea.setSelectionRange(selectionStart, selectionEnd);
+        
+        // 更新按鈕狀態
         this.updateButtonState(fromText, newText, button);
       }
     } catch (error) {
