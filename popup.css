@@ -51,7 +51,7 @@ input:focus, select:focus {
 /* 文本區域樣式 */
 textarea {
   flex: 0 0 auto;
-  min-height: 170px;    /* 固定最小高度 */
+  min-height: 330px;    /* 固定最小高度 */
   resize: none;         /* 禁止手動調整大小 */
   border: none;
   color: #333;
@@ -389,6 +389,7 @@ input[type="checkbox"] {
 
 /* 修改輸入框基本樣式 */
 .replace-input {
+  min-height: 170px !important;
   color: #333;
   width: 100% !important;
   height: 100% !important;
@@ -407,6 +408,8 @@ input[type="checkbox"] {
   top: 0;
   left: 0;
 }
+
+
 
 /* 輸入框焦點樣式 */
 .replace-input:focus {
