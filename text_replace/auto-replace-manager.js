@@ -2,7 +2,7 @@
 const AutoReplaceManager = {
   CONFIG: {
     AUTO_REPLACE_KEY: 'autoReplaceRules',
-    FROM_INPUT_WIDTH: 290,    // 替換目標框寬度
+    FROM_INPUT_WIDTH: 285,    // 替換目標框寬度
     TO_INPUT_WIDTH: 115,      // 替換結果框寬度
     INPUT_HEIGHT: 32          // 輸入框高度
   },
@@ -18,29 +18,30 @@ const AutoReplaceManager = {
 
     /** 創建輸入框 */
     createInput(placeholder, isFromInput) {
+      // 創建容器
+      const container = document.createElement('div');
+      container.className = 'replace-input-container';
+      const width = isFromInput ? 
+        AutoReplaceManager.CONFIG.FROM_INPUT_WIDTH : 
+        AutoReplaceManager.CONFIG.TO_INPUT_WIDTH;
+      container.style.width = `${width}px`;
+      
+      // 創建輸入框
       const input = document.createElement('textarea');
       input.placeholder = placeholder;
       input.className = 'replace-input';
-      const width = isFromInput ? AutoReplaceManager.CONFIG.FROM_INPUT_WIDTH : AutoReplaceManager.CONFIG.TO_INPUT_WIDTH;
-      input.style.cssText = `width: ${width}px !important; height: ${AutoReplaceManager.CONFIG.INPUT_HEIGHT}px !important;`;
       input.rows = 1;
       
-      // 添加輸入事件來自動調整高度
+      // 添加輸入事件來自動調整高
       const adjustHeight = (element) => {
-        console.log('開始調整高度');
-        console.log('當前元素焦點狀態:', document.activeElement === element);
-
-        // 如果不是焦點狀態，保持單行模式
+        const container = element.parentElement;
+        
         if (document.activeElement !== element) {
-          console.log('非焦點狀態，保持單行模式');
-          element.style.height = '32px';
+          container.style.height = '32px';
           element.style.whiteSpace = 'nowrap';
-          element.style.display = 'flex';
-          element.style.alignItems = 'center';
           return;
         }
 
-        // 創建臨時 div 來計算文字尺寸
         const div = document.createElement('div');
         div.style.cssText = `
           position: fixed;
@@ -50,97 +51,52 @@ const AutoReplaceManager = {
           line-height: ${getComputedStyle(element).lineHeight};
           white-space: pre-wrap;
           word-wrap: break-word;
-          box-sizing: border-box;
-          margin: 0;
-          border: 0;
-          padding: 0;
+          padding: 6px 8px;
         `;
         
-        // 計算單行文字的實際高度
-        div.textContent = 'X';
-        document.body.appendChild(div);
-        const singleLineTextHeight = div.offsetHeight;
-        console.log('單行文字高度:', singleLineTextHeight);
-        
-        // 計算當前文字的實際高度
         const content = element.value || element.placeholder;
+        const hasNewline = content.includes('\n');
+        
         div.textContent = content;
-        const totalTextHeight = div.offsetHeight;
-        console.log('當前文字內容:', content);
-        console.log('文字總高度:', totalTextHeight);
+        document.body.appendChild(div);
         
-        // 檢查是否有換行符並計算額外高度
-        const endsWithNewline = content.endsWith('\n');
-        const newlineHeight = endsWithNewline ? singleLineTextHeight : 0;
-        console.log('是否以換行符結尾:', endsWithNewline);
-        console.log('換行符高度:', newlineHeight);
-        
-        // 檢查是否需要換行
-        const needsWrap = div.scrollWidth > (element.offsetWidth - 16) || 
-                         content.includes('\n') ||
-                         totalTextHeight > singleLineTextHeight;
-        console.log('是否需要換行:', needsWrap);
-        console.log('文字寬度:', div.scrollWidth);
-        console.log('容器寬度:', element.offsetWidth - 16);
-        console.log('是否包含換行符:', content.includes('\n'));
-        
-        // 計算新的輸入框高度，包含換行符的高度
-        const newHeight = needsWrap ? 
-          Math.max(32, totalTextHeight + newlineHeight + 12) : // 需要換行時，加上換行符高度和內邊距
-          32; // 不需要換行時，保持單行高度
-        console.log('計算得到的新高度:', newHeight);
-        
-        // 設置多行模式和新高度
+        const newHeight = Math.max(32, div.offsetHeight + (hasNewline ? 20 : 0));
+        container.style.height = `${newHeight}px`;
         element.style.whiteSpace = 'pre-wrap';
-        element.style.display = 'block';
-        element.style.alignItems = 'initial';
-        element.style.height = `${newHeight}px`;
-        console.log('最終設置的樣式:', {
-          whiteSpace: element.style.whiteSpace,
-          display: element.style.display,
-          alignItems: element.style.alignItems,
-          height: element.style.height
-        });
         
-        // 清理臨時元素
         div.remove();
-        console.log('高度調整完成');
       };
 
-      // 監聽輸入事件
+      // 監聽事件
       input.addEventListener('input', function() {
         if (document.activeElement === this) {
           requestAnimationFrame(() => adjustHeight(this));
         }
       });
 
-      // 監聽按鍵事件（處理 Enter 鍵）
       input.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' && document.activeElement === this) {
           requestAnimationFrame(() => adjustHeight(this));
         }
       });
 
-      // 失去焦點時恢復單行模式
       input.addEventListener('blur', function() {
-        this.style.height = '32px';
-        this.style.whiteSpace = 'nowrap';
-        this.style.display = 'flex';
-        this.style.alignItems = 'center';
+        requestAnimationFrame(() => {
+          this.parentElement.style.height = '32px';
+          this.style.whiteSpace = 'nowrap';
+        });
       });
 
-      // 獲得焦點時切換到多行模式並立即調整高度
       input.addEventListener('focus', function() {
-        // 先切換到多行模式
-        this.style.whiteSpace = 'pre-wrap';
-        this.style.display = 'block';
-        this.style.alignItems = 'initial';
-        
-        // 然後調整高度
-        requestAnimationFrame(() => adjustHeight(this));
+        requestAnimationFrame(() => {
+          this.style.whiteSpace = 'pre-wrap';
+          adjustHeight(this);
+        });
       });
 
-      return input;
+      // 將輸入框添加到容器中
+      container.appendChild(input);
+      return container;
     },
 
     /** 創建控制按鈕 */
@@ -182,9 +138,14 @@ const AutoReplaceManager = {
       const groups = container.querySelectorAll('.auto-replace-group');
       
       if (groups.length === 1) {
-        const inputs = group.querySelectorAll('input[type="text"]');
-        inputs.forEach(input => input.value = '');
-        group.querySelector('input[type="checkbox"]').checked = false;
+        // 如果是最後一個組，清空輸入框
+        const fromInput = group.querySelector('.replace-input-container:first-of-type .replace-input');
+        const toInput = group.querySelector('.replace-input-container:last-of-type .replace-input');
+        const checkbox = group.querySelector('.auto-replace-checkbox');
+        
+        if (fromInput) fromInput.value = '';
+        if (toInput) toInput.value = '';
+        if (checkbox) checkbox.checked = false;
       } else {
         group.remove();
       }
@@ -193,7 +154,7 @@ const AutoReplaceManager = {
     }
   },
 
-  /** 創建自動替換組 */
+  /** 創建自動替換 */
   createAutoReplaceGroup(textArea, initialData = null) {
     const group = document.createElement('div');
     group.className = 'auto-replace-group';
@@ -217,28 +178,32 @@ const AutoReplaceManager = {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.className = 'auto-replace-checkbox';
+    if (initialData?.enabled) {
+      checkbox.checked = true;
+    }
     controlsContainer.appendChild(checkbox);
 
     // 將控制元素容器添加到組中
     group.appendChild(controlsContainer);
 
-    // 創建輸入框，傳入參數指示是哪個輸入框
-    const fromInput = this.UI.createInput('自動替換', true);   // 替換目標框
-    const toInput = this.UI.createInput('替換為', false);      // 替換結果框
+    // 創建輸入框容器
+    const fromInputContainer = this.UI.createInput('自動替換', true);   // 替換目標框
+    const toInputContainer = this.UI.createInput('替換為', false);      // 替換結果框
 
-    // 設置初始值
+    // 獲取實際的輸入框元素並設置初始值
+    const fromInput = fromInputContainer.querySelector('.replace-input');
+    const toInput = toInputContainer.querySelector('.replace-input');
     if (initialData) {
-      fromInput.value = initialData.from || '';
-      toInput.value = initialData.to || '';
-      checkbox.checked = initialData.enabled || false;
+      if (initialData.from) fromInput.value = initialData.from;
+      if (initialData.to) toInput.value = initialData.to;
     }
 
     // 設置事件
     this.setupGroupEvents(group, textArea, fromInput, toInput, checkbox);
 
-    // 添加輸入框
-    group.appendChild(fromInput);
-    group.appendChild(toInput);
+    // 添加輸入框容器
+    group.appendChild(fromInputContainer);
+    group.appendChild(toInputContainer);
 
     // 設置拖曳事件
     this.setupDragEvents(group, dragHandle);
@@ -381,31 +346,94 @@ const AutoReplaceManager = {
   /** 設置組事件 */
   setupGroupEvents(group, textArea, fromInput, toInput, checkbox) {
     const handleInput = (input) => {
-      this.saveAutoReplaceRules(group.parentElement);
-      
-      // 更新到 content script
-      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        if (tabs[0]) {
-          try {
-            chrome.tabs.sendMessage(tabs[0].id, {
-              action: "updateAutoReplaceRules"
-            }, function(response) {
-              if (chrome.runtime.lastError) {
-                console.log('Content script 尚未準備好');
-              }
-            });
-          } catch (error) {
-            console.log('發送消息時出錯:', error);
-          }
-        }
+      console.group('處理輸入事件');
+      console.log('輸入框值:', {
+        from: fromInput.value,
+        to: toInput.value,
+        checked: checkbox.checked
       });
+
+      // 先保存規則
+      this.saveAutoReplaceRules(group.parentElement);
+      console.log('規則已保存');
+      
+      // 只在 popup 頁面中發送消息
+      if (window.location.pathname.endsWith('popup.html')) {
+        console.log('準備發送消息到 content script');
+        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+          if (tabs[0]) {
+            try {
+              // 獲取當前的規則
+              const container = group.parentElement;
+              const rules = Array.from(container.querySelectorAll('.auto-replace-group')).map(group => {
+                // 使用 children 來獲取直接子元素
+                const containers = Array.from(group.children).filter(el => el.classList.contains('replace-input-container'));
+                const fromInput = containers[0]?.querySelector('textarea');
+                const toInput = containers[1]?.querySelector('textarea');
+                const checkbox = group.querySelector('.auto-replace-checkbox');
+                
+                console.log('找到的輸入框:', {
+                  fromContainer: containers[0],
+                  toContainer: containers[1],
+                  fromInput,
+                  toInput
+                });
+                
+                const rule = {
+                  from: fromInput?.value || '',
+                  to: toInput?.value || '',
+                  enabled: checkbox?.checked || false
+                };
+                
+                console.log('獲取到的實際值:', {
+                  fromValue: fromInput?.value,
+                  toValue: toInput?.value,
+                  checked: checkbox?.checked
+                });
+                
+                return rule;
+              });
+
+              console.log('準備發送的規則:', rules);
+
+              // 發送完整的規則列表
+              chrome.tabs.sendMessage(tabs[0].id, {
+                action: "updateAutoReplaceRules",
+                rules: rules
+              }, function(response) {
+                if (chrome.runtime.lastError) {
+                  console.debug('Content script 正在載入中...');
+                } else {
+                  console.log('消息發送成功:', response);
+                }
+              });
+            } catch (error) {
+              console.error('發送消息時出錯:', error);
+            }
+          }
+        });
+      }
+      console.groupEnd();
     };
 
     // 為兩個輸入框添加輸入事件監聽
     [fromInput, toInput].forEach(input => {
-      input.addEventListener('input', () => handleInput(input));
+      // 使用 debounce 來限制事件觸發頻率
+      let timeoutId = null;
+      input.addEventListener('input', () => {
+        console.log('輸入事件觸發');
+        if (timeoutId) {
+          console.log('清除之前的 timeout');
+          clearTimeout(timeoutId);
+        }
+        timeoutId = setTimeout(() => {
+          console.log('執行 debounced 處理');
+          handleInput(input);
+        }, 300);
+      });
       
       input.addEventListener('blur', () => {
+        console.log('失去焦點事件觸發');
         if (checkbox.checked && fromInput.value.trim() && toInput.value.trim()) {
           this.handleAutoReplace(textArea);
         }
@@ -414,9 +442,32 @@ const AutoReplaceManager = {
 
     // 複選框事件
     checkbox.addEventListener('change', () => {
+      console.log('複選框狀態改變:', checkbox.checked);
       this.saveAutoReplaceRules(group.parentElement);
       if (checkbox.checked && fromInput.value.trim() && toInput.value.trim()) {
         this.handleAutoReplace(textArea);
+      }
+    });
+  },
+
+  /** 發送消息到 content script */
+  sendMessageToTab(message) {
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      if (!tabs[0]) {
+        console.debug('沒有找到活動的標籤頁');
+        return;
+      }
+      
+      try {
+        chrome.tabs.sendMessage(tabs[0].id, message, function(response) {
+          if (chrome.runtime.lastError) {
+            // 這是正常的情況，不需要顯示為錯誤
+            console.debug('Content script 正在載入中...');
+            return;
+          }
+        });
+      } catch (error) {
+        console.debug('發送消息時出錯:', error);
       }
     });
   },
@@ -430,6 +481,7 @@ const AutoReplaceManager = {
       if (rules.length === 0) rules.push({});
       
       rules.forEach(rule => {
+        // 直接在創建時設置初始值
         const group = this.createAutoReplaceGroup(textArea, rule);
         container.appendChild(group);
       });
@@ -442,77 +494,182 @@ const AutoReplaceManager = {
 
   /** 保存自動替換規則 */
   saveAutoReplaceRules(container) {
+    // 添加日誌追蹤
+    console.group('保存替換規則');
+    
     const rules = Array.from(container.querySelectorAll('.auto-replace-group')).map(group => {
-      const inputs = group.querySelectorAll('.replace-input');
-      return {
-        from: inputs[0].value,
-        to: inputs[1].value,
-        enabled: group.querySelector('.auto-replace-checkbox').checked
+      // 使用 children 來獲取直接子元素
+      const containers = Array.from(group.children).filter(el => el.classList.contains('replace-input-container'));
+      const fromInput = containers[0]?.querySelector('textarea');
+      const toInput = containers[1]?.querySelector('textarea');
+      const checkbox = group.querySelector('.auto-replace-checkbox');
+      
+      const rule = {
+        from: fromInput?.value || '',
+        to: toInput?.value || '',
+        enabled: checkbox?.checked || false
       };
+      
+      // 記錄每個規則的內容
+      console.log('保存規則:', rule);
+      
+      return rule;
     });
 
-    chrome.storage.sync.set({ [this.CONFIG.AUTO_REPLACE_KEY]: rules });
+    console.log('所有規則:', rules);
+
+    chrome.storage.sync.set({ [this.CONFIG.AUTO_REPLACE_KEY]: rules }, () => {
+      if (chrome.runtime.lastError) {
+        console.error('保存規則失敗:', chrome.runtime.lastError);
+      } else {
+        console.log('規則保存成功');
+      }
+    });
+
+    console.groupEnd();
   },
 
   /** 執行自動替換 */
   handleAutoReplace(textArea) {
     // 如果在 popup 頁面中，發送消息到 content script
     if (window.location.pathname.endsWith('popup.html')) {
-      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {
-          action: "triggerAutoReplace"
-        });
-      });
+      this._sendMessageToContentScript();
       return;
     }
 
-    // 保存當前游標位置
-    const selectionStart = textArea.selectionStart;
-    const selectionEnd = textArea.selectionEnd;
-
-    let text = textArea.value;
-    let changed = false;
-
-    document.querySelectorAll('.auto-replace-group').forEach(group => {
-      // 修改選擇器以匹配新的 textarea 元素
-      const inputs = group.querySelectorAll('.replace-input');
-      const from = inputs[0].value.trim();
-      const to = inputs[1].value.trim();
-      const enabled = group.querySelector('.auto-replace-checkbox').checked;
-
-      if (enabled && from) {
-        try {
-          // 支持正則表達式
-          const regex = this.createRegex(from);
-          const newText = text.replace(regex, to);
-          if (newText !== text) {
-            text = newText;
-            changed = true;
-          }
-        } catch (error) {
-          console.error('替換錯誤:', error);
-        }
-      }
-    });
-
-    if (changed) {
-      textArea.value = text;
-      textArea.dispatchEvent(new Event('input', { bubbles: true }));
-      
-      // 恢復游標位置
-      textArea.setSelectionRange(selectionStart, selectionEnd);
+    // 獲取並保存游標位置
+    const cursorState = this._saveCursorState(textArea);
+    
+    // 執行替換
+    const result = this._executeReplacements(textArea);
+    
+    // 如果有變更，更新文本並恢復游標
+    if (result.changed) {
+      this._updateTextAreaValue(textArea, result.text, cursorState);
     }
   },
 
-  /** 創建則表達式 */
+  /** 發送消息到 content script */
+  _sendMessageToContentScript() {
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: "triggerAutoReplace"
+      });
+    });
+  },
+
+  /** 保存游標狀態 */
+  _saveCursorState(textArea) {
+    return {
+      start: textArea.selectionStart,
+      end: textArea.selectionEnd
+    };
+  },
+
+  /** 執行所有替換規則 */
+  _executeReplacements(textArea) {
+    let text = textArea.value;
+    let changed = false;
+
+    // 獲取所有啟用的替換規則
+    const rules = this._getActiveRules();
+    
+    // 批次執行替換
+    rules.forEach(rule => {
+      try {
+        const regex = this.createRegex(rule.from);
+        const newText = text.replace(regex, rule.to);
+        if (newText !== text) {
+          text = newText;
+          changed = true;
+        }
+      } catch (error) {
+        console.error('替換錯誤:', error, rule);
+      }
+    });
+
+    return { text, changed };
+  },
+
+  /** 獲取所有啟用的替換規則 */
+  _getActiveRules() {
+    return Array.from(document.querySelectorAll('.auto-replace-group'))
+      .map(group => {
+        // 使用相同的邏輯獲取輸入框
+        const containers = Array.from(group.children).filter(el => el.classList.contains('replace-input-container'));
+        const fromInput = containers[0]?.querySelector('textarea');
+        const toInput = containers[1]?.querySelector('textarea');
+        const enabled = group.querySelector('.auto-replace-checkbox').checked;
+        
+        return {
+          from: fromInput?.value?.trim() || '',
+          to: toInput?.value?.trim() || '',
+          enabled
+        };
+      })
+      .filter(rule => rule.enabled && rule.from); // 只返回啟用且有來源文字的規則
+  },
+
+  /** 更新文本區域的值並恢復游標位置 */
+  _updateTextAreaValue(textArea, newText, cursorState) {
+    textArea.value = newText;
+    textArea.dispatchEvent(new Event('input', { bubbles: true }));
+    textArea.setSelectionRange(cursorState.start, cursorState.end);
+  },
+
+  /** 創建正則表達式 */
   createRegex(text) {
-    if (text.startsWith('/') && text.match(/\/[gim]*$/)) {
-      const lastSlash = text.lastIndexOf('/');
-      const pattern = text.slice(1, lastSlash);
-      const flags = text.slice(lastSlash + 1);
-      return new RegExp(pattern, flags || 'g');
+    try {
+      if (this._isRegexPattern(text)) {
+        return this._createRegexFromPattern(text);
+      }
+      return this._createRegexFromText(text);
+    } catch (error) {
+      console.error('正則表達式創建失敗:', error);
+      // 返回一個永遠不會匹配的正則表達式，而不是拋出錯誤
+      return new RegExp('(?!)', 'g');
     }
-    return new RegExp(this.escapeRegExp(text), 'g');
+  },
+
+  /** 檢查是否為正則表達式模式 */
+  _isRegexPattern(text) {
+    // 檢查是否已經是正則表達式格式
+    return text.startsWith('(') || 
+           text.startsWith('[') || 
+           text.startsWith('/') && text.match(/\/[gim]*$/);
+  },
+
+  /** 從正則表達式模式創建正則表達式 */
+  _createRegexFromPattern(text) {
+    try {
+      if (text.startsWith('/') && text.match(/\/[gim]*$/)) {
+        // 處理 /pattern/flags 格式
+        const lastSlash = text.lastIndexOf('/');
+        const pattern = text.slice(1, lastSlash);
+        const flags = text.slice(lastSlash + 1);
+        return new RegExp(pattern, flags || 'gi');
+      } else {
+        // 直接作為正則表達式模式使用
+        return new RegExp(text, 'gi');
+      }
+    } catch (error) {
+      console.error('正則表達式解析失敗:', error);
+      return new RegExp('(?!)', 'g');
+    }
+  },
+
+  /** 從普通文字創建正則表達式 */
+  _createRegexFromText(text) {
+    try {
+      const escapedText = this.escapeRegExp(text);
+      const firstChar = text.charAt(0);
+      const reChar = `[${firstChar.toLowerCase()}${firstChar.toUpperCase()}]`;
+      const pattern = firstChar + escapedText.slice(1);
+      return new RegExp(pattern.replace(reChar, firstChar), 'gi');
+    } catch (error) {
+      console.error('文轉正則表達式失敗:', error);
+      return new RegExp('(?!)', 'g');
+    }
   },
 
   /** 轉義正則表達式特殊字符 */

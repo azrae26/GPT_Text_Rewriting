@@ -260,12 +260,18 @@ const ManualReplaceManager = {
   /** 創建正則表達式 */
   createRegex(text) {
     if (text.startsWith('/') && text.match(/\/[gim]*$/)) {
+      // 如果是正則表達式格式，保持用戶指定的標誌
       const lastSlash = text.lastIndexOf('/');
       const pattern = text.slice(1, lastSlash);
       const flags = text.slice(lastSlash + 1);
-      return new RegExp(pattern, flags || 'g');
+      return new RegExp(pattern, flags || 'gi'); // 預設添加 'i' 標誌
     }
-    return new RegExp(this.escapeRegExp(text), 'g');
+    // 如果是普通文字，直接使用字串替換，不區分大小寫
+    const escapedText = this.escapeRegExp(text);
+    const firstChar = text.charAt(0);
+    const reChar = `[${firstChar.toLowerCase()}${firstChar.toUpperCase()}]`;
+    const pattern = firstChar + escapedText.slice(1);
+    return new RegExp(pattern.replace(reChar, firstChar), 'gi');
   },
 
   /** 轉義正則表達式特殊字符 */

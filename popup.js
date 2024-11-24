@@ -350,7 +350,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       chrome.storage.sync.set({ highlightColors: wordColors });
     }
     
-    // 儲存當前文字，供下次比對用
+    // 儲���當前文字，供下次比對用
     this._previousValue = this.value;
     
     // 保存高亮文字
@@ -364,16 +364,37 @@ document.addEventListener('DOMContentLoaded', async function() {
     updatePreview();
   });
 
-  // 更新高亮文字的函數
+  // 修改消息發送函數，添加錯誤處理
+  function sendMessageToTab(message, callback) {
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      if (!tabs[0]) {
+        console.debug('沒有找到活動的標籤頁');
+        return;
+      }
+      
+      try {
+        chrome.tabs.sendMessage(tabs[0].id, message, function(response) {
+          if (chrome.runtime.lastError) {
+            // 這是正常的情況，不需要顯示為錯誤
+            console.debug('通信未建立，可能是 content script 尚未載入');
+            return;
+          }
+          if (callback) callback(response);
+        });
+      } catch (error) {
+        console.debug('發送消息時出錯:', error);
+      }
+    });
+  }
+
+  // 修改所有使用 chrome.tabs.sendMessage 的地方
+  // 例如在 updateHighlightWords 函數中：
   function updateHighlightWords(text) {
     const words = text.split('\n').filter(word => word.trim());
-    
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "updateHighlightWords",
-        words: words,
-        colors: wordColors || {}
-      });
+    sendMessageToTab({
+      action: "updateHighlightWords",
+      words: words,
+      colors: wordColors || {}
     });
   }
 
@@ -399,23 +420,16 @@ document.addEventListener('DOMContentLoaded', async function() {
         const word = words[selectedLine];
         if (word) {
           wordColors[word] = color;
-          // 保存顏色設置
           chrome.storage.sync.set({ highlightColors: wordColors });
-          
-          // 更新預覽
           updatePreview();
           
-          // 更新內容頁的高亮
-          chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-            chrome.tabs.sendMessage(tabs[0].id, {
-              action: "updateHighlightWords",
-              words: words,
-              colors: wordColors
-            }, function() {
-              // 強制觸發一次更新
-              chrome.tabs.sendMessage(tabs[0].id, {
-                action: "forceUpdateHighlights"
-              });
+          sendMessageToTab({
+            action: "updateHighlightWords",
+            words: words,
+            colors: wordColors
+          }, function() {
+            sendMessageToTab({
+              action: "forceUpdateHighlights"
             });
           });
         }
@@ -434,18 +448,21 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 修改 updateHighlightWords 函數
   function updateHighlightWords(text) {
     const words = text.split('\n').filter(word => word.trim());
-    
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "updateHighlightWords",
-        words: words,
-        colors: wordColors || {}
-      });
+    sendMessageToTab({
+      action: "updateHighlightWords",
+      words: words,
+      colors: wordColors || {}
     });
   }
 
   // 修改 updatePreview 函數
   function updatePreview() {
+    // 確保 textarea 已準備好
+    if (!highlightWordsInput || !highlightWordsInput.clientWidth) {
+        setTimeout(updatePreview, 10);
+        return;
+    }
+    
     // 清除舊的預覽
     const oldPreviews = document.querySelectorAll('.highlight-preview');
     oldPreviews.forEach(p => p.remove());
@@ -547,8 +564,15 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
     if (data.highlightWords) {
       highlightWordsInput.value = data.highlightWords;
+      // 使用 setTimeout 確保 textarea 已完全準備好
+      setTimeout(() => {
+        updatePreview();
+        // 再次更新以確保位置正確
+        requestAnimationFrame(() => {
+          updatePreviewsPosition();
+        });
+      }, 0);
     }
-    updatePreview();
   });
 
   // 監聽文字變更以更新預覽
