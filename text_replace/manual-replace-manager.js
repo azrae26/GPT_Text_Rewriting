@@ -316,6 +316,8 @@ const ManualReplaceManager = {
 
   /** 創建替換組 */
   createReplaceGroup(textArea, isMainGroup = false, initialData = null) {
+    console.log('創建替換組:', isMainGroup ? '主組' : '其他組', '初始數據:', initialData);
+    
     const group = document.createElement('div');
     group.className = isMainGroup ? 'replace-main-group' : 'replace-extra-group';
 
@@ -332,9 +334,26 @@ const ManualReplaceManager = {
     const replaceButton = this.UI.createReplaceButton();
 
     if (initialData) {
-      fromInput.value = initialData.from || '';
-      toInput.value = initialData.to || '';
-      this.updateButtonState(fromInput.value, textArea.value, replaceButton);
+        console.log('設置初始數據 - 其他組:', !isMainGroup);
+        fromInput.value = initialData.from || '';
+        toInput.value = initialData.to || '';
+        if (!isMainGroup) {
+            console.log('設置其他組初始寬度為最小值:', this.CONFIG.MIN_WIDTH);
+            fromInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+            toInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+        } else {
+            console.log('主組保持原有邏輯');
+            this.adjustInputWidth(fromInput);
+            this.adjustInputWidth(toInput);
+        }
+        this.updateButtonState(fromInput.value, textArea.value, replaceButton);
+    } else {
+        console.log('沒有初始數據，是否為其他組:', !isMainGroup);
+        if (!isMainGroup) {
+            console.log('設置其他組初始寬度為最小值:', this.CONFIG.MIN_WIDTH);
+            fromInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+            toInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+        }
     }
 
     this.setupGroupEvents(group, textArea, fromInput, toInput, replaceButton, isMainGroup);
@@ -349,23 +368,27 @@ const ManualReplaceManager = {
   /** 設置組事件 */
   setupGroupEvents(group, textArea, fromInput, toInput, replaceButton, isMainGroup) {
     const handleInput = (input) => {
-      this.adjustInputWidth(input);
-      this.updateButtonState(fromInput.value, textArea.value, replaceButton);
-      
-      // 修改獲取組索引的邏輯
-      let groupIndex = 0;
-      if (group.parentElement) {
-        const allGroups = Array.from(document.querySelectorAll('.replace-main-group, .replace-extra-group'));
-        groupIndex = allGroups.indexOf(group);
-        if (groupIndex === -1) groupIndex = 0; // 如果找不到索引，使用預設值
-      }
-      
-      // 更新預覽高亮
-      this.PreviewHighlight.updatePreview(textArea, fromInput.value, groupIndex);
-      
-      if (!isMainGroup) {
-        this.saveReplaceRules(group.parentElement);
-      }
+        console.log('handleInput 被調用 - 是否為主組:', isMainGroup);
+        
+        // 只有在主組或有焦點時才調整寬度
+        if (isMainGroup || document.activeElement === input) {
+            this.adjustInputWidth(input);
+        }
+        
+        this.updateButtonState(fromInput.value, textArea.value, replaceButton);
+        
+        let groupIndex = 0;
+        if (group.parentElement) {
+            const allGroups = Array.from(document.querySelectorAll('.replace-main-group, .replace-extra-group'));
+            groupIndex = allGroups.indexOf(group);
+            if (groupIndex === -1) groupIndex = 0;
+        }
+        
+        this.PreviewHighlight.updatePreview(textArea, fromInput.value, groupIndex);
+        
+        if (!isMainGroup) {
+            this.saveReplaceRules(group.parentElement);
+        }
     };
 
     [fromInput, toInput].forEach(input => {
@@ -406,11 +429,30 @@ const ManualReplaceManager = {
       });
     }
 
+    // 如果不是主組，添加焦點事件
+    if (!isMainGroup) {
+        [fromInput, toInput].forEach(input => {
+            // 獲得焦點時展開
+            input.addEventListener('focus', () => {
+                this.adjustInputWidth(input);
+            });
+            
+            // 失去焦點時縮小
+            input.addEventListener('blur', () => {
+                input.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+            });
+        });
+    }
+
     // 如果有初始值，等待 DOM 更新後再觸發 handleInput
     if (fromInput.value.trim()) {
-      requestAnimationFrame(() => {
-        handleInput(fromInput);
-      });
+        console.log('有初始值，準備調用 handleInput - 是否為主組:', isMainGroup);
+        requestAnimationFrame(() => {
+            if (!isMainGroup) {
+                console.log('其他組的初始值觸發 handleInput');
+            }
+            handleInput(fromInput);
+        });
     }
   },
 
@@ -434,8 +476,10 @@ const ManualReplaceManager = {
 
   /** 調整輸入框寬度 */
   adjustInputWidth(input) {
+    console.log('adjustInputWidth 被調用 - 當前值:', input.value);
     const text = input.value;
     if (!text) {
+      console.log('文字為空，設置最小寬度');
       input.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
       return;
     }
@@ -540,40 +584,42 @@ const ManualReplaceManager = {
 
     // 載入額外組
     chrome.storage.sync.get(['replace_manualReplaceRules', 'replace_manualGroups'], (result) => {
-      console.log('載入手動替換規則:', result);
-      const rules = result.replace_manualReplaceRules || [];
-      
-      if (rules.length === 0) {
-        rules.push({});
-      }
-      
-      // 創建所有組
-      rules.forEach(rule => {
-        manualContainer.appendChild(this.createReplaceGroup(textArea, false, rule));
-      });
-
-      // 等待 DOM 更新
-      requestAnimationFrame(() => {
-        // 更新主組預覽
-        const mainFromInput = mainGroup.querySelector('input[type="text"]:first-child');
-        if (mainFromInput && mainFromInput.value.trim()) {
-          this.PreviewHighlight.updatePreview(textArea, mainFromInput.value, 0);
+        console.log('載入手動替換規則:', result);
+        // 過濾掉空白的規則
+        const rules = (result.replace_manualReplaceRules || [])
+            .filter(rule => rule.from?.trim() || rule.to?.trim());
+        
+        if (rules.length === 0) {
+            rules.push({});  // 如果沒有規則，至少保留一個空組
         }
-
-        // 更新其他組預覽
-        const extraGroups = manualContainer.querySelectorAll('.replace-extra-group');
-        extraGroups.forEach((group, index) => {
-          const fromInput = group.querySelector('input[type="text"]:first-child');
-          if (fromInput && fromInput.value.trim()) {
-            this.PreviewHighlight.updatePreview(textArea, fromInput.value, index + 1);
-          }
+        
+        // 創建所有組
+        rules.forEach(rule => {
+            manualContainer.appendChild(this.createReplaceGroup(textArea, false, rule));
         });
 
-        // 檢查高亮是否正確顯示
-        setTimeout(() => {
-          this.checkAndForceUpdateHighlights();
-        }, 500);
-      });
+        // 等待 DOM 更新
+        requestAnimationFrame(() => {
+            // 更新主組預覽
+            const mainFromInput = mainGroup.querySelector('input[type="text"]:first-child');
+            if (mainFromInput && mainFromInput.value.trim()) {
+                this.PreviewHighlight.updatePreview(textArea, mainFromInput.value, 0);
+            }
+
+            // 更新其他組預覽
+            const extraGroups = manualContainer.querySelectorAll('.replace-extra-group');
+            extraGroups.forEach((group, index) => {
+                const fromInput = group.querySelector('input[type="text"]:first-child');
+                if (fromInput && fromInput.value.trim()) {
+                    this.PreviewHighlight.updatePreview(textArea, fromInput.value, index + 1);
+                }
+            });
+
+            // 檢查高亮是否正確顯示
+            setTimeout(() => {
+                this.checkAndForceUpdateHighlights();
+            }, 500);
+        });
     });
 
     otherContainer.appendChild(manualContainer);
