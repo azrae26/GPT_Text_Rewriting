@@ -17,8 +17,7 @@
   "content_scripts": [
     {
       "matches": [
-        "https://data.uanalyze.twobitto.com/research-reports/*/edit*",
-        "https://data.uanalyze.twobitto.com/research-reports/create"
+        "https://data.uanalyze.twobitto.com/*"
       ],
       "js": [
         "default.js",

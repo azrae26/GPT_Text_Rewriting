@@ -6,45 +6,53 @@ class SettingsManager {
     this.initializeListeners();
   }
 
+  // 初始化事件繫結
   initializeListeners() {
     this.ui.bindExportButton(() => this.exportSettings());
     this.ui.bindImportButton(() => this.triggerImportDialog());
     this.ui.bindImportFileInput((event) => this.handleImport(event));
   }
 
+  // 處理匯出設定事件
   async exportSettings() {
     try {
-      console.log('開始匯出設定...');
+      sendLog('info', '開始匯出設定...');
       const settings = await this.storage.getAllSettings();
-      console.log('獲取到的設定:', settings);
       
       if (!settings || Object.keys(settings).length === 0) {
         throw new Error('沒有找到可匯出的設定');
       }
       
       await FileManager.downloadJSON(settings, 'gpt-rewriter-settings.json');
-      console.log('設定匯出成功');
+      sendLog('success', '設定匯出成功');
     } catch (error) {
-      console.error('匯出設定時發生錯誤:', error);
+      sendLog('error', '匯出設定時發生錯誤', error);
       ErrorHandler.handle(error);
     }
   }
 
+  // 觸發匯入對話框
   triggerImportDialog() {
     this.ui.openImportDialog();
   }
 
+  // 處理匯入檔案事件
   async handleImport(event) {
     try {
       const file = event.target.files[0];
-      if (!file) return;
+      if (!file) {
+        sendLog('error', '匯入失敗：未選擇檔案');
+        return;
+      }
 
       const settings = await FileManager.readJSONFile(file);
       await this.storage.saveSettings(settings);
       
       this.ui.showSuccess('設定匯入成功！');
+      sendLog('success', '設定匯入完成，準備重新載入頁面');
       location.reload();
     } catch (error) {
+      sendLog('error', '匯入設定時發生錯誤', error);
       ErrorHandler.handle(error);
     }
   }
@@ -97,24 +105,30 @@ class StorageManager {
     };
   }
 
+  // 讀取所有設定
   async getAllSettings() {
     try {
-      console.log('正在讀取設定...');
-      
-      // 從 sync 和 local 儲存空間讀取所有設定
       const [syncData, localData] = await Promise.all([
         this.getChromeStorage('sync'),
         this.getChromeStorage('local')
       ]);
       
-      console.log('從 storage 讀取到的資料:', { syncData, localData });
+      // 特別處理替換規則，移除前綴
+      const replaceSettings = {};
+      Object.entries(localData).forEach(([key, value]) => {
+        if (key.startsWith('replace_')) {
+          replaceSettings[key.replace('replace_', '')] = value;
+          delete localData[key];
+        }
+      });
       
-      // 合併所有設定
-      const allData = { ...syncData, ...localData };
+      const allData = { 
+        ...syncData, 
+        ...localData,
+        ...replaceSettings  // 加入處理過的替換規則
+      };
       
-      // 過濾有效的設定
       const settings = this.filterValidSettings(allData);
-      console.log('過濾後的有效設定:', settings);
       
       if (Object.keys(settings).length === 0) {
         throw new Error('沒有找到可匯出的設定');
@@ -122,48 +136,76 @@ class StorageManager {
       
       return settings;
     } catch (error) {
-      console.error('讀取設定失敗:', error);
+      sendLog('error', '讀取設定失敗', error);
       throw error;
     }
   }
 
+  // 過濾有效的設定
   filterValidSettings(result) {
-    const settings = {};
-    // 遍歷所有設定鍵值
-    for (const key in result) {
-      if (result[key] !== undefined && 
-          result[key] !== null && 
-          result[key] !== '') {
-        settings[key] = result[key];
-      }
-    }
-    return settings;
+    return Object.fromEntries(
+      Object.entries(result).filter(([_, value]) => 
+        value !== undefined && value !== null && value !== ''
+      )
+    );
   }
 
+  // 儲存設定
   async saveSettings(settings) {
-    if (!settings || Object.keys(settings).length === 0) {
-      throw new Error('無效的設定資料');
+    try {
+      if (!settings || Object.keys(settings).length === 0) {
+        throw new Error('無效的設定資料');
+      }
+
+      const { replaceSettings, localSettings, syncSettings } = this.#categorizeSettings(settings);
+      
+      await chrome.storage.local.remove(Object.keys(replaceSettings));
+      await Promise.all([
+        this.setChromeStorage(syncSettings, 'sync'),
+        this.setChromeStorage(localSettings, 'local'),
+        this.setChromeStorage(replaceSettings, 'local', 'replace_')
+      ]);
+      
+      sendLog('success', '設定儲存完成');
+    } catch (error) {
+      sendLog('error', '儲存設定失敗', error);
+      throw error;
     }
-    
-    // 分離需要存到 local 的大型設定
+  }
+
+  // 新增私有方法來分類設定
+  #categorizeSettings(settings) {
+    const replaceSettings = {
+      autoReplaceRules: settings.autoReplaceRules || [],
+      manualReplaceRules: settings.manualReplaceRules || [],
+      replacePatterns: settings.replacePatterns,
+      replaceContent: settings.replaceContent,
+      replaceGroups: settings.replaceGroups,
+      manualGroups: settings.manualGroups,
+      extraManualGroups: settings.extraManualGroups,
+      manualReplaceValues_0: settings.manualReplaceValues_0,
+      manualReplaceValues_1: settings.manualReplaceValues_1,
+      manualReplaceValues_2: settings.manualReplaceValues_2
+    };
+
+    Object.keys(replaceSettings).forEach(key => {
+      if (!replaceSettings[key]) delete replaceSettings[key];
+    });
+
     const localSettings = {
       translateInstruction: settings.translateInstruction,
       summaryInstruction: settings.summaryInstruction,
-      highlightPatterns: settings.highlightPatterns,
-      autoReplaceRules: settings.autoReplaceRules
+      highlightPatterns: settings.highlightPatterns
     };
-    
-    // 其他設定存到 sync
+
     const syncSettings = { ...settings };
-    Object.keys(localSettings).forEach(key => delete syncSettings[key]);
-    
-    // 分別儲存
-    await Promise.all([
-      this.setChromeStorage(syncSettings, 'sync'),
-      this.setChromeStorage(localSettings, 'local')
-    ]);
+    [...Object.keys(localSettings), ...Object.keys(replaceSettings)]
+      .forEach(key => delete syncSettings[key]);
+
+    return { replaceSettings, localSettings, syncSettings };
   }
 
+  // Chrome storage 操作的包裝方法，處理 Promise 化
   getChromeStorage(type = 'sync') {
     return new Promise((resolve, reject) => {
       try {
@@ -180,10 +222,17 @@ class StorageManager {
     });
   }
 
-  setChromeStorage(data, type = 'sync') {
+  // 儲存資料到 Chrome storage，支援前綴功能
+  setChromeStorage(data, type = 'sync', prefix = '') {
     return new Promise((resolve, reject) => {
       try {
-        chrome.storage[type].set(data, () => {
+        // 如果有指定前綴，則為所有 key 加上前綴
+        const storageData = prefix ? 
+          Object.fromEntries(
+            Object.entries(data).map(([key, value]) => [prefix + key, value])
+          ) : data;
+
+        chrome.storage[type].set(storageData, () => {
           if (chrome.runtime.lastError) {
             reject(new Error(chrome.runtime.lastError.message));
           } else {
@@ -199,40 +248,28 @@ class StorageManager {
 
 // UI 管理器
 class SettingsUI {
-  bindExportButton(callback) {
-    const button = document.getElementById('export-settings');
-    if (button) {
-      button.addEventListener('click', callback);
-    } else {
-      console.error('找不到匯出按鈕元素');
+  #getElement(id) {
+    const element = document.getElementById(id);
+    if (!element) {
+      console.error(`找不到元素: ${id}`);
     }
+    return element;
+  }
+
+  bindExportButton(callback) {
+    this.#getElement('export-settings')?.addEventListener('click', callback);
   }
 
   bindImportButton(callback) {
-    const button = document.getElementById('import-settings');
-    if (button) {
-      button.addEventListener('click', callback);
-    } else {
-      console.error('找不到匯入按鈕元素');
-    }
+    this.#getElement('import-settings')?.addEventListener('click', callback);
   }
 
   bindImportFileInput(callback) {
-    const input = document.getElementById('import-file');
-    if (input) {
-      input.addEventListener('change', callback);
-    } else {
-      console.error('找不到檔案輸入元素');
-    }
+    this.#getElement('import-file')?.addEventListener('change', callback);
   }
 
   openImportDialog() {
-    const input = document.getElementById('import-file');
-    if (input) {
-      input.click();
-    } else {
-      console.error('找不到檔案輸入元素');
-    }
+    this.#getElement('import-file')?.click();
   }
 
   showSuccess(message) {
@@ -242,54 +279,51 @@ class SettingsUI {
 
 // 檔案管理器
 class FileManager {
-  static async downloadJSON(data, filename) {
-    try {
-      const blob = new Blob([JSON.stringify(data, null, 2)], { 
-        type: 'application/json' 
-      });
-      const url = URL.createObjectURL(blob);
-      
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (error) {
-      throw new Error('建立下載失敗: ' + error.message);
-    }
+  static downloadJSON(data, filename) {
+    const url = URL.createObjectURL(
+      new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
+    );
+    
+    Object.assign(document.createElement('a'), {
+      href: url,
+      download: filename
+    }).click();
+    
+    URL.revokeObjectURL(url);
   }
 
-  static async readJSONFile(file) {
-    try {
-      const text = await file.text();
-      return JSON.parse(text);
-    } catch (error) {
-      throw new Error('讀取檔案失敗: ' + error.message);
-    }
+  static readJSONFile(file) {
+    return file.text().then(JSON.parse);
   }
 }
 
 // 錯誤處理器
 class ErrorHandler {
+  static #errorMessages = new Map([
+    ['讀取設定失敗', '無法讀取設定，請確認擴充功能權限'],
+    ['無效的設定資料', '設定資料格式不正確'],
+    ['建立下載失敗', '無法建立下載，請檢查瀏覽器設定'],
+    ['沒有找到可匯出的設定', '目前沒有任何可匯出的設定']
+  ]);
+
   static handle(error) {
     console.error('發生錯誤:', error);
-    
-    // 根據錯誤類型顯示適當的訊息
-    let message = '發生未知錯誤';
-    if (error.message.includes('讀取設定失敗')) {
-      message = '無法讀取設定，請確認擴充功能權限';
-    } else if (error.message.includes('無效的設定資料')) {
-      message = '設定資料格式不正確';
-    } else if (error.message.includes('建立下載失敗')) {
-      message = '無法建立下載，請檢查瀏覽器設定';
-    } else if (error.message.includes('沒有找到可匯出的設定')) {
-      message = '目前沒有任何可匯出的設定';
-    }
-    
+    const message = Array.from(this.#errorMessages.entries())
+      .find(([key]) => error.message.includes(key))?.[1] 
+      || '發生未知錯誤';
     alert(message);
   }
+}
+
+// 新增一個日誌輔助函數
+function sendLog(type, message, data = null) {
+    chrome.runtime.sendMessage({
+        action: 'settingsLog',
+        logType: type,
+        message: message,
+        data: data,
+        timestamp: new Date().toISOString()
+    });
 }
 
 // 初始化設定管理器

@@ -4,7 +4,7 @@
   position: absolute;
   left: 14px;
   top: -22px;
-  z-index: 2000;
+  z-index: 1000;
 }
 
 /* 其他組容器 */
@@ -15,7 +15,7 @@
   position: fixed;
   left: 50px;
   top: 50px;
-  z-index: 2000;
+  z-index: 1000;
 }
 
 /* 手動替換組容器 */
@@ -72,6 +72,7 @@
   user-select: none;
 }
 
+/* 拖動圖示內容樣式 */
 .replace-drag-handle::before {
   content: "⋮⋮";
   font-size: 13px !important;
@@ -316,5 +317,14 @@
 .replace-large-input:focus {
   outline: none;
   border-color: #1a73e8 !important;
+}
+
+/* ===== 替換預覽高亮樣式 ===== */
+.replace-preview-highlight {
+  position: absolute;
+  background-color: transparent !important;
+  border: 2px solid;
+  pointer-events: none;
+  will-change: transform;
 }
  

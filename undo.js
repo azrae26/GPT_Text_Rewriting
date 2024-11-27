@@ -55,39 +55,91 @@ const UndoManager = {
   },
 
   /** 初始化輸入元素的歷史記錄功能 */
-  initInputHistory(element) {
-    if (!element || element._historyInitialized) return;
+  initInputHistory(inputElement) {
+    if (!inputElement) {
+      console.log('找不到輸入元素，跳過初始化歷史記錄');
+      return;
+    }
 
     try {
-      const inputId = this.getInputId(element);
-      if (this.inputHistories.has(inputId)) return;
+      // 保存初始值
+      const initialValue = inputElement.value;
+      const history = [initialValue];
+      let currentIndex = 0;
 
-      this.initHistory(element);
+      // 監聽輸入變化
+      inputElement.addEventListener('input', (event) => {
+        // 檢查元素是否還存在
+        if (!document.body.contains(event.target)) {
+          console.log('輸入元素已不存在，跳過歷史記錄');
+          return;
+        }
 
-      const handleInput = event => {
-        const history = this.inputHistories.get(inputId);
-        const oldLength = history?.history[history?.currentIndex]?.length || 0;
-        const newLength = event.target.value.length;
-        
-        clearTimeout(element._inputTimeout);
-        element._inputTimeout = setTimeout(
-          () => this.addToHistory(event.target.value, element),
-          Math.abs(newLength - oldLength) > 1 ? 500 : 0
-        );
-      };
+        try {
+          const inputId = UndoManager.getInputId(event.target);
+          if (UndoManager.inputHistories.has(inputId)) return;
 
-      const handlePasteOrCut = () => 
-        setTimeout(() => this.addToHistory(element.value, element), 0);
+          UndoManager.initHistory(event.target);
 
-      element.addEventListener('input', handleInput);
-      element.addEventListener('paste', handlePasteOrCut);
-      element.addEventListener('cut', handlePasteOrCut);
+          const handleInput = event => {
+            // 檢查元素和值是否存在
+            if (!event.target || !document.body.contains(event.target)) {
+              console.log('元素已不存在，跳過處理');
+              return;
+            }
 
-      element._historyHandlers = { input: handleInput };
-      element._historyInitialized = true;
-      console.log(`已初始化輸入框歷史記錄 [${inputId}]`);
+            try {
+              const history = UndoManager.inputHistories.get(inputId);
+              const oldLength = history?.history[history?.currentIndex]?.length || 0;
+              const newLength = event.target.value?.length || 0;
+              
+              clearTimeout(UndoManager._inputTimeout);
+              UndoManager._inputTimeout = setTimeout(() => {
+                // 再次檢查元素是否存在
+                if (event.target && document.body.contains(event.target)) {
+                  UndoManager.addToHistory(event.target.value, event.target);
+                }
+              }, Math.abs(newLength - oldLength) > 1 ? 500 : 0);
+            } catch (error) {
+              console.log('處理輸入事件時發生錯誤:', error);
+            }
+          };
+
+          const handlePasteOrCut = () => {
+            // 檢查元素是否存在
+            if (event.target && document.body.contains(event.target)) {
+              setTimeout(() => {
+                if (event.target && document.body.contains(event.target)) {
+                  UndoManager.addToHistory(event.target.value, event.target);
+                }
+              }, 0);
+            }
+          };
+
+          event.target.addEventListener('input', handleInput);
+          event.target.addEventListener('paste', handlePasteOrCut);
+          event.target.addEventListener('cut', handlePasteOrCut);
+
+          event.target._historyHandlers = { input: handleInput };
+          event.target._historyInitialized = true;
+          
+          if (!UndoManager._initializedInputs) UndoManager._initializedInputs = new Set();
+          UndoManager._initializedInputs.add(inputId);
+          
+          clearTimeout(UndoManager._logTimeout);
+          UndoManager._logTimeout = setTimeout(() => {
+            console.log(`已初始化輸入框歷史記錄，共 ${UndoManager._initializedInputs.size} 個元素`);
+            UndoManager._initializedInputs.clear();
+          }, 100);
+
+        } catch (error) {
+          console.log('處理輸入變化時發生錯誤:', error);
+        }
+      });
+
+      console.log('已初始化輸入框歷史記錄，共', history.length, '個元素');
     } catch (error) {
-      console.error('初始化輸入框歷史記錄時發生錯誤:', error);
+      console.log('初始化歷史記錄時發生錯誤:', error);
     }
   },
 

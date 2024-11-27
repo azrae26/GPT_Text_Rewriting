@@ -544,25 +544,25 @@ const KeyPointsSummaryManager = {
 
   /** API 管理模塊 */
   APIManager: {
-    /** 獲取並更新總結 */
-    async fetchAndUpdateSummary(stockCode) {
-      console.log('開始獲取總結，股票代碼:', stockCode);
+    /** 獲取並更新總結，最多重試2次 */
+    async fetchAndUpdateSummary(stockCode, retryCount = 0, maxRetries = 2) {
+      console.log('開始獲取總結，股票代碼:', stockCode, '重試次數:', retryCount);
       
       if (!KeyPointsSummaryManager.UI.isExpanded) {
         console.log('面板未展開，取消獲取總結');
-        return Promise.resolve();  // 返回一個已解決的 Promise
+        return Promise.resolve();
       }
 
       const contentElement = document.querySelector('fieldset.answers .margin-top-5.margin-bottom-15');
       if (!contentElement) {
         console.log('找不到內容元素');
-        return Promise.resolve();  // 返回一個已解決的 Promise
+        return Promise.resolve();
       }
 
       const content = contentElement.textContent;
       if (!content) {
         console.log('內容為空');
-        return Promise.resolve();  // 返回一個已解決的 Promise
+        return Promise.resolve();
       }
 
       try {
@@ -590,12 +590,24 @@ const KeyPointsSummaryManager = {
         const formattedSummary = summary.trim().replace(/\n+/g, '\n\n');
         KeyPointsSummaryManager.UIManager.updateContent(formattedSummary);
 
-        return Promise.resolve();  // 返回一個已解決的 Promise
+        return Promise.resolve();
 
       } catch (error) {
         console.error('獲取摘要失敗:', error);
-        KeyPointsSummaryManager.UIManager.updateContent(`獲取摘要失敗: ${error.message}`);
-        return Promise.reject(error);  // 返回一個被拒絕的 Promise
+        
+        // 添加重試邏輯
+        if (retryCount < maxRetries) {
+          console.log(`重試中... (${retryCount + 1}/${maxRetries})`);
+          KeyPointsSummaryManager.UIManager.updateContent(`獲取摘要失敗，正在重試 (${retryCount + 1}/${maxRetries})...`);
+          
+          // 延遲 2 秒後重試
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          return this.fetchAndUpdateSummary(stockCode, retryCount + 1, maxRetries);
+        }
+        
+        // 如果已達到最大重試次數，顯示最終錯誤信息
+        KeyPointsSummaryManager.UIManager.updateContent(`獲取摘要失敗 (已重試 ${maxRetries} 次): ${error.message}`);
+        return Promise.reject(error);
       }
     }
   }

@@ -350,7 +350,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       chrome.storage.sync.set({ highlightColors: wordColors });
     }
     
-    // 儲���當前文字，供下次比對用
+    // 儲存當前文字，供下次比對用
     this._previousValue = this.value;
     
     // 保存高亮文字
@@ -514,9 +514,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         // 創建預覽元素
         const preview = document.createElement('div');
         preview.className = 'highlight-preview';
-        preview.style.top = `${rect.top - divRect.top}px`;
+        preview.style.top = `${rect.top - divRect.top - 1}px`; // 上邊距
         preview.style.left = `${rect.left - divRect.left}px`; //  是左邊距
         preview.style.width = `${rect.width}px`;
+        preview.style.height = `${rect.height + 1}px`;
         preview.style.backgroundColor = wordColors[line] || 'rgba(50, 205, 50, 0.3)';
         
         // 保存原始位置

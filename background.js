@@ -86,4 +86,29 @@ chrome.runtime.onInstalled.addListener((details) => {
   }
 });
 
+// 添加消息監聽器來接收設定管理器的日誌
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'settingsLog') {
+        const { logType, message: logMessage, data, timestamp } = message;
+        
+        // 根據日誌類型使用不同的 console 方法
+        switch (logType) {
+            case 'error':
+                console.error(`[設定管理器 ${timestamp}]`, logMessage, data || '');
+                break;
+            case 'warn':
+                console.warn(`[設定管理器 ${timestamp}]`, logMessage, data || '');
+                break;
+            case 'success':
+                console.log(`%c[設定管理器 ${timestamp}] ${logMessage}`, 
+                    'color: green; font-weight: bold;', 
+                    data || '');
+                break;
+            case 'info':
+            default:
+                console.log(`[設定管理器 ${timestamp}]`, logMessage, data || '');
+        }
+    }
+});
+
 console.log("背景腳本已加載");

@@ -6,10 +6,21 @@ const ReplaceManager = {
 
   /** 初始化替換介面 */
   initializeReplaceUI() {
-    if (!window.shouldEnableFeatures() || document.getElementById('text-replace-container')) return;
+    // 先檢查是否應該啟用功能
+    if (!window.shouldEnableFeatures()) {
+      console.log('不在目標頁面，移除UI');
+      this.removeReplaceUI();
+      return;
+    }
+
+    // 先移除所有現有的UI元素
+    this.removeReplaceUI();
 
     const textArea = document.querySelector('textarea[name="content"]');
-    if (!textArea) return;
+    if (!textArea) {
+      console.log('找不到文本區域元素');
+      return;
+    }
 
     // 創建主組容器（第一組）
     const mainContainer = document.createElement('div');
@@ -45,6 +56,8 @@ const ReplaceManager = {
 
     // 簡化的拖動功能
     this._initializeDragFeature(otherContainer);
+
+    console.log('替換介面初始化完成');
   },
 
   /** 初始化拖動功能 */
@@ -148,16 +161,18 @@ const ReplaceManager = {
   /** 移除替換介面 */
   removeReplaceUI() {
     console.log('移除替換介面');
-    const mainContainer = document.getElementById('text-replace-main');
-    const otherContainer = document.getElementById('text-replace-container');
+    const elements = [
+      document.getElementById('text-replace-main'),
+      document.getElementById('text-replace-container'),
+      document.querySelector('.replace-large-input')
+    ];
     
-    if (mainContainer) mainContainer.remove();
-    if (otherContainer) otherContainer.remove();
-    
-    const largeInput = document.querySelector('.replace-large-input');
-    if (largeInput) largeInput.remove();
-    
-    console.log('替換介面已移除');
+    elements.forEach(element => {
+      if (element) {
+        element.remove();
+        console.log(`已移除元素: ${element.id || element.className}`);
+      }
+    });
   }
 };
 
