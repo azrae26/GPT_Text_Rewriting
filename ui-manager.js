@@ -155,7 +155,7 @@ const UIManager = {
     
     const elements = {
       textarea: document.querySelector('textarea[name="content"]'),
-      input: document.querySelector('input[aria-autocomplete="list"][class*="MuiAutocomplete-input"]'),
+      input: document.querySelector('.MuiAutocomplete-input'),
       container: this._getOrCreateContainer()
     };
 
@@ -180,6 +180,11 @@ const UIManager = {
       console.log('找到的股票代碼:', codes);
       console.log('匹配的股票:', matchedStocks);
       this._updateStockButtons(codes, matchedStocks, elements);
+      
+      // 如果檢測到股票代碼且輸入框為空，自動填入第一個代碼
+      if (codes.length > 0 && !elements.input.value.trim()) {
+        this._fillStockCode(codes[0], elements.input);
+      }
     };
 
     elements.textarea.addEventListener('input', updateUI);
@@ -204,6 +209,40 @@ const UIManager = {
     updateUI();
   },
 
+  /** 填入股票代碼 */
+  _fillStockCode(code, input) {
+    console.log(`開始填入股票代碼: ${code}`);
+    
+    // 模擬點擊輸入框
+    input.click();
+    input.focus();
+    
+    // 設置值並觸發事件
+    input.value = code;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    
+    // 等待下拉選單出現並選擇
+    setTimeout(() => {
+      const option = document.querySelector('li[role="option"]');
+      if (option) {
+        option.click();
+        console.log('選擇下拉選單選項');
+      }
+      
+      // 移除焦點
+      setTimeout(() => {
+        input.blur();
+        console.log('移除輸入框焦點');
+        
+        // 再次確認值已正確設置
+        if (input.value !== code) {
+          input.value = code;
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      }, 100);
+    }, 100);
+  },
+
   /** 獲取或創建按鈕容器 */
   _getOrCreateContainer() {
     console.log('開始獲取或創建按鈕容器');
@@ -214,7 +253,7 @@ const UIManager = {
       container = document.createElement('div');
       container.id = 'stock-code-container';
       
-      const input = document.querySelector('input[aria-autocomplete="list"][class*="MuiAutocomplete-input"]');
+      const input = document.querySelector('#\\:r3\\:');
       if (input && input.parentElement) {
         console.log('找到輸入框父元素，插入容器');
         input.parentElement.appendChild(container);
@@ -244,7 +283,7 @@ const UIManager = {
     console.log('前100字元:', first100Chars);
     
     // 收集匹配的股票
-    const matchedCodes = window.stockList
+    let matchedCodes = window.stockList
       .filter(stock => {
         // 檢查是否為輸入的代碼
         if (stock.code === inputCode) {
@@ -265,9 +304,6 @@ const UIManager = {
             first100Chars.match(new RegExp(codePattern))) {
           
           console.log(`檢查股票: ${stock.code} (${stock.name})`);
-          console.log(`- 基本名稱: ${baseStockName}`);
-          console.log(`- 代碼模式: ${codePattern}`);
-          console.log(`- 名稱模式: ${namePattern}`);
           
           const nameRegex = new RegExp(namePattern, 'g');
           const codeRegex = new RegExp(codePattern, 'g');
@@ -280,8 +316,6 @@ const UIManager = {
             matchedStocks.set(stock.code, stock.name);
             stockCounts.set(stock.code, nameMatches + codeMatches);
             return true;
-          } else {
-            console.log('未找到匹配');
           }
         }
         
@@ -289,10 +323,15 @@ const UIManager = {
       })
       .map(stock => stock.code);
 
+    // 根據出現次數排序代碼
+    matchedCodes = matchedCodes.sort((a, b) => 
+      (stockCounts.get(b) || 0) - (stockCounts.get(a) || 0)
+    );
+
     console.log('匹配結果:', {
       matchedCodes,
-      matchedStocksCount: matchedStocks.size,
-      matchedStocks: Object.fromEntries(matchedStocks)
+      stockCounts: Object.fromEntries(stockCounts),
+      matchedStocksCount: matchedStocks.size
     });
 
     return { codes: matchedCodes, matchedStocks };
@@ -307,33 +346,21 @@ const UIManager = {
     const matchedCodes = codes.filter(code => elements.input.value === code);
     const unmatchedCodes = codes.filter(code => elements.input.value !== code);
     
-    // 先添加匹配的按鈕
+    // 添加匹配的按鈕
     matchedCodes.forEach(code => {
       const button = document.createElement('button');
       button.textContent = matchedStocks.has(code) ? `${matchedStocks.get(code)}${code}` : code;
       button.classList.add('stock-code-button', 'matched');
-      button.onclick = () => {
-        console.log(`點擊股票按鈕: ${code}`);
-        elements.input.value = code;
-        elements.input.dispatchEvent(new Event('input', { bubbles: true }));
-        elements.input.focus();
-        setTimeout(() => elements.input.blur(), 10);
-      };
+      button.onclick = () => this._fillStockCode(code, elements.input);
       elements.container.appendChild(button);
     });
     
-    // 再添加未匹配的按鈕
+    // 添加未匹配的按鈕
     unmatchedCodes.forEach(code => {
       const button = document.createElement('button');
       button.textContent = matchedStocks.has(code) ? `${matchedStocks.get(code)}${code}` : code;
       button.classList.add('stock-code-button');
-      button.onclick = () => {
-        console.log(`點擊股票按鈕: ${code}`);
-        elements.input.value = code;
-        elements.input.dispatchEvent(new Event('input', { bubbles: true }));
-        elements.input.focus();
-        setTimeout(() => elements.input.blur(), 10);
-      };
+      button.onclick = () => this._fillStockCode(code, elements.input);
       elements.container.appendChild(button);
     });
   },

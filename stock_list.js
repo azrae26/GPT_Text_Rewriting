@@ -637,6 +637,7 @@ window.stockList = [
     { code: "3037", name: "欣興" },
     { code: "3038", name: "全台" },
     { code: "3040", name: "遠見" },
+    { code: "3041", name: "揚智" },
     { code: "3042", name: "晶技" },
     { code: "3043", name: "科風" },
     { code: "3044", name: "健鼎" },
