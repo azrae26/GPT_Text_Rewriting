@@ -173,6 +173,14 @@ const ReplaceManager = {
         console.log(`已移除元素: ${element.id || element.className}`);
       }
     });
+
+    // 清理預覽相關資源
+    if (this.manualReplaceManager) {
+      const textArea = document.querySelector('textarea[name="content"]');
+      if (textArea) {
+        this.manualReplaceManager.cleanup(textArea);
+      }
+    }
   }
 };
 

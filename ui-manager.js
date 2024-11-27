@@ -303,19 +303,15 @@ const UIManager = {
     elements.container.innerHTML = '';
     console.log('開始更新股票代碼按鈕，找到的代碼:', codes);
     
-    codes.forEach(code => {
-      // 創建按鈕
+    // 將代碼分成匹配和未匹配兩組
+    const matchedCodes = codes.filter(code => elements.input.value === code);
+    const unmatchedCodes = codes.filter(code => elements.input.value !== code);
+    
+    // 先添加匹配的按鈕
+    matchedCodes.forEach(code => {
       const button = document.createElement('button');
       button.textContent = matchedStocks.has(code) ? `${matchedStocks.get(code)}${code}` : code;
-      button.classList.add('stock-code-button');
-      
-      // 檢查是否與輸入框代號匹配
-      if (elements.input.value === code) {
-        button.classList.add('matched');
-        console.log(`股票代碼 ${code} 與輸入框匹配`);
-      }
-      
-      // 點擊事件
+      button.classList.add('stock-code-button', 'matched');
       button.onclick = () => {
         console.log(`點擊股票按鈕: ${code}`);
         elements.input.value = code;
@@ -325,23 +321,21 @@ const UIManager = {
       };
       elements.container.appendChild(button);
     });
-
-    // 如果有股票代碼，且input值為空，則填入第一個股票代碼
-    if (codes.length > 0 && !elements.input.value) {
-      console.log(`自動填入第一個股票代碼: ${codes[0]}`);
-      elements.input.value = codes[0];
-      elements.input.dispatchEvent(new Event('input', { bubbles: true }));
-      elements.input.focus();
-      setTimeout(() => {
-        elements.input.blur();
-        console.log('股票代碼輸入框焦點已移除');
-      }, 1);
-    } else {
-      console.log('不需要自動填入股票代碼:', {
-        codesLength: codes.length,
-        inputValue: elements.input.value
-      });
-    }
+    
+    // 再添加未匹配的按鈕
+    unmatchedCodes.forEach(code => {
+      const button = document.createElement('button');
+      button.textContent = matchedStocks.has(code) ? `${matchedStocks.get(code)}${code}` : code;
+      button.classList.add('stock-code-button');
+      button.onclick = () => {
+        console.log(`點擊股票按鈕: ${code}`);
+        elements.input.value = code;
+        elements.input.dispatchEvent(new Event('input', { bubbles: true }));
+        elements.input.focus();
+        setTimeout(() => elements.input.blur(), 10);
+      };
+      elements.container.appendChild(button);
+    });
   },
 
   /** 移除股票代碼功能，在URL變化時調用 */

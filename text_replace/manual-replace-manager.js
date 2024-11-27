@@ -95,7 +95,10 @@ const ManualReplaceManager = {
     },
 
     updatePreview(textArea, searchText, groupIndex) {
+      console.log(`準備更新預覽 - 組索引: ${groupIndex}, 搜索文字: ${searchText}`);
+      
       if (!searchText.trim() || !textArea) {
+        console.log('清除預覽 - 搜索文字為空或找不到文本區域');
         this.clearGroupHighlights(groupIndex);
         return;
       }
@@ -104,6 +107,8 @@ const ManualReplaceManager = {
         const text = textArea.value;
         const regex = ManualReplaceManager.createRegex(searchText);
         const matches = Array.from(text.matchAll(regex));
+        
+        console.log(`找到 ${matches.length} 個匹配`);
         
         if (matches.length > 1000) {
           console.warn('替換預覽：匹配數量過多，可能影響效能');
@@ -157,6 +162,8 @@ const ManualReplaceManager = {
         // 一次性添加所有高亮元素
         this.container.appendChild(fragment);
         this.highlightGroups.set(groupIndex, newHighlights);
+        
+        console.log(`成功創建 ${newHighlights.length} 個高亮元素`);
         
         // 立即更新可見性
         this.updateHighlightsPosition(textArea.scrollTop);
@@ -365,9 +372,17 @@ const ManualReplaceManager = {
       input.addEventListener('input', () => handleInput(input));
     });
 
-    // 文本區域變化時更新按鈕狀態
+    // 文本區域變化時更新按鈕狀態和預覽
     textArea.addEventListener('input', () => {
+      console.log('文本區域輸入事件觸發');
       this.updateButtonState(fromInput.value, textArea.value, replaceButton);
+      
+      // 如果有搜索文字，更新預覽
+      if (fromInput.value.trim()) {
+        const groupIndex = Array.from(document.querySelectorAll('.replace-main-group, .replace-extra-group')).indexOf(group);
+        console.log(`更新第 ${groupIndex} 組的預覽`);
+        this.PreviewHighlight.updatePreview(textArea, fromInput.value, groupIndex);
+      }
     });
 
     replaceButton.addEventListener('click', () => {
@@ -528,6 +543,8 @@ const ManualReplaceManager = {
 
   /** 初始化手動替換組 */
   initializeManualGroups(mainContainer, otherContainer, textArea) {
+    console.log('開始初始化手動替換組');
+    
     // 初始化預覽高亮
     this.PreviewHighlight.initialize(textArea);
     
@@ -565,7 +582,6 @@ const ManualReplaceManager = {
         extraGroups.forEach((group, index) => {
           const fromInput = group.querySelector('input[type="text"]:first-child');
           if (fromInput && fromInput.value.trim()) {
-            // index + 1 因為主組是索引 0
             this.PreviewHighlight.updatePreview(textArea, fromInput.value, index + 1);
           }
         });
@@ -576,16 +592,20 @@ const ManualReplaceManager = {
 
     // 監聽文本變化
     this.setupTextAreaChangeListener(textArea);
+    console.log('手動替換組初始化完成');
   },
 
-  /** 設置文本區域變化監聽 */
+  /** 設置文本區域變化監聽器 */
   setupTextAreaChangeListener(textArea) {
+    console.log('設置文本變化監聽器');
+    
     // 使用 requestAnimationFrame 來做輪詢
     let lastValue = textArea.value;
     let rafId;
 
     const checkValue = () => {
       if (textArea.value !== lastValue) {
+        console.log('檢測到文本變化');
         lastValue = textArea.value;
         this.updateAllPreviews(textArea);
       }
@@ -593,6 +613,7 @@ const ManualReplaceManager = {
     };
     
     checkValue();
+    console.log('開始監聽文本變化');
 
     // 添加到 textArea 以便清理
     textArea._previewRafId = rafId;
@@ -600,12 +621,14 @@ const ManualReplaceManager = {
     // 監聽滾動事件
     textArea.addEventListener('scroll', () => {
       requestAnimationFrame(() => {
+        console.log('文本區域滾動，更新高亮位置');
         this.PreviewHighlight.updateHighlightsPosition(textArea.scrollTop);
       });
     });
 
     // 監聽視窗大小變化
     const resizeObserver = new ResizeObserver(() => {
+      console.log('視窗大小變化，更新所有預覽');
       this.updateAllPreviews(textArea);
     });
     resizeObserver.observe(textArea);
@@ -614,30 +637,36 @@ const ManualReplaceManager = {
     textArea._previewResizeObserver = resizeObserver;
   },
 
-  /** 更新所有組的預覽 */
+  /** 更新所有預覽 */
   updateAllPreviews(textArea) {
+    console.log('開始更新所有預覽');
     const allGroups = document.querySelectorAll('.replace-main-group, .replace-extra-group');
     allGroups.forEach((group, index) => {
       const fromInput = group.querySelector('input[type="text"]:first-child');
       if (fromInput && fromInput.value.trim()) {
+        console.log(`更新第 ${index} 組預覽，搜索文字: ${fromInput.value}`);
         this.PreviewHighlight.updatePreview(textArea, fromInput.value, index);
       }
     });
   },
 
-  /** 清理預覽相關資源 */
+  /** 清理資源 */
   cleanup(textArea) {
+    console.log('開始清理預覽相關資源');
     if (textArea._previewRafId) {
+      console.log('取消 RAF');
       cancelAnimationFrame(textArea._previewRafId);
       delete textArea._previewRafId;
     }
     
     if (textArea._previewResizeObserver) {
+      console.log('斷開 ResizeObserver');
       textArea._previewResizeObserver.disconnect();
       delete textArea._previewResizeObserver;
     }
     
     this.PreviewHighlight.clearAllHighlights();
+    console.log('清理完成');
   },
 
   /** 保存替換規則 */
