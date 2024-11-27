@@ -181,6 +181,206 @@ const ReplaceManager = {
         this.manualReplaceManager.cleanup(textArea);
       }
     }
+  },
+
+  /** 設置替換組的共用事件處理 */
+  setupGroupEvents(group, textArea, fromInput, toInput, checkbox, options = {}) {
+    const {
+      isManual = false,  // 是否為手動替換組
+      onInputChange = null, // 輸入變更時的回調
+      onRulesSave = null   // 保存規則時的回調
+    } = options;
+
+    const handleInput = (input) => {
+      console.group('處理輸入事件');
+      console.log('輸入框值:', {
+        from: fromInput.value,
+        to: toInput.value,
+        checked: checkbox?.checked
+      });
+
+      // 調用自定義的輸入處理函數
+      if (onInputChange) {
+        onInputChange(input);
+      }
+
+      // 保存規則
+      if (onRulesSave) {
+        onRulesSave(group.parentElement);
+      }
+      
+      // 只在 popup 頁面中發送消息
+      if (window.location.pathname.endsWith('popup.html')) {
+        console.log('準備發送消息到 content script');
+        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+          if (tabs[0]) {
+            try {
+              // 獲取當前的規則
+              const container = group.parentElement;
+              const rules = Array.from(container.querySelectorAll('.auto-replace-group')).map(group => {
+                const containers = Array.from(group.children).filter(el => el.classList.contains('replace-input-container'));
+                const fromInput = containers[0]?.querySelector('textarea');
+                const toInput = containers[1]?.querySelector('textarea');
+                const checkbox = group.querySelector('.auto-replace-checkbox');
+                
+                return {
+                  from: fromInput?.value || '',
+                  to: toInput?.value || '',
+                  enabled: checkbox?.checked || false
+                };
+              });
+
+              console.log('準備發送的規則:', rules);
+
+              // 發送完整的規則列表
+              chrome.tabs.sendMessage(tabs[0].id, {
+                action: isManual ? "updateManualReplaceRules" : "updateAutoReplaceRules",
+                rules: rules
+              }, function(response) {
+                if (chrome.runtime.lastError) {
+                  console.debug('Content script 正在載入中...');
+                } else {
+                  console.log('消息發送成功:', response);
+                  // 發送觸發替換的消息
+                  chrome.tabs.sendMessage(tabs[0].id, {
+                    action: isManual ? "triggerManualReplace" : "triggerAutoReplace"
+                  });
+                }
+              });
+            } catch (error) {
+              console.error('發送消息時出錯:', error);
+            }
+          }
+        });
+      }
+      console.groupEnd();
+    };
+
+    // 為兩個輸入框添加輸入事件監聽
+    [fromInput, toInput].forEach(input => {
+      let timeoutId = null;
+      input.addEventListener('input', () => {
+        console.log('輸入事件觸發');
+        if (timeoutId) {
+          clearTimeout(timeoutId);
+        }
+        timeoutId = setTimeout(() => handleInput(input), 300);
+      });
+      
+      // 失去焦點時也觸發更新
+      input.addEventListener('blur', () => {
+        console.log('失去焦點事件觸發');
+        handleInput(input);
+      });
+    });
+
+    // 複選框事件
+    if (checkbox) {
+      checkbox.addEventListener('change', () => {
+        console.log('複選框狀態改變:', checkbox.checked);
+        handleInput(fromInput);
+      });
+    }
+  },
+
+  /** 初始化替換組 */
+  initializeReplaceGroups(options) {
+    const {
+      mainContainer,     // 主容器（僅手動替換需要）
+      otherContainer,    // 其他容器
+      textArea,          // 文本區域
+      storageKey,        // 存儲鍵名
+      createGroupFn,     // 創建組的函數
+      onInitialized,     // 初始化後的回調
+      isManual = false   // 是否為手動替換
+    } = options;
+
+    if (isManual) {
+      console.log('初始化手動替換組，使用存儲鍵名:', storageKey);
+      
+      // 初始化預覽
+      window.ManualReplaceManager.PreviewHighlight.initialize(textArea);
+      
+      // 創建主組
+      const mainGroup = createGroupFn(textArea, true);
+      mainContainer.appendChild(mainGroup);
+
+      // 創建手動容器
+      const manualContainer = document.createElement('div');
+      manualContainer.className = 'manual-replace-container';
+      otherContainer.appendChild(manualContainer);
+
+      // 從 local storage 讀取規則
+      chrome.storage.local.get([storageKey], (result) => {
+        console.log('讀取到的規則:', result[storageKey]);
+        
+        const rules = (result[storageKey] || [])
+          .filter(rule => rule.from?.trim() || rule.to?.trim());
+        
+        console.log('過濾後的規則:', rules);
+        
+        if (rules.length === 0) {
+          rules.push({});
+        }
+        
+        rules.forEach(rule => {
+          manualContainer.appendChild(createGroupFn(textArea, false, rule));
+        });
+
+        // 等待 DOM 更新後初始化預覽
+        requestAnimationFrame(() => {
+          const mainFromInput = mainGroup.querySelector('input[type="text"]:first-child');
+          if (mainFromInput && mainFromInput.value.trim()) {
+            window.ManualReplaceManager.PreviewHighlight.updatePreview(textArea, mainFromInput.value, 0);
+          }
+
+          const extraGroups = manualContainer.querySelectorAll('.replace-extra-group');
+          extraGroups.forEach((group, index) => {
+            const fromInput = group.querySelector('input[type="text"]:first-child');
+            if (fromInput && fromInput.value.trim()) {
+              window.ManualReplaceManager.PreviewHighlight.updatePreview(textArea, fromInput.value, index + 1);
+            }
+          });
+
+          // 檢查高亮是否正確顯示
+          setTimeout(() => {
+            window.ManualReplaceManager.checkAndForceUpdateHighlights();
+          }, 500);
+        });
+
+        // 調用初始化回調
+        if (onInitialized) {
+          onInitialized();
+        }
+
+        // 開始定期檢查高亮
+        window.ManualReplaceManager.startHighlightCheck();
+      });
+    } else {
+      console.log('初始化自動替換組，使用存儲鍵名:', storageKey);
+      
+      // 自動替換初始化
+      chrome.storage.local.get([storageKey], (result) => {
+        console.log('讀取到的規則:', result[storageKey]);
+        
+        const rules = (result[storageKey] || [])
+          .filter(rule => rule.from?.trim() || rule.to?.trim());
+        
+        console.log('過濾後的規則:', rules);
+        
+        if (rules.length === 0) rules.push({});
+        
+        rules.forEach(rule => {
+          const group = createGroupFn(textArea, rule);
+          otherContainer.appendChild(group);
+        });
+
+        if (onInitialized) onInitialized();
+      });
+
+      // 監聽文本變化
+      textArea.addEventListener('input', () => window.AutoReplaceManager.handleAutoReplace(textArea));
+    }
   }
 };
 

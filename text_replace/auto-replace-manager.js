@@ -380,87 +380,11 @@ const AutoReplaceManager = {
 
   /** 設置組事件 */
   setupGroupEvents(group, textArea, fromInput, toInput, checkbox) {
-    const handleInput = (input) => {
-      console.group('處理輸入事件');
-      console.log('輸入框值:', {
-        from: fromInput.value,
-        to: toInput.value,
-        checked: checkbox.checked
-      });
-
-      // 先保存規則
-      this.saveAutoReplaceRules(group.parentElement);
-      console.log('規則已保存');
-      
-      // 只在 popup 頁面中發送消息
-      if (window.location.pathname.endsWith('popup.html')) {
-        console.log('準備發送消息到 content script');
-        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-          if (tabs[0]) {
-            try {
-              // 獲取當前的規則
-              const container = group.parentElement;
-              const rules = Array.from(container.querySelectorAll('.auto-replace-group')).map(group => {
-                const containers = Array.from(group.children).filter(el => el.classList.contains('replace-input-container'));
-                const fromInput = containers[0]?.querySelector('textarea');
-                const toInput = containers[1]?.querySelector('textarea');
-                const checkbox = group.querySelector('.auto-replace-checkbox');
-                
-                return {
-                  from: fromInput?.value || '',
-                  to: toInput?.value || '',
-                  enabled: checkbox?.checked || false
-                };
-              });
-
-              console.log('準備發送的規則:', rules);
-
-              // 發送完整的規則列表
-              chrome.tabs.sendMessage(tabs[0].id, {
-                action: "updateAutoReplaceRules",
-                rules: rules
-              }, function(response) {
-                if (chrome.runtime.lastError) {
-                  console.debug('Content script 正在載入中...');
-                } else {
-                  console.log('消息發送成功:', response);
-                  // 發送觸發替換的消息
-                  chrome.tabs.sendMessage(tabs[0].id, {
-                    action: "triggerAutoReplace"
-                  });
-                }
-              });
-            } catch (error) {
-              console.error('發送消息時出錯:', error);
-            }
-          }
-        });
+    window.ReplaceManager.setupGroupEvents(group, textArea, fromInput, toInput, checkbox, {
+      isManual: false,
+      onRulesSave: (container) => {
+        this.saveAutoReplaceRules(container);
       }
-      console.groupEnd();
-    };
-
-    // 為兩個輸入框添加輸入事件監聽
-    [fromInput, toInput].forEach(input => {
-      let timeoutId = null;
-      input.addEventListener('input', () => {
-        console.log('輸入事件觸發');
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-        timeoutId = setTimeout(() => handleInput(input), 300);
-      });
-      
-      // 失去焦點時也觸發更新
-      input.addEventListener('blur', () => {
-        console.log('失去焦點事件觸發');
-        handleInput(input);
-      });
-    });
-
-    // 複選框事件
-    checkbox.addEventListener('change', () => {
-      console.log('複選框狀態改變:', checkbox.checked);
-      handleInput(fromInput); // 使用相同的處理函數
     });
   },
 
@@ -488,27 +412,14 @@ const AutoReplaceManager = {
 
   /** 初始化自動替換組 */
   initializeAutoReplaceGroups(container, textArea) {
-    // 修改：從 local storage 讀取帶前綴的設定
-    chrome.storage.local.get(['replace_' + this.CONFIG.AUTO_REPLACE_KEY], (result) => {
-        console.log('從 local storage 讀取的替換規則:', result);
-        
-        // 使用帶前綴的設定
-        const rules = (result['replace_' + this.CONFIG.AUTO_REPLACE_KEY] || [])
-            .filter(rule => rule.from?.trim() || rule.to?.trim());
-        
-        console.log('處理後的替換規則:', rules);
-        
-        if (rules.length === 0) rules.push({});
-        
-        rules.forEach(rule => {
-            const group = this.createAutoReplaceGroup(textArea, rule);
-            container.appendChild(group);
-        });
-
-        this.handleAutoReplace(textArea);
+    window.ReplaceManager.initializeReplaceGroups({
+      otherContainer: container,
+      textArea,
+      storageKey: 'replace_autoReplaceRules',
+      createGroupFn: this.createAutoReplaceGroup.bind(this),
+      onInitialized: () => this.handleAutoReplace(textArea),
+      isManual: false
     });
-
-    textArea.addEventListener('input', () => this.handleAutoReplace(textArea));
   },
 
   /** 保存自動替換規則 */

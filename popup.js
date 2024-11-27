@@ -80,7 +80,13 @@ document.addEventListener('DOMContentLoaded', async function() {
   chrome.storage.sync.get('highlightWords', function(data) {
     if (data.highlightWords) {
       highlightWordsInput.value = data.highlightWords;
-      updateHighlightWords(data.highlightWords); // 初始化時就更新高亮
+      highlightWordsInput._previousValue = data.highlightWords;
+      setTimeout(() => {
+        updatePreview();
+        requestAnimationFrame(() => {
+          updatePreviewsPosition();
+        });
+      }, 0);
     }
   });
 
@@ -326,8 +332,12 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // 監聽輸入事件
   highlightWordsInput?.addEventListener('input', function(e) {
+    console.group('高亮文字修改');
     const oldLines = this.value.split('\n');
     const cursorPosition = this.selectionStart;
+    
+    console.log('當前完整文字:', this.value);
+    console.log('this._previousValue:', this._previousValue);
     
     // 找出被修改的是哪一行
     let currentLineNumber = 0;
@@ -338,30 +348,49 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
     currentLineNumber--;
     
-    // 取得修改前的所有文字
+    console.log('計算出的行號:', currentLineNumber);
+    
+    const currentLine = oldLines[currentLineNumber];
     const previousText = this._previousValue || '';
     const previousLines = previousText.split('\n');
+    const previousLine = previousLines[currentLineNumber];
     
-    // 如果有這一行的舊文字，且有對應的顏色
-    if (previousLines[currentLineNumber] && wordColors[previousLines[currentLineNumber]]) {
-      const oldColor = wordColors[previousLines[currentLineNumber]];
-      delete wordColors[previousLines[currentLineNumber]];
-      wordColors[oldLines[currentLineNumber]] = oldColor;
-      chrome.storage.sync.set({ highlightColors: wordColors });
+    console.log('當前行:', currentLine);
+    console.log('修改前的行:', previousLine);
+    console.log('修改前行的顏色:', wordColors[previousLine]);
+    console.log('當前所有顏色設定的鍵值:', Object.keys(wordColors));
+    
+    // 如果是修改現有文字，保持原來的顏色
+    if (previousLine && wordColors[previousLine]) {
+        console.log('符合轉移條件：', {
+            'previousLine存在': !!previousLine,
+            'previousLine有顏色': !!wordColors[previousLine]
+        });
+        console.log('轉移顏色 - 從:', previousLine, '到:', currentLine);
+        const oldColor = wordColors[previousLine];
+        delete wordColors[previousLine];
+        wordColors[currentLine] = oldColor;
+    } else {
+        console.log('不符合轉移條件：', {
+            'previousLine存在': !!previousLine,
+            'previousLine有顏色': !!wordColors[previousLine],
+            'currentLine有顏色': !!wordColors[currentLine]
+        });
     }
     
-    // 儲存當前文字，供下次比對用
+    // 儲存當前值供下次比對用
     this._previousValue = this.value;
+    console.log('已更新 this._previousValue:', this._previousValue);
     
-    // 保存高亮文字
-    const words = this.value;
-    chrome.storage.sync.set({ highlightWords: words });
-    
-    // 更新高亮
-    updateHighlightWords(words);
-    
-    // 更新預覽
+    // 保存和更新
+    chrome.storage.sync.set({ 
+        highlightWords: this.value,
+        highlightColors: wordColors 
+    });
+    updateHighlightWords(this.value);
     updatePreview();
+    
+    console.groupEnd();
   });
 
   // 修改消息發送函數，添加錯誤處理
@@ -565,6 +594,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
     if (data.highlightWords) {
       highlightWordsInput.value = data.highlightWords;
+      highlightWordsInput._previousValue = data.highlightWords;
       // 使用 setTimeout 確保 textarea 已完全準備好
       setTimeout(() => {
         updatePreview();
