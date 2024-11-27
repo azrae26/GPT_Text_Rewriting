@@ -20,6 +20,11 @@
         "https://data.uanalyze.twobitto.com/*"
       ],
       "js": [
+        "regex_helper/regex-helper.js",
+        "text_highlight/highlight.js",
+        "text_replace/manual-replace-manager.js",
+        "text_replace/auto-replace-manager.js",
+        "text_replace/replace-manager.js",
         "default.js",
         "settings.js",
         "notification.js",
@@ -28,11 +33,7 @@
         "text-processor.js",
         "translate.js",
         "ui-manager.js",
-        "text_highlight/highlight.js",
-        "content.js",
-        "text_replace/manual-replace-manager.js",
-        "text_replace/auto-replace-manager.js",
-        "text_replace/replace-manager.js"
+        "content.js"
       ],
       "css": ["content_script_uanalyze.css", "text_replace/replace.css"]
     },

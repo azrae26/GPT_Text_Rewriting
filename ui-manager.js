@@ -155,7 +155,7 @@ const UIManager = {
     
     const elements = {
       textarea: document.querySelector('textarea[name="content"]'),
-      input: document.querySelector('.MuiAutocomplete-input'),
+      input: document.querySelector('input[aria-autocomplete="list"][class*="MuiAutocomplete-input"]'),
       container: this._getOrCreateContainer()
     };
 
@@ -170,77 +170,98 @@ const UIManager = {
       return;
     }
 
-    // 更新股票UI
-    const updateUI = () => {
-      console.log('開始更新股票UI');
-      const { codes, matchedStocks } = this._getStockCodes(
-        elements.textarea.value, 
-        elements.input.value.trim()
-      );
-      console.log('找到的股票代碼:', codes);
-      console.log('匹配的股票:', matchedStocks);
-      this._updateStockButtons(codes, matchedStocks, elements);
-      
-      // 如果檢測到股票代碼且輸入框為空，自動填入第一個代碼
-      if (codes.length > 0 && !elements.input.value.trim()) {
-        this._fillStockCode(codes[0], elements.input);
-      }
-    };
-
-    elements.textarea.addEventListener('input', updateUI);
+    // 預處理股票列表，建立快速查找表
+    const stockMap = new Map();
+    const nameMap = new Map();
     
-    // 使用 MutationObserver 監視值的變化
-    const observer = new MutationObserver((mutations) => {
-      console.log('檢測到輸入框變化');
-      mutations.forEach((mutation) => {
-        if (mutation.type === 'attributes' && mutation.attributeName === 'value') {
-          console.log('輸入框值變化，更新UI');
-          updateUI();
+    if (window.stockList) {
+      window.stockList.forEach(stock => {
+        stockMap.set(stock.code, stock);
+        nameMap.set(stock.name, stock);
+        const baseName = stock.name.replace(/-KY$/, '');
+        if (baseName !== stock.name) {
+          nameMap.set(baseName, stock);
         }
       });
-    });
-    
-    observer.observe(elements.input, {
-      attributes: true,
-      attributeFilter: ['value']
-    });
+    }
 
-    console.log('執行初始UI更新');
-    updateUI();
-  },
-
-  /** 填入股票代碼 */
-  _fillStockCode(code, input) {
-    console.log(`開始填入股票代碼: ${code}`);
-    
-    // 模擬點擊輸入框
-    input.click();
-    input.focus();
-    
-    // 設置值並觸發事件
-    input.value = code;
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    
-    // 等待下拉選單出現並選擇
-    setTimeout(() => {
-      const option = document.querySelector('li[role="option"]');
-      if (option) {
-        option.click();
-        console.log('選擇下拉選單選項');
+    // 更新股票UI的函數
+    const updateUI = (source = 'textarea') => {
+      const textValue = elements.textarea.value;
+      const inputValue = elements.input.value.trim();
+      
+      if (textValue.length < 4 && !inputValue) return;
+      
+      const first100Chars = textValue.substring(0, 100);
+      const matchedStocks = new Map();
+      const stockCounts = new Map();
+      
+      // 根據來源使用不同的匹配規則
+      if (source === 'textarea') {
+        // 文本區域的匹配規則（保持原有的嚴格匹配）
+        const codePattern = /[（(](\d{4,})(?:[-\s.]*(?:TW|TWO))?[）)]|_(\d{4,})/g;
+        let match;
+        while ((match = codePattern.exec(first100Chars)) !== null) {
+          const code = match[1] || match[2];
+          if (stockMap.has(code)) {
+            const stock = stockMap.get(code);
+            matchedStocks.set(code, stock.name);
+            stockCounts.set(code, (stockCounts.get(code) || 0) + 1);
+          }
+        }
+      } else {
+        // 輸入框的匹配規則（寬鬆匹配）
+        const inputCode = inputValue.match(/\d{4,}/)?.[0];
+        if (inputCode && stockMap.has(inputCode)) {
+          const stock = stockMap.get(inputCode);
+          matchedStocks.set(inputCode, stock.name);
+          stockCounts.set(inputCode, 1);
+        }
       }
       
-      // 移除焦點
-      setTimeout(() => {
-        input.blur();
-        console.log('移除輸入框焦點');
-        
-        // 再次確認值已正確設置
-        if (input.value !== code) {
-          input.value = code;
-          input.dispatchEvent(new Event('input', { bubbles: true }));
+      // 檢查股票名稱（兩種來源都檢查）
+      nameMap.forEach((stock, name) => {
+        // 使用 pattern 屬性進行匹配
+        const pattern = stock.pattern ? 
+          new RegExp(stock.pattern) : 
+          new RegExp(name.replace(/[*]/g, '\\*')); // 轉義特殊字符 *
+
+        if (pattern.test(first100Chars)) {
+          matchedStocks.set(stock.code, stock.name);
+          stockCounts.set(stock.code, (stockCounts.get(stock.code) || 0) + 1);
         }
-      }, 100);
-    }, 100);
+      });
+
+      const codes = Array.from(matchedStocks.keys());
+      
+      // 自動填入最常出現的股票代碼（僅在文本區域觸發時）
+      if (source === 'textarea' && codes.length > 0 && !inputValue) {
+        const [mostFrequentCode] = Array.from(stockCounts.entries())
+          .sort((a, b) => b[1] - a[1]);
+          
+        if (mostFrequentCode) {
+          elements.input.value = mostFrequentCode[0];
+          elements.input.dispatchEvent(new Event('input', { bubbles: true }));
+          elements.input.focus();
+          setTimeout(() => elements.input.blur(), 10);
+        }
+      }
+      
+      this._updateStockButtons(codes, matchedStocks, elements);
+    };
+
+    // 監聽文本區域變化
+    elements.textarea.addEventListener('input', () => {
+      requestAnimationFrame(() => updateUI('textarea'));
+    });
+
+    // 監聽股票代號輸入框變化
+    elements.input.addEventListener('input', () => {
+      requestAnimationFrame(() => updateUI('input'));
+    });
+    
+    // 初始更新
+    requestAnimationFrame(() => updateUI('textarea'));
   },
 
   /** 獲取或創建按鈕容器 */
@@ -253,7 +274,7 @@ const UIManager = {
       container = document.createElement('div');
       container.id = 'stock-code-container';
       
-      const input = document.querySelector('#\\:r3\\:');
+      const input = document.querySelector('input[aria-autocomplete="list"][class*="MuiAutocomplete-input"]');
       if (input && input.parentElement) {
         console.log('找到輸入框父元素，插入容器');
         input.parentElement.appendChild(container);
@@ -273,95 +294,119 @@ const UIManager = {
     
     if (!window.stockList) {
       console.log('未找到股票列表');
-      return { codes: [], matchedStocks: new Map() };
+      return { codes: [], matchedStocks: new Map(), stockCounts: new Map() };
     }
-    console.log('股票列表長度:', window.stockList.length);
 
     const matchedStocks = new Map();
     const stockCounts = new Map();
-    const first100Chars = text.substring(0, 100);
-    console.log('前100字元:', first100Chars);
     
-    // 收集匹配的股票
-    let matchedCodes = window.stockList
+    // 先用簡單的字串搜尋快速篩選可能的股票
+    const potentialStocks = window.stockList.filter(stock => {
+      // 如果是輸入的代碼，直接加入
+      if (stock.code === inputCode) {
+        matchedStocks.set(stock.code, stock.name);
+        stockCounts.set(stock.code, 1);
+        return true;
+      }
+      
+      // 快速檢查股票代號和名稱是否出現在文本中
+      return text.includes(stock.code) || 
+             text.includes(stock.name) || 
+             text.includes(stock.name.replace(/-KY$/, ''));
+    });
+
+    // 只對可能匹配的股票進行詳細檢查
+    const matchedCodes = potentialStocks
       .filter(stock => {
-        // 檢查是否為輸入的代碼
-        if (stock.code === inputCode) {
-          console.log(`找到完全匹配的股票代碼: ${stock.code} (${stock.name})`);
-          matchedStocks.set(stock.code, stock.name);
-          return true;
-        }
+        if (stock.code === inputCode) return true;
         
-        // 先把 -KY 和 * 去掉
+        // 計算出現次數
+        let count = 0;
+        
+        // 檢查代碼
+        const codeMatches = text.match(
+          new RegExp(`[（(]${stock.code}(?:[-\\s.]*(?:TW|TWO))?[）)]|_${stock.code}`, 'g')
+        );
+        if (codeMatches) count += codeMatches.length;
+        
+        // 檢查名稱
         const baseStockName = stock.name.replace(/[*]|-KY$/g, '');
-        const codePattern = `[（(]${stock.code}(?:[-\\s.]*(?:TW|TWO))?[）)]|_${stock.code}`;
-        
-        // 使用自定義pattern或基本名稱加上可選的KY
         const namePattern = stock.pattern || `${baseStockName}(?:[-\\s]*KY)?`;
+        const nameMatches = text.match(new RegExp(namePattern, 'g'));
+        if (nameMatches) count += nameMatches.length;
         
-        if (first100Chars.includes(stock.name) || 
-            first100Chars.includes(baseStockName) || 
-            first100Chars.match(new RegExp(codePattern))) {
-          
-          console.log(`檢查股票: ${stock.code} (${stock.name})`);
-          
-          const nameRegex = new RegExp(namePattern, 'g');
-          const codeRegex = new RegExp(codePattern, 'g');
-          
-          const nameMatches = (text.match(nameRegex) || []).length;
-          const codeMatches = (text.match(codeRegex) || []).length;
-          
-          if (nameMatches > 0 || codeMatches > 0) {
-            console.log(`匹配成功 - 名稱匹配: ${nameMatches}次, 代碼匹配: ${codeMatches}次`);
-            matchedStocks.set(stock.code, stock.name);
-            stockCounts.set(stock.code, nameMatches + codeMatches);
-            return true;
-          }
+        if (count > 0) {
+          matchedStocks.set(stock.code, stock.name);
+          stockCounts.set(stock.code, count);
+          return true;
         }
         
         return false;
       })
       .map(stock => stock.code);
 
-    // 根據出現次數排序代碼
-    matchedCodes = matchedCodes.sort((a, b) => 
-      (stockCounts.get(b) || 0) - (stockCounts.get(a) || 0)
-    );
-
-    console.log('匹配結果:', {
-      matchedCodes,
-      stockCounts: Object.fromEntries(stockCounts),
-      matchedStocksCount: matchedStocks.size
-    });
-
-    return { codes: matchedCodes, matchedStocks };
+    return { codes: matchedCodes, matchedStocks, stockCounts };
   },
 
   /** 更新股票代碼按鈕 */
   _updateStockButtons(codes, matchedStocks, elements) {
     elements.container.innerHTML = '';
     console.log('開始更新股票代碼按鈕，找到的代碼:', codes);
+    console.log('當前輸入框的值:', elements.input.value);
     
-    // 將代碼分成匹配和未匹配兩組
-    const matchedCodes = codes.filter(code => elements.input.value === code);
-    const unmatchedCodes = codes.filter(code => elements.input.value !== code);
+    const createButton = (code) => {
+        const button = document.createElement('button');
+        const isMatched = code === elements.input.value;
+        button.textContent = matchedStocks.has(code) ? `${matchedStocks.get(code)}${code}` : code;
+        button.classList.add('stock-code-button');
+        button.dataset.stockCode = code;
+        
+        if (isMatched) button.classList.add('matched');
+        
+        button.onclick = () => {
+            console.log(`點擊股票按鈕: ${code}`);
+            elements.input.value = code;
+            elements.input.dispatchEvent(new Event('input', { bubbles: true }));
+            
+            // 先移除所有按鈕
+            const allButtons = Array.from(elements.container.children);
+            elements.container.innerHTML = '';
+            
+            // 更新按鈕狀態並重新排序
+            allButtons.sort((a, b) => {
+                const aCode = a.dataset.stockCode;
+                const bCode = b.dataset.stockCode;
+                const isAMatched = aCode === code;
+                const isBMatched = bCode === code;
+                if (isAMatched && !isBMatched) return -1;
+                if (!isAMatched && isBMatched) return 1;
+                return 0;
+            }).forEach(btn => {
+                const btnCode = btn.dataset.stockCode;
+                if (btnCode === code) {
+                    btn.classList.add('matched');
+                } else {
+                    btn.classList.remove('matched');
+                }
+                elements.container.appendChild(btn);
+            });
+            
+            elements.input.focus();
+            setTimeout(() => elements.input.blur(), 10);
+        };
+        
+        return button;
+    };
     
-    // 添加匹配的按鈕
-    matchedCodes.forEach(code => {
-      const button = document.createElement('button');
-      button.textContent = matchedStocks.has(code) ? `${matchedStocks.get(code)}${code}` : code;
-      button.classList.add('stock-code-button', 'matched');
-      button.onclick = () => this._fillStockCode(code, elements.input);
-      elements.container.appendChild(button);
-    });
-    
-    // 添加未匹配的按鈕
-    unmatchedCodes.forEach(code => {
-      const button = document.createElement('button');
-      button.textContent = matchedStocks.has(code) ? `${matchedStocks.get(code)}${code}` : code;
-      button.classList.add('stock-code-button');
-      button.onclick = () => this._fillStockCode(code, elements.input);
-      elements.container.appendChild(button);
+    // 初始排序並創建按鈕
+    codes.sort((a, b) => {
+        const isAMatched = a === elements.input.value;
+        const isBMatched = b === elements.input.value;
+        if (isAMatched && !isBMatched) return -1;
+        if (!isAMatched && isBMatched) return 1;
+        return 0;
+    }).forEach(code => {
+        elements.container.appendChild(createButton(code));
     });
   },
 

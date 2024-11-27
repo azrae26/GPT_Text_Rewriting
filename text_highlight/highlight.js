@@ -560,7 +560,7 @@ const TextHighlight = {
           if (targetWord.startsWith('/') && targetWord.endsWith('/')) {
             // 正則表達式處理
             const regexStr = targetWord.slice(1, -1);
-            const matches = Array.from(text.matchAll(new RegExp(regexStr, 'gm')));
+            const matches = Array.from(text.matchAll(RegexHelper.createRegex(targetWord)));
 
             for (const match of matches) {
               if (match[0]) {
@@ -592,14 +592,16 @@ const TextHighlight = {
             // 使用普通文字匹配
             const positions = [];
             let index = 0;
-            while ((index = text.indexOf(targetWord, index)) !== -1) {
-              positions.push(index);
-              index += 1;
-            }
-
-            positions.forEach(index => {
+            // 改用 RegexHelper 來處理普通文字匹配
+            const regex = RegexHelper.createRegex(targetWord);
+            const matches = Array.from(text.matchAll(regex));
+            matches.forEach(match => {
               const position = this.PositionCalculator.calculatePosition(
-                textArea, index, text, targetWord, styles
+                textArea, 
+                match.index, 
+                text, 
+                match[0], 
+                styles
               );
               if (position) {
                 const highlight = this.Renderer.createHighlight(

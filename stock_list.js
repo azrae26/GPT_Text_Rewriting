@@ -1866,6 +1866,7 @@ window.stockList = [
     { code: "6958", name: "日盛台駿" },
     { code: "6959", name: "兆捷科技" },
     { code: "6961", name: "旅天下" },
+    { code: "6962", name: "ITH-KY" },
     { code: "6963", name: "品元" },
     { code: "6967", name: "汎瑋材料" },
     { code: "6968", name: "萬達寵物" },
