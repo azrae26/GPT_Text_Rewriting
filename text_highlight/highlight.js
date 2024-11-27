@@ -404,33 +404,88 @@ const TextHighlight = {
   // 初始化時載入顏色設置
   initialize() {
     console.log('初始化文字標示功能');
-    this.DOMManager.initialize();
-    this.EventHandler.initialize();
     
-    // 從 storage 載入顏色設置
-    chrome.storage.local.get(['highlightColors'], (result) => {
-      if (result.highlightColors) {
-        this.wordColors = result.highlightColors;
-        console.log('已載入顏色設置:', this.wordColors);
-        
-        // 強制執行一次更新
-        this.forceUpdate();
-      }
+    // 使用 Promise 確保初始化順序
+    return new Promise((resolve) => {
+      this.DOMManager.initialize();
+      this.EventHandler.initialize();
       
-      // 即使沒有顏色設置也要初始化 DOM 結構
-      if (!this.DOMManager.elements.container) {
-        this.DOMManager.setupHighlightContainer();
-      }
+      // 從 storage 載入顏色設置
+      chrome.storage.local.get(['highlightColors'], (result) => {
+        if (result.highlightColors) {
+          this.wordColors = result.highlightColors;
+          console.log('已載入顏色設置:', this.wordColors);
+        }
+        
+        // 確保 DOM 結構初始化
+        if (!this.DOMManager.elements.container) {
+          this.DOMManager.setupHighlightContainer();
+        }
+
+        // 等待 DOM 完全渲染
+        requestAnimationFrame(() => {
+          // 強制執行第一次更新
+          this.forceUpdate();
+          
+          // 設置定期檢查
+          this.startPeriodicCheck();
+          
+          resolve();
+        });
+      });
     });
+  },
+
+  // 添加定期檢查機制
+  startPeriodicCheck() {
+    // 在前幾秒多次檢查
+    const checkTimes = [100, 500, 1000, 2000];
+    checkTimes.forEach(delay => {
+      setTimeout(() => {
+        this.checkAndForceUpdate();
+      }, delay);
+    });
+  },
+
+  // 添加檢查和強制更新方法
+  checkAndForceUpdate() {
+    const { textArea, container } = this.DOMManager.elements;
+    if (!textArea || !container) return;
+
+    // 檢查是否有有效的高亮元素
+    const highlights = this.DOMManager.elements.highlights;
+    const hasValidHighlights = highlights.some(h => 
+      h.style.display !== 'none' && 
+      parseFloat(h.style.width) > 0
+    );
+
+    if (!hasValidHighlights && this.targetWords.length > 0) {
+      console.log('未檢測到有效高亮，強制更新');
+      this.forceUpdate();
+    }
+  },
+
+  // 修改 forceUpdate 方法
+  forceUpdate() {
+    // 清除所有快取
+    this.PositionCalculator.clearCache();
+    this._lastText = null;
+    this._lastScrollTop = null;
     
-    // 添加檢查
-    setTimeout(() => {
-      if (!this.DOMManager.elements.container) {
-        console.warn('高亮容器未正確初始化，嘗試重新初始化');
-        this.DOMManager.setupHighlightContainer();
-        this.forceUpdate();
-      }
-    }, 1000);
+    // 使用 requestAnimationFrame 確保在下一個繪製幀執行更新
+    requestAnimationFrame(() => {
+      this.DOMManager.clearHighlights();
+      this.updateHighlights();
+      
+      // 再次檢查高亮是否正確顯示
+      setTimeout(() => {
+        const highlights = this.DOMManager.elements.highlights;
+        if (highlights.length === 0 && this.targetWords.length > 0) {
+          console.log('高亮未正確顯示，重試更新');
+          this.updateHighlights();
+        }
+      }, 100);
+    });
   },
 
   // 修改取得顏色的方法
@@ -574,18 +629,6 @@ const TextHighlight = {
   // 添加新的方法來新顏色映射
   setWordColors(colors) {
     this.wordColors = colors;
-  },
-
-  // 修改 forceUpdate 方法，確保完整重新渲染
-  forceUpdate() {
-    this._lastText = null;      // 清除文字記錄
-    this._lastScrollTop = null; // 清除滾動位置記錄
-    
-    // 使用 requestAnimationFrame 確保在下一個繪製幀執行更新
-    requestAnimationFrame(() => {
-      this.DOMManager.clearHighlights(); // 清除所有現有高亮
-      this.updateHighlights();           // 重新建立高亮
-    });
   }
 };
 

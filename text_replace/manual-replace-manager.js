@@ -585,6 +585,11 @@ const ManualReplaceManager = {
             this.PreviewHighlight.updatePreview(textArea, fromInput.value, index + 1);
           }
         });
+
+        // 檢查高亮是否正確顯示
+        setTimeout(() => {
+          this.checkAndForceUpdateHighlights();
+        }, 500);
       });
     });
 
@@ -593,6 +598,40 @@ const ManualReplaceManager = {
     // 監聽文本變化
     this.setupTextAreaChangeListener(textArea);
     console.log('手動替換組初始化完成');
+
+    // 定期檢查高亮顯示
+    this.startHighlightCheck();
+  },
+
+  /** 檢查並強制更新高亮 */
+  checkAndForceUpdateHighlights() {
+    console.log('檢查高亮顯示狀態');
+    const highlights = document.querySelectorAll('.replace-preview-highlight');
+    const hasValidHighlights = Array.from(highlights).some(h => 
+      h.style.display !== 'none' && 
+      parseFloat(h.style.width) > 0
+    );
+
+    if (!hasValidHighlights) {
+      console.log('未檢測到有效高亮，強制更新');
+      const textArea = document.querySelector('textarea[name="content"]');
+      if (textArea) {
+        this.updateAllPreviews(textArea);
+      }
+    } else {
+      console.log('高亮顯示正常');
+    }
+  },
+
+  /** 開始定期檢查高亮 */
+  startHighlightCheck() {
+    // 在前幾秒多次檢查
+    const checkTimes = [100, 500, 1000, 2000];
+    checkTimes.forEach(delay => {
+      setTimeout(() => {
+        this.checkAndForceUpdateHighlights();
+      }, delay);
+    });
   },
 
   /** 設置文本區域變化監聽器 */
