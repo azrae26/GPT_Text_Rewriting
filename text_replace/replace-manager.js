@@ -1,4 +1,25 @@
-/** 文字替換管理整合模組 */
+/**
+ * 替換管理整合模組
+ * 
+ * 依賴模組：
+ * 1. text_replace/manual-replace-manager.js
+ *    - ManualReplaceManager.PreviewHighlight.initialize：初始化預覽功能
+ *    - ManualReplaceManager.PreviewHighlight.updatePreview：更新預覽顯示
+ *    - ManualReplaceManager.checkAndForceUpdateHighlights：檢查並強制更新高亮
+ *    - ManualReplaceManager.startHighlightCheck：開始定期檢查高亮
+ * 
+ * 2. text_replace/auto-replace-manager.js
+ *    - AutoReplaceManager.handleAutoReplace：處理自動替換
+ * 
+ * 3. Chrome Storage API
+ *    - chrome.storage.sync：用於存儲和讀取位置設定
+ *    - chrome.storage.local：用於存儲和讀取替換規則
+ * 
+ * 主要功能：
+ * - 統一管理手動和自動替換的初始化
+ * - 管理替換介面的位置和拖曳功能
+ * - 處理大型輸入框的顯示
+ */
 const ReplaceManager = {
   CONFIG: {
     STORAGE_KEY: 'replacePosition'
@@ -314,15 +335,19 @@ const ReplaceManager = {
       chrome.storage.local.get([storageKey], (result) => {
         console.log('讀取到的規則:', result[storageKey]);
         
+        // 修改過濾邏輯，先確保規則存在且是有效對象
         const rules = (result[storageKey] || [])
-          .filter(rule => rule.from?.trim() || rule.to?.trim());
+          .filter(rule => rule && typeof rule === 'object')  // 先確保是有效對象
+          .filter(rule => rule.from?.trim() || rule.to?.trim());  // 再檢查內容
         
         console.log('過濾後的規則:', rules);
         
+        // 如果沒有規則，添加一個空規則
         if (rules.length === 0) {
-          rules.push({});
+          rules.push({ from: '', to: '' });
         }
         
+        // 創建組
         rules.forEach(rule => {
           manualContainer.appendChild(createGroupFn(textArea, false, rule));
         });

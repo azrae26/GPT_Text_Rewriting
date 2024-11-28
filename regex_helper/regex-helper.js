@@ -22,9 +22,14 @@ const RegexHelper = {
    * 檢查是否為正則表達式模式
    */
   _isRegexPattern(text) {
+    // 如果只有單一個或連續兩個斜線，不視為正則表達式模式
+    if (text === '/' || text === '//') {
+      return false;
+    }
+    
     return text.startsWith('(') || 
            text.startsWith('[') || 
-           text.startsWith('/') && text.match(/\/[gim]*$/);
+           (text.startsWith('/') && text.match(/\/[gim]*$/));
   },
 
   /**

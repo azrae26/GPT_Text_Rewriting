@@ -1,11 +1,26 @@
 /**
  * 關鍵要點總結管理器
- * 負責管理關鍵要點總結功能的UI和邏輯
- * 功能包括:
- * 1. 可拖動的浮動視窗
- * 2. 自動監聽股票變化並更新總結
- * 3. 展開/收合功能
- * 4. 記住上次位置
+ * 
+ * 依賴模組：
+ * 1. ua_assistant/auto-click.js
+ *    - AutoClickManager.initialize：初始化自動點擊功能
+ *    - AutoClickManager.onStockChange：監聽股票變化
+ * 
+ * 2. settings/settings-manager.js
+ *    - GlobalSettings.loadSettings：載入用戶設定
+ * 
+ * 3. Chrome Storage API
+ *    - localStorage：用於存儲位置和展開狀態
+ * 
+ * 4. Chrome Runtime API
+ *    - chrome.runtime.getURL：用於載入腳本
+ * 
+ * 主要功能：
+ * - 提供可拖動的浮動視窗
+ * - 自動監聽股票變化並更新總結
+ * - 展開/收合功能
+ * - 記住上次位置
+ * - 自動檢測頁面狀態
  */
 const KeyPointsSummaryManager = {
   /** UI 相關狀態 */

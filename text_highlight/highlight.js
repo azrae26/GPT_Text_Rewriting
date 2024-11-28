@@ -1,7 +1,19 @@
-/* global UIManager */
-
 /**
- * 文字標示模組 - 負責在文本區域中標示特定文字
+ * 文字標示模組
+ * 
+ * 依賴模組：
+ * 1. regex_helper/regex-helper.js
+ *    - RegexHelper.createRegex：用於創建高亮用的正則表達式
+ * 
+ * 2. Chrome Storage API
+ *    - chrome.storage.local：用於存儲高亮顏色設定
+ * 
+ * 主要功能：
+ * - 文本區域中標示特定文字
+ * - 支援正則表達式匹配
+ * - 自動調整高亮位置
+ * - 高亮顏色管理
+ * - 性能優化和快取處理
  */
 const TextHighlight = {
   /**

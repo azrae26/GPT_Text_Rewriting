@@ -1,3 +1,22 @@
+/**
+ * 設定管理器模組
+ * 
+ * 依賴模組：
+ * 1. Chrome Storage API
+ *    - chrome.storage.sync：存儲同步設定
+ *    - chrome.storage.local：存儲本地設定
+ * 
+ * 2. Chrome Runtime API
+ *    - chrome.runtime.sendMessage：發送日誌訊息
+ * 
+ * 主要功能：
+ * - 管理用戶設定的存儲和讀取
+ * - 支援設定的匯入和匯出
+ * - 分類處理不同類型的設定
+ * - 自動同步設定狀態
+ * - 錯誤處理和日誌記錄
+ */
+
 // 設定管理器的核心類別
 class SettingsManager {
   constructor() {

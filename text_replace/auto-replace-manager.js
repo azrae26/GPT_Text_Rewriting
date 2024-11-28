@@ -1,4 +1,26 @@
-/** 自動替換管理模組 */
+/**
+ * 自動替換管理模組
+ * 
+ * 依賴模組：
+ * 1. text_replace/replace-manager.js
+ *    - ReplaceManager.initializeReplaceGroups：用於初始化替換組
+ *    - ReplaceManager.setupGroupEvents：設置組事件處理
+ * 
+ * 2. regex_helper/regex-helper.js
+ *    - RegexHelper.createRegex：用於創建替換用的正則表達式
+ * 
+ * 3. Chrome Storage API
+ *    - chrome.storage.local：用於存儲和讀取自動替換規則
+ * 
+ * 4. Chrome Tabs API
+ *    - chrome.tabs：用於與 content script 通信
+ * 
+ * 主要功能：
+ * - 管理自動替換規則
+ * - 處理自動替換的執行
+ * - 提供拖曳排序功能
+ * - 管理輸入框的展開/收縮
+ */
 const AutoReplaceManager = {
   CONFIG: {
     AUTO_REPLACE_KEY: 'autoReplaceRules',
@@ -164,13 +186,15 @@ const AutoReplaceManager = {
       if (groups.length === 1) {
         // 如果是最後一個組，清空輸入框
         const fromInput = group.querySelector('.replace-input-container:first-of-type .replace-input');
-        const toInput = group.querySelector('.replace-input-container:last-of-type .replace-input');
-        const checkbox = group.querySelector('.auto-replace-checkbox');
-        
+        // 如果沒有替換目標框，則不進行清空
         if (fromInput) fromInput.value = '';
+        const toInput = group.querySelector('.replace-input-container:last-of-type .replace-input');
+        // 如果沒有替換結果框，則不進行清空
         if (toInput) toInput.value = '';
+        const checkbox = group.querySelector('.auto-replace-checkbox');
         if (checkbox) checkbox.checked = false;
       } else {
+        // 移除組
         group.remove();
       }
       
@@ -413,12 +437,12 @@ const AutoReplaceManager = {
   /** 初始化自動替換組 */
   initializeAutoReplaceGroups(container, textArea) {
     window.ReplaceManager.initializeReplaceGroups({
-      otherContainer: container,
-      textArea,
-      storageKey: 'replace_autoReplaceRules',
-      createGroupFn: this.createAutoReplaceGroup.bind(this),
-      onInitialized: () => this.handleAutoReplace(textArea),
-      isManual: false
+      otherContainer: container,  // 其他組容器
+      textArea,                  // 文本區域
+      storageKey: 'replace_autoReplaceRules', // 儲存 key
+      createGroupFn: this.createAutoReplaceGroup.bind(this), // 創建組函數
+      onInitialized: () => this.handleAutoReplace(textArea), // 初始化完成後的回調
+      isManual: false            // 是否為手動替換
     });
   },
 
@@ -427,30 +451,30 @@ const AutoReplaceManager = {
     console.group('保存替換規則');
     
     const rules = Array.from(container.querySelectorAll('.auto-replace-group')).map(group => {
-        const containers = Array.from(group.children).filter(el => el.classList.contains('replace-input-container'));
-        const fromInput = containers[0]?.querySelector('textarea');
-        const toInput = containers[1]?.querySelector('textarea');
-        const checkbox = group.querySelector('.auto-replace-checkbox');
+        const containers = Array.from(group.children).filter(el => el.classList.contains('replace-input-container')); // 獲取輸入框容器
+        const fromInput = containers[0]?.querySelector('textarea'); // 獲取替換目標框
+        const toInput = containers[1]?.querySelector('textarea');   // 獲取替換結果框
+        const checkbox = group.querySelector('.auto-replace-checkbox'); // 獲取勾選框
         
         const rule = {
-            from: fromInput?.value || '',
-            to: toInput?.value || '',
-            enabled: checkbox?.checked || false
+            from: fromInput?.value || '', // 獲取替換目標框的值
+            to: toInput?.value || '',     // 獲取替換結果框的值
+            enabled: checkbox?.checked || false // 獲取勾選框的狀態
         };
         
-        console.log('保存規則:', rule);
+        console.log('保存規則:', rule); // 輸出規則
         return rule;
     });
 
-    console.log('所有規則:', rules);
+    console.log('所有規則:', rules); // 輸出所有規則
 
     // 修改：使用 local storage 和帶前綴的 key 儲存
-    const storageKey = 'replace_' + this.CONFIG.AUTO_REPLACE_KEY;
+    const storageKey = 'replace_' + this.CONFIG.AUTO_REPLACE_KEY; // 帶前綴的 key
     chrome.storage.local.set({ [storageKey]: rules }, () => {
         if (chrome.runtime.lastError) {
             console.error('保存規則失敗:', chrome.runtime.lastError);
         } else {
-            console.log('規則保存成功');
+            console.log('規則保存成功'); // 規則保存成功
         }
     });
 
@@ -517,7 +541,7 @@ const AutoReplaceManager = {
                     });
                 });
             }
-            
+            // 進行替換
             const newText = text.replace(regex, rule.to);
             if (newText !== text) {
                 text = newText;

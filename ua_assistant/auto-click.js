@@ -1,6 +1,21 @@
 /**
  * 自動點擊管理器
- * 用於監控股票變化並自動點擊"近況發展"按鈕
+ * 
+ * 依賴模組：
+ * 1. ua_assistant/key-points-summary.js
+ *    - KeyPointsSummaryManager.APIManager.fetchAndUpdateSummary：獲取並更新總結
+ *    - KeyPointsSummaryManager.UI.isExpanded：檢查面板展開狀態
+ * 
+ * 2. DOM API
+ *    - MutationObserver：監聽頁面變化
+ *    - document.querySelector：查找 DOM 元素
+ * 
+ * 主要功能：
+ * - 監控股票代碼變化
+ * - 自動點擊"近況發展"按鈕
+ * - 監控頁面狀態變化
+ * - 監控內容更新並觸發總結更新
+ * - 防抖和節流處理
  */
 const AutoClickManager = {
   hasClicked: false,      // 追蹤是否已經點擊過按鈕

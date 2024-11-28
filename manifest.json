@@ -5,7 +5,8 @@
   "description": "使用 AI 技術自動改寫文章",
   "permissions": [
     "storage",
-    "activeTab"
+    "activeTab",
+    "tabs"
   ],
   "host_permissions": [
     "https://data.uanalyze.twobitto.com/*",
@@ -33,6 +34,8 @@
         "text-processor.js",
         "translate.js",
         "ui-manager.js",
+        "stock_report_helper/quick-copy.js",
+        "stock_report_helper/stock-analyzer.js",
         "content.js"
       ],
       "css": ["content_script_uanalyze.css", "text_replace/replace.css"]
@@ -49,6 +52,19 @@
         "ua_assistant/key-points-summary.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://pro.uanalyze.com.tw/lab/dashboard/lynch-tengrower/*"
+      ],
+      "js": [
+        "default.js",
+        "settings.js",
+        "stock_list.js",
+        "stock_report_helper/quick-copy.js",
+        "stock_report_helper/stock-analyzer.js"
+      ],
+      "run_at": "document_end"
     }
   ],
   "web_accessible_resources": [

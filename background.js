@@ -6,7 +6,38 @@ let pendingRewriteRequest = null;
 
 // 監聽來自其他部分的消息
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log("背景腳本收到消息:", request);
+  // 處理日誌消息
+  if (request.type === 'LOG') {
+    const timestamp = new Date(request.timestamp).toLocaleTimeString();
+    let style = '';
+    
+    // 根據不同顏色設置不同的樣式
+    switch (request.color) {
+      case '#4CAF50': // 成功
+        style = 'color: #2E7D32'; // 更深的綠色
+        break;
+      case '#2196F3': // 信息
+        style = 'color: #1565C0'; // 更深的藍色
+        break;
+      case '#9C27B0': // 等待/處理中
+        style = 'color: #9C27B0; font-weight: bold;'; // 紫色加粗
+        break;
+      case '#F44336': // 錯誤
+        style = 'color: #F44336; font-weight: bold;'; // 紅色加粗
+        break;
+      case '#FF9800': // 警告
+        style = 'color: #FF9800; font-weight: bold;'; // 橙色加粗
+        break;
+      default:
+        style = request.color ? `color: ${request.color}` : '';
+    }
+    
+    console.log(
+        `%c[${timestamp}] ${request.source}: ${request.message}`,
+        style
+    );
+    return true;
+  }
 
   // 處理內容腳本準備就緒的通知
   if (request.action === "contentScriptReady") {
@@ -17,7 +48,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // 檢查內容腳本是否準備就緒
   else if (request.action === "checkContentScriptReady") {
     sendResponse({ ready: contentScriptReady });
-    console.log("檢查內容腳本狀態:", contentScriptReady);
   }
   // 處理改寫請求
   else if (request.action === "rewrite") {
@@ -48,12 +78,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     chrome.storage.sync.set(request.data, sendResponse);
     return true;  // 表示我們會異步發送響應
   }
-  return true; // 表示我們會異步發送回應
-});
-
-// 處理更新內容腳本的請求
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "updateContentScript") {
+  // 處理更新內容腳本的請求
+  else if (request.action === "updateContentScript") {
     console.log("轉發更新請求到內容腳本", request);
     // 查找當前活動的標籤頁
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
@@ -74,41 +100,39 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({error: "未找到活動的標籤頁"});
       }
     });
-    return true; // 表示我們會異步發送回應
+    return true;
   }
+  // 處理設定管理器的日誌
+  else if (request.action === 'settingsLog') {
+    const { logType, message: logMessage, data, timestamp } = request;
+    
+    // 根據日誌類型使用不同的 console 方法
+    switch (logType) {
+        case 'error':
+            console.error(`[設定管理器 ${timestamp}]`, logMessage, data || '');
+            break;
+        case 'warn':
+            console.warn(`[設定管理器 ${timestamp}]`, logMessage, data || '');
+            break;
+        case 'success':
+            console.log(`%c[設定管理器 ${timestamp}] ${logMessage}`, 
+                'color: #2E7D32', // 更深的綠色
+                data || '');
+            break;
+        case 'info':
+        default:
+            console.log(`[設定管理器 ${timestamp}]`, logMessage, data || '');
+    }
+  }
+  return true; // 表示我們會異步發送回應
 });
 
-// 監聽插件啟動事件  -  移除舊的預設設定
+// 監聽插件啟動事件
 chrome.runtime.onInstalled.addListener((details) => {
   console.log('插件已安裝或更新', details);
   if(details.reason === "install"){
     chrome.storage.sync.set({ isFirstTime: true });
   }
-});
-
-// 添加消息監聽器來接收設定管理器的日誌
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.action === 'settingsLog') {
-        const { logType, message: logMessage, data, timestamp } = message;
-        
-        // 根據日誌類型使用不同的 console 方法
-        switch (logType) {
-            case 'error':
-                console.error(`[設定管理器 ${timestamp}]`, logMessage, data || '');
-                break;
-            case 'warn':
-                console.warn(`[設定管理器 ${timestamp}]`, logMessage, data || '');
-                break;
-            case 'success':
-                console.log(`%c[設定管理器 ${timestamp}] ${logMessage}`, 
-                    'color: green; font-weight: bold;', 
-                    data || '');
-                break;
-            case 'info':
-            default:
-                console.log(`[設定管理器 ${timestamp}]`, logMessage, data || '');
-        }
-    }
 });
 
 console.log("背景腳本已加載");
