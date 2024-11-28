@@ -24,8 +24,8 @@ const UndoManager = {
 
   /** 添加新的歷史記錄 */
   addToHistory(value, element) {
-    if (!element || this.isUndoRedoOperation) {
-      console.error('addToHistory: 無效的元素或正在執行復原/重做操作');
+    if (!element) {
+      console.error('addToHistory: 無效的元素');
       return;
     }
 
@@ -49,7 +49,11 @@ const UndoManager = {
 
   /** 初始化歷史記錄 */
   initHistory(element) {
-    const history = { history: [element.value || ''], currentIndex: 0 };
+    const initialValue = element.value || '';
+    const history = { 
+      history: [initialValue], 
+      currentIndex: 0 
+    };
     this.inputHistories.set(this.getInputId(element), history);
     return history;
   },
@@ -62,82 +66,61 @@ const UndoManager = {
     }
 
     try {
-      // 保存初始值
-      const initialValue = inputElement.value;
-      const history = [initialValue];
-      let currentIndex = 0;
+      const inputId = this.getInputId(inputElement);
+      if (inputElement._historyInitialized) return;
 
-      // 監聽輸入變化
-      inputElement.addEventListener('input', (event) => {
-        // 檢查元素是否還存在
-        if (!document.body.contains(event.target)) {
-          console.log('輸入元素已不存在，跳過歷史記錄');
+      this.initHistory(inputElement);
+
+      const handleInput = event => {
+        if (!event.target || !document.body.contains(event.target)) {
+          console.log('元素已不存在，跳過處理');
           return;
         }
 
         try {
-          const inputId = UndoManager.getInputId(event.target);
-          if (UndoManager.inputHistories.has(inputId)) return;
-
-          UndoManager.initHistory(event.target);
-
-          const handleInput = event => {
-            // 檢查元素和值是否存在
-            if (!event.target || !document.body.contains(event.target)) {
-              console.log('元素已不存在，跳過處理');
-              return;
-            }
-
-            try {
-              const history = UndoManager.inputHistories.get(inputId);
-              const oldLength = history?.history[history?.currentIndex]?.length || 0;
-              const newLength = event.target.value?.length || 0;
-              
-              clearTimeout(UndoManager._inputTimeout);
-              UndoManager._inputTimeout = setTimeout(() => {
-                // 再次檢查元素是否存在
-                if (event.target && document.body.contains(event.target)) {
-                  UndoManager.addToHistory(event.target.value, event.target);
-                }
-              }, Math.abs(newLength - oldLength) > 1 ? 500 : 0);
-            } catch (error) {
-              console.log('處理輸入事件時發生錯誤:', error);
-            }
-          };
-
-          const handlePasteOrCut = () => {
-            // 檢查元素是否存在
-            if (event.target && document.body.contains(event.target)) {
-              setTimeout(() => {
-                if (event.target && document.body.contains(event.target)) {
-                  UndoManager.addToHistory(event.target.value, event.target);
-                }
-              }, 0);
-            }
-          };
-
-          event.target.addEventListener('input', handleInput);
-          event.target.addEventListener('paste', handlePasteOrCut);
-          event.target.addEventListener('cut', handlePasteOrCut);
-
-          event.target._historyHandlers = { input: handleInput };
-          event.target._historyInitialized = true;
-          
-          if (!UndoManager._initializedInputs) UndoManager._initializedInputs = new Set();
-          UndoManager._initializedInputs.add(inputId);
-          
-          clearTimeout(UndoManager._logTimeout);
-          UndoManager._logTimeout = setTimeout(() => {
-            console.log(`已初始化輸入框歷史記錄，共 ${UndoManager._initializedInputs.size} 個元素`);
-            UndoManager._initializedInputs.clear();
-          }, 100);
-
+          if (!this.isUndoRedoOperation) {
+            clearTimeout(this._inputTimeout);
+            this._inputTimeout = setTimeout(() => {
+              if (event.target && document.body.contains(event.target)) {
+                this.addToHistory(event.target.value, event.target);
+              }
+            }, 0);
+          }
         } catch (error) {
-          console.log('處理輸入變化時發生錯誤:', error);
+          console.log('處理輸入事件時發生錯誤:', error);
         }
-      });
+      };
 
-      console.log('已初始化輸入框歷史記錄，共', history.length, '個元素');
+      const handlePasteOrCut = event => {
+        if (event.target && document.body.contains(event.target)) {
+          setTimeout(() => {
+            if (event.target && document.body.contains(event.target)) {
+              this.addToHistory(event.target.value, event.target);
+            }
+          }, 0);
+        }
+      };
+
+      inputElement.addEventListener('input', handleInput);
+      inputElement.addEventListener('paste', handlePasteOrCut);
+      inputElement.addEventListener('cut', handlePasteOrCut);
+
+      inputElement._historyHandlers = { 
+        input: handleInput,
+        paste: handlePasteOrCut,
+        cut: handlePasteOrCut
+      };
+      inputElement._historyInitialized = true;
+      
+      if (!this._initializedInputs) this._initializedInputs = new Set();
+      this._initializedInputs.add(inputId);
+      
+      clearTimeout(this._logTimeout);
+      this._logTimeout = setTimeout(() => {
+        console.log(`已初始化輸入框歷史記錄，共 ${this._initializedInputs.size} 個元素`);
+        this._initializedInputs.clear();
+      }, 100);
+
     } catch (error) {
       console.log('初始化歷史記錄時發生錯誤:', error);
     }
@@ -161,7 +144,10 @@ const UndoManager = {
       activeElement.value = history.history[history.currentIndex];
       activeElement.dispatchEvent(new Event('input', { bubbles: true }));
       
-      requestAnimationFrame(() => this.isUndoRedoOperation = false);
+      setTimeout(() => {
+        this.isUndoRedoOperation = false;
+      }, 0);
+      
       console.log(`${operation}到索引 [${inputId}]:`, history.currentIndex);
     }
   },
