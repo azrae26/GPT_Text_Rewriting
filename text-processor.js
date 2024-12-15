@@ -30,6 +30,45 @@ const TextProcessor = {
   },
 
   /**
+   * 從網頁獲取日期
+   * @returns {string} 日期字串，如果找不到則返回空字串
+   */
+  _getDateFromPage() {
+    try {
+      // 找到日期輸入框
+      const dateInput = document.querySelector('input[placeholder="YYYY/MM/DD"]');
+      if (!dateInput || !dateInput.value) {
+        return '';
+      }
+
+      // 將 YYYY/MM/DD 格式轉換為 YYYY年MM月DD日
+      const [year, month, day] = dateInput.value.split('/');
+      if (!year || !month || !day) {
+        return dateInput.value;
+      }
+      
+      return `${year}年${month}月${day}日`;
+    } catch (error) {
+      console.warn('獲取日期時發生錯誤:', error);
+      return '';
+    }
+  },
+
+  /**
+   * 處理指令中的日期佔位符
+   * @param {string} instruction - 原始指令
+   * @returns {string} - 處理後的指令
+   */
+  _processInstructionWithDate(instruction) {
+    if (!instruction || !instruction.includes('{date}')) {
+      return instruction;
+    }
+
+    const date = this._getDateFromPage();
+    return instruction.replace(/\{date\}/g, date || '未知日期');
+  },
+
+  /**
    * 準備 API 請求配置
    * @param {string} model - 使用的模型名稱
    * @param {string} text - 主要文本內容
@@ -37,6 +76,8 @@ const TextProcessor = {
    * @param {Object} context - 上下文內容，格式為 { role: string, content: string }[]
    */
   _prepareApiConfig(model, text, instruction, context = []) {
+    const processedInstruction = this._processInstructionWithDate(instruction);
+    
     const isGemini = model.startsWith('gemini');
     const endpoint = isGemini 
       ? window.GlobalSettings.API.endpoints.gemini.replace(':model', model)
@@ -71,7 +112,7 @@ const TextProcessor = {
       contents: [
         {
           role: "user",
-          parts: [{ text: `${instruction}\n\n${text}` }]  // 將指令和文本合併
+          parts: [{ text: `${processedInstruction}\n\n${text}` }]  // 使用處理後的指令
         },
         ...systemMessages,
         ...userMessages
@@ -80,7 +121,7 @@ const TextProcessor = {
     } : {
       model,
       messages: [
-        { role: "system", content: instruction },
+        { role: "system", content: processedInstruction }, // 使用處理後的指令
         ...systemMessages,
         ...userMessages,
         { role: "user", content: text }
@@ -91,7 +132,7 @@ const TextProcessor = {
       endpoint,
       requestBody: {
         model,
-        systemMessage: instruction,
+        systemMessage: processedInstruction,
         systemContext: systemMessages,
         userContext: userMessages,
         userMessage: text
