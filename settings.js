@@ -45,6 +45,8 @@ const GlobalSettings = {
   translateInstruction: '',
   /** 摘要模型名稱。 */
   summaryModel: '',
+  /** 中英對照表。 */
+  zhEnMapping: '',
 
   /**
    * 從 Chrome 儲存空間載入設定。
@@ -58,7 +60,7 @@ const GlobalSettings = {
           chrome.storage.sync.get(null, (items) => resolve(items));
         }),
         new Promise((resolve) => {
-          chrome.storage.local.get(['translateInstruction', 'summaryInstruction'], (items) => resolve(items));
+          chrome.storage.local.get(['translateInstruction', 'summaryInstruction', 'zhEnMapping'], (items) => resolve(items));
         })
       ]);
 
@@ -90,6 +92,7 @@ const GlobalSettings = {
       this.summaryInstruction = localResult.summaryInstruction || 
                                syncResult.summaryInstruction || 
                                (window.DefaultSettings?.summaryInstruction || '');
+      this.zhEnMapping = localResult.zhEnMapping || ''; // 載入中英對照表
       
       // 使用 DefaultSettings 中的預設值
       this.confirmModel = syncResult.confirmModel === undefined ? window.DefaultSettings?.confirmModel : syncResult.confirmModel;
@@ -177,7 +180,8 @@ const GlobalSettings = {
         new Promise((resolve) => {
           chrome.storage.local.set({
             translateInstruction: this.translateInstruction,
-            summaryInstruction: this.summaryInstruction
+            summaryInstruction: this.summaryInstruction,
+            zhEnMapping: this.zhEnMapping  // 加入中英對照表到本地儲存
           }, resolve);
         })
       ]);
@@ -195,7 +199,7 @@ const GlobalSettings = {
   async saveSingleSetting(key, value) {
     try {
       // 檢查是否為需要使用 local storage 的大型文本
-      if (key === 'translateInstruction' || key === 'summaryInstruction') {
+      if (key === 'translateInstruction' || key === 'summaryInstruction' || key === 'zhEnMapping') {
         await new Promise((resolve) => {
           chrome.storage.local.set({ [key]: value }, resolve);
         });

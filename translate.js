@@ -16,6 +16,7 @@ window.TranslateManager = {
   removeStarCheckbox: null,
   selectionStart: null, // 新增：保存選取開始位置
   selectionEnd: null,   // 新增：保存選取結束位置
+  zhEnMappingTextarea: null, // 新增：中英對照文本框
 
   /**
    * 根據批次數量決定發送間隔
@@ -167,6 +168,101 @@ window.TranslateManager = {
   },
 
   /**
+   * 解析中英對照表
+   * @returns {Promise<Object>} 解析後的中英對照物件
+   */
+  async parseZhEnMapping() {
+    try {
+      if (!this.zhEnMappingTextarea) {
+        // 嘗試從 popup 頁面獲取
+        this.zhEnMappingTextarea = document.getElementById('zhEnMapping');
+        
+        // 如果還是找不到，嘗試從 chrome.storage.local 獲取
+        if (!this.zhEnMappingTextarea) {
+          const result = await new Promise(resolve => {
+            chrome.storage.local.get(['zhEnMapping'], resolve);
+          });
+          
+          if (result.zhEnMapping) {
+            const mapping = {};
+            const lines = result.zhEnMapping.split('\n');
+            
+            lines.forEach(line => {
+              const trimmedLine = line.trim();
+              if (!trimmedLine) return;  // 跳過空行
+              
+              // 使用 = 分割，但保留所有部分
+              const parts = trimmedLine.split('=').map(part => part.trim());
+              if (parts.length >= 2) {  // 只要有至少兩個部分就處理
+                const zh = parts[0];
+                // 將除了第一個部分(中文)以外的所有部分用=連接
+                const en = parts.slice(1).join(' = ');
+                if (zh && en) {
+                  mapping[zh] = en;
+                }
+              }
+            });
+            
+            console.log('從 storage 解析的中英對照表:', mapping);
+            return mapping;
+          }
+        }
+      }
+      
+      if (!this.zhEnMappingTextarea) {
+        console.log('找不到中英對照文本框，且 storage 中也沒有資料');
+        return {};
+      }
+
+      const mapping = {};
+      const lines = this.zhEnMappingTextarea.value.split('\n');
+      
+      lines.forEach(line => {
+        const trimmedLine = line.trim();
+        if (!trimmedLine) return;  // 跳過空行
+        
+        // 使用 = 分割，但保留所有部分
+        const parts = trimmedLine.split('=').map(part => part.trim());
+        if (parts.length >= 2) {  // 只要有至少兩個部分就處理
+          const zh = parts[0];
+          // 將除了第一個部分(中文)以外的所有部分用=連接
+          const en = parts.slice(1).join(' = ');
+          if (zh && en) {
+            mapping[zh] = en;
+          }
+        }
+      });
+
+      console.log('解析的中英對照表:', mapping);
+      return mapping;
+    } catch (error) {
+      console.error('解析中英對照表時發生錯誤:', error);
+      return {};
+    }
+  },
+
+  /**
+   * 獲取翻譯上下文
+   * @returns {Promise<Array>} 包含中英對照表的上下文陣列
+   */
+  async getTranslationContext() {
+    const mapping = await this.parseZhEnMapping();
+    if (Object.keys(mapping).length === 0) {
+      return [];
+    }
+
+    // 將對照表格式化為易讀的文本
+    const mappingText = Object.entries(mapping)
+      .map(([zh, en]) => `${zh} = ${en}`)
+      .join('\n');
+
+    return [{
+      role: "system",
+      content: `請在翻譯時使用以下對照表：\n${mappingText}`
+    }];
+  },
+
+  /**
    * 開始翻譯流程
    */
   async startTranslation(button) {
@@ -260,10 +356,14 @@ window.TranslateManager = {
       const isGemini = model.startsWith('gemini'); // 檢查是否使用 Gemini 模型
       const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai']; // 獲取 API 金鑰
 
+      // 獲取翻譯上下文
+      const context = await this.getTranslationContext();
+
       const { endpoint, body } = TextProcessor._prepareApiConfig( // 準備 API 請求配置
         model,
         originalText,
-        settings.translateInstruction
+        settings.translateInstruction,
+        context  // 添加上下文
       );
 
       console.log(`正在翻譯第 ${batchIndex + 1}/${this.totalBatches} 批次`);
@@ -381,6 +481,34 @@ window.TranslateManager = {
     set(hashCheckbox, starCheckbox) {
       TranslateManager.removeHashCheckbox = hashCheckbox;
       TranslateManager.removeStarCheckbox = starCheckbox;
+    }
+  },
+
+  /**
+   * 處理翻譯請求
+   */
+  async processTranslation(text, settings) {
+    try {
+      const model = settings.translateModel || settings.model;
+      const isGemini = model.startsWith('gemini');
+      const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
+
+      // 獲取翻譯上下文
+      const context = await this.getTranslationContext();
+
+      // 準備 API 請求配置
+      const config = {
+        model,
+        apiKey,
+        instruction: settings.translateInstruction,
+        context
+      };
+
+      // 發送翻譯請求
+      return await window.TextProcessor.processText(text, config);
+    } catch (error) {
+      console.error('翻譯處理失敗:', error);
+      throw error;
     }
   }
 };
