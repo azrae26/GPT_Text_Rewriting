@@ -40,8 +40,14 @@ const TextProcessor = {
 
     const body = isGemini ? {
       contents: [{
+        role: "user",
         parts: [{
-          text: `文本：${text}\n\n指令：${instruction}`
+          text: instruction
+        }]
+      }, {
+        role: "user",
+        parts: [{
+          text: text
         }]
       }],
       // 添加安全設置，降低內容過濾的嚴格程度
