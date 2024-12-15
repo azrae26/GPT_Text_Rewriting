@@ -23,6 +23,7 @@
       "js": [
         "regex_helper/regex-helper.js",
         "text_highlight/highlight.js",
+        "text_color/text-color.js",
         "text_replace/manual-replace-manager.js",
         "text_replace/auto-replace-manager.js",
         "text_replace/replace-manager.js",
