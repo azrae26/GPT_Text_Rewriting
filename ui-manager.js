@@ -6,16 +6,16 @@ const UIManager = {
 
   /** 添加改寫按鈕 */
   addRewriteButton() {
-    console.log('開始添加改寫按鈕');
+    window.console.log('開始添加改寫按鈕');
     if (!window.shouldEnableFeatures() || document.getElementById('gpt-rewrite-button')) {
-      console.log('不符合添加按鈕條件');
+      window.console.log('不符合添加按鈕條件');
       return;
     }
 
     // 獲取textarea元素
     const textArea = document.querySelector('textarea[name="content"]');
     if (!textArea) {
-      console.log('找不到文本區域');
+      window.console.log('找不到文本區域');
       return;
     }
 
@@ -30,7 +30,7 @@ const UIManager = {
     rewriteButton.addEventListener('click', async function() {
       try {
         const settings = await window.GlobalSettings.loadSettings();
-        if (!settings.apiKeys['gemini-1.5-flash'] && !settings.apiKeys['openai']) {
+        if (!settings.apiKeys['gemini-2.0-flash-exp'] && !settings.apiKeys['openai']) {
           alert('請先設置 API 金');
           return;
         }
@@ -41,9 +41,9 @@ const UIManager = {
         
         this.disabled = true;
         await window.TextProcessor.rewriteText();
-        console.log('改寫完成');
+        window.console.log('改寫完成');
       } catch (error) {
-        console.error('改寫錯誤:', error);
+        window.console.error('改寫錯誤:', error);
         alert('改寫錯誤: ' + error.message);
       } finally {
         this.disabled = false;
@@ -52,7 +52,7 @@ const UIManager = {
 
     buttonContainer.appendChild(rewriteButton);
     this._setupTextArea(textArea, buttonContainer);
-    console.log('改寫按鈕添加成功');
+    window.console.log('改寫按鈕添加成功');
   },
 
   /** 設置文本區域樣式和事件 */
@@ -69,7 +69,7 @@ const UIManager = {
       const url = location.href;
       if (url !== lastUrl) {
         lastUrl = url;
-        console.log('URL變化檢測到，重新檢查是否需要初始化UI');
+        window.console.log('URL變化檢測到，重新檢查是否需要初始化UI');
         if (window.shouldEnableFeatures()) {
           this.initializeAllUI();
         } else {
@@ -97,7 +97,7 @@ const UIManager = {
 
     try {
       const settings = await window.GlobalSettings.loadSettings();
-      if (!settings?.apiKeys?.['gemini-1.5-flash'] && !settings?.apiKeys?.['openai']) {
+      if (!settings?.apiKeys?.['gemini-2.0-flash-exp'] && !settings?.apiKeys?.['openai']) {
         throw new Error('請先設置 API 金鑰');
       }
 
@@ -134,7 +134,7 @@ const UIManager = {
       }
 
     } catch (error) {
-      console.error('自動改寫錯誤:', error);
+      window.console.error('自動改寫錯誤:', error);
       alert('自動改寫錯誤: ' + error.message);
     } finally {
       if (typeof rewriteTask !== 'undefined') {
@@ -145,10 +145,10 @@ const UIManager = {
 
   /** 初始化股票代碼功能 */
   initializeStockCodeFeature() {
-    console.log('開始初始化股票代碼功能');
+    window.console.log('開始初始化股票代碼功能');
     
     if (!window.shouldEnableFeatures()) {
-      console.log('不符合啟用功能條件，移除股票代碼功能');
+      window.console.log('不符合啟用功能條件，移除股票代碼功能');
       this.removeStockCodeFeature();
       return;
     }
@@ -159,14 +159,14 @@ const UIManager = {
       container: this._getOrCreateContainer()
     };
 
-    console.log('找到的元素:', {
+    window.console.log('找到的元素:', {
       hasTextarea: !!elements.textarea,
       hasInput: !!elements.input,
       hasContainer: !!elements.container
     });
 
     if (!elements.textarea || !elements.input) {
-      console.log('找不到必要的文本區域或輸入框');
+      window.console.log('找不到必要的文本區域或輸入框');
       return;
     }
 
@@ -192,59 +192,39 @@ const UIManager = {
       
       if (textValue.length < 4 && !inputValue) return;
       
-      const first100Chars = textValue.substring(0, 100);
-      const matchedStocks = new Map();
-      const stockCounts = new Map();
+      // 使用 _getStockCodes 來處理文本
+      const { codes, matchedStocks, stockCounts } = this._getStockCodes(textValue, inputValue);
       
-      // 根據來源使用不同的匹配規則
-      if (source === 'textarea') {
-        // 文本區域的匹配規則（保持原有的嚴格匹配）
-        const codePattern = /[（(](\d{4,})(?:[-\s.]*(?:TW|TWO))?[）)]|_(\d{4,})/g;
-        let match;
-        while ((match = codePattern.exec(first100Chars)) !== null) {
-          const code = match[1] || match[2];
-          if (stockMap.has(code)) {
-            const stock = stockMap.get(code);
-            matchedStocks.set(code, stock.name);
-            stockCounts.set(code, (stockCounts.get(code) || 0) + 1);
-          }
-        }
-      } else {
-        // 輸入框的匹配規則（寬鬆匹配）
-        const inputCode = inputValue.match(/\d{4,}/)?.[0];
-        if (inputCode && stockMap.has(inputCode)) {
-          const stock = stockMap.get(inputCode);
-          matchedStocks.set(inputCode, stock.name);
-          stockCounts.set(inputCode, 1);
-        }
-      }
-      
-      // 檢查股票名稱（兩種來源都檢查）
-      nameMap.forEach((stock, name) => {
-        // 使用 pattern 屬性進行匹配
-        const pattern = stock.pattern ? 
-          new RegExp(stock.pattern) : 
-          new RegExp(name.replace(/[*]/g, '\\*')); // 轉義特殊字符 *
-
-        if (pattern.test(first100Chars)) {
-          matchedStocks.set(stock.code, stock.name);
-          stockCounts.set(stock.code, (stockCounts.get(stock.code) || 0) + 1);
-        }
+      // 記錄找到的股票代碼數量
+      window.console.log('找到的股票代碼', { 
+          總數量: codes.length,
+          代碼列表: codes,
+          來源: source,
+          當前輸入值: inputValue
       });
-
-      const codes = Array.from(matchedStocks.keys());
       
       // 自動填入最常出現的股票代碼（僅在文本區域觸發時）
       if (source === 'textarea' && codes.length > 0 && !inputValue) {
-        const [mostFrequentCode] = Array.from(stockCounts.entries())
-          .sort((a, b) => b[1] - a[1]);
+          window.console.log('符合自動填入條件', {
+              來源是否為文本區域: source === 'textarea',
+              是否有找到代碼: codes.length > 0,
+              輸入框是否為空: !inputValue
+          });
           
-        if (mostFrequentCode) {
-          elements.input.value = mostFrequentCode[0];
-          elements.input.dispatchEvent(new Event('input', { bubbles: true }));
-          elements.input.focus();
-          setTimeout(() => elements.input.blur(), 10);
-        }
+          if (codes[0]) { // codes 已經是按出現次數排序的了
+              const mostFrequentCode = codes[0];
+              window.console.log('選擇最常出現的股票代碼', {
+                  代碼: mostFrequentCode,
+                  出現次數: stockCounts.get(mostFrequentCode),
+                  所有代碼出現次數: Object.fromEntries(stockCounts),
+                  檢查範圍: '全文'
+              });
+              
+              elements.input.value = mostFrequentCode;
+              elements.input.dispatchEvent(new Event('input', { bubbles: true }));
+              elements.input.focus();
+              setTimeout(() => elements.input.blur(), 10);
+          }
       }
       
       this._updateStockButtons(codes, matchedStocks, elements);
@@ -266,23 +246,23 @@ const UIManager = {
 
   /** 獲取或創建按鈕容器 */
   _getOrCreateContainer() {
-    console.log('開始獲取或創建按鈕容器');
+    window.console.log('開始獲取或創建按鈕容器');
     let container = document.getElementById('stock-code-container');
     
     if (!container) {
-      console.log('找不到現有容器，創建新容器');
+      window.console.log('找不到現有容器，創建新容器');
       container = document.createElement('div');
       container.id = 'stock-code-container';
       
       const input = document.querySelector('input[aria-autocomplete="list"][class*="MuiAutocomplete-input"]');
       if (input && input.parentElement) {
-        console.log('找到輸入框父元素，插入容器');
+        window.console.log('找到輸入框父元素，插入容器');
         input.parentElement.appendChild(container);
       } else {
-        console.log('找不到輸入框或其父元素');
+        window.console.log('找不到輸入框或其父元素');
       }
     } else {
-      console.log('找到現有容器');
+      window.console.log('找到現有容器');
     }
     
     return container;
@@ -290,69 +270,115 @@ const UIManager = {
 
   /** 從文本中提取股票代碼和名稱 */
   _getStockCodes(text, inputCode = '') {
-    console.log('開始提取股票代碼，輸入代碼:', inputCode);
+    const first100Chars = text.substring(0, 100);
     
     if (!window.stockList) {
-      console.log('未找到股票列表');
-      return { codes: [], matchedStocks: new Map(), stockCounts: new Map() };
+        window.console.warn('[股票代碼提取] 未找到股票列表');
+        return { codes: [], matchedStocks: new Map(), stockCounts: new Map() };
     }
 
     const matchedStocks = new Map();
     const stockCounts = new Map();
     
-    // 先用簡單的字串搜尋快速篩選可能的股票
+    // 輔助函數: 使用正則表達式或普通字串匹配文本
+    const matchText = (stock, searchText, useGlobalFlag = false) => {
+        if (stock.pattern) {
+            // 修改：添加 'i' 標誌使匹配不區分大小寫
+            const regex = new RegExp(stock.pattern, useGlobalFlag ? 'gi' : 'i');
+            if (useGlobalFlag) {
+                const matches = searchText.match(regex);
+                return matches ? matches.length : 0;
+            }
+            return regex.test(searchText);
+        }
+        const baseStockName = stock.name.replace(/-KY$/, '');
+        // 修改：轉換為小寫進行比較
+        const lowerSearchText = searchText.toLowerCase();
+        const lowerBaseName = baseStockName.toLowerCase();
+        if (useGlobalFlag) {
+            return lowerSearchText.split(lowerBaseName).length - 1;
+        }
+        return lowerSearchText.includes(lowerBaseName);
+    };
+    
+    // 只在前100字中搜尋可能的股票
     const potentialStocks = window.stockList.filter(stock => {
-      // 如果是輸入的代碼，直接加入
-      if (stock.code === inputCode) {
-        matchedStocks.set(stock.code, stock.name);
-        stockCounts.set(stock.code, 1);
-        return true;
-      }
-      
-      // 快速檢查股票代號和名稱是否出現在文本中
-      return text.includes(stock.code) || 
-             text.includes(stock.name) || 
-             text.includes(stock.name.replace(/-KY$/, ''));
-    });
-
-    // 只對可能匹配的股票進行詳細檢查
-    const matchedCodes = potentialStocks
-      .filter(stock => {
-        if (stock.code === inputCode) return true;
-        
-        // 計算出現次數
-        let count = 0;
-        
-        // 檢查代碼
-        const codeMatches = text.match(
-          new RegExp(`[（(]${stock.code}(?:[-\\s.]*(?:TW|TWO))?[）)]|_${stock.code}`, 'g')
-        );
-        if (codeMatches) count += codeMatches.length;
-        
-        // 檢查名稱
-        const baseStockName = stock.name.replace(/[*]|-KY$/g, '');
-        const namePattern = stock.pattern || `${baseStockName}(?:[-\\s]*KY)?`;
-        const nameMatches = text.match(new RegExp(namePattern, 'g'));
-        if (nameMatches) count += nameMatches.length;
-        
-        if (count > 0) {
-          matchedStocks.set(stock.code, stock.name);
-          stockCounts.set(stock.code, count);
-          return true;
+        // 如果是輸入的代碼，直接加入（不區分大小寫）
+        if (stock.code.toLowerCase() === inputCode.toLowerCase()) {
+            matchedStocks.set(stock.code, stock.name);
+            stockCounts.set(stock.code, 1);
+            return true;
         }
         
-        return false;
-      })
-      .map(stock => stock.code);
+        // 檢查代碼和名稱是否在前100字中出現（不區分大小寫）
+        const hasCode = first100Chars.toLowerCase().includes(stock.code.toLowerCase());
+        const hasName = matchText(stock, first100Chars);
+        const hasBaseNameIfKY = stock.name.includes('-KY') && 
+            first100Chars.toLowerCase().includes(stock.name.replace(/-KY$/, '').toLowerCase());
+        
+        return hasCode || hasName || hasBaseNameIfKY;
+    });
 
-    return { codes: matchedCodes, matchedStocks, stockCounts };
+    // 只對前100字中出現的股票計算全文出現次數
+    potentialStocks.forEach(stock => {
+        if (stock.code.toLowerCase() === inputCode.toLowerCase()) return;
+        
+        let count = 0;
+        
+        // 修改：代碼匹配改為不區分大小寫
+        const codePattern = new RegExp(`[（(]${stock.code}(?:[-\\s.]*(?:TW|TWO))?[）)]|_${stock.code}`, 'gi');
+        const codeMatches = text.match(codePattern);
+        const codeCount = codeMatches?.length || 0;
+        count += codeCount;
+        
+        // 檢查名稱在全文中的出現次數（不區分大小寫）
+        const nameCount = matchText(stock, text, true);
+        count += nameCount;
+
+        // 如果有 -KY 後綴，也檢查完整名稱在全文中的出現次數（不區分大小寫）
+        let fullNameCount = 0;
+        if (stock.name.includes('-KY')) {
+            const lowerText = text.toLowerCase();
+            const lowerFullName = stock.name.toLowerCase();
+            fullNameCount = lowerText.split(lowerFullName).length - 1;
+            count += fullNameCount;
+        }
+        
+        if (count > 0) {
+            matchedStocks.set(stock.code, stock.name);
+            stockCounts.set(stock.code, count);
+            window.console.log('%c[股票出現次數]', 'color: #4CAF50', `${stock.name}(${stock.code}): ${count}次`, {
+                代號: codeCount,
+                中文名: nameCount + fullNameCount
+            });
+        }
+    });
+
+    const sortedResults = Array.from(stockCounts.entries())
+        .sort((a, b) => b[1] - a[1])
+        .map(([code, count]) => ({
+            代碼: code,
+            名稱: matchedStocks.get(code),
+            出現次數: count
+        }));
+
+    if (sortedResults.length > 0) {
+        window.console.log('%c[排序結果]', 'color: #9C27B0', 
+            sortedResults.map(r => `${r.名稱}(${r.代碼}): ${r.出現次數}次`).join(', '));
+    }
+
+    return { 
+        codes: sortedResults.map(item => item.代碼),
+        matchedStocks, 
+        stockCounts 
+    };
   },
 
   /** 更新股票代碼按鈕 */
   _updateStockButtons(codes, matchedStocks, elements) {
     elements.container.innerHTML = '';
-    console.log('開始更新股票代碼按鈕，找到的代碼:', codes);
-    console.log('當前輸入框的值:', elements.input.value);
+    window.console.log('開始更新股票代碼按鈕，找到的代碼:', codes);
+    window.console.log('當前輸入框的值:', elements.input.value);
     
     const createButton = (code) => {
         const button = document.createElement('button');
@@ -364,7 +390,7 @@ const UIManager = {
         if (isMatched) button.classList.add('matched');
         
         button.onclick = () => {
-            console.log(`點擊股票按鈕: ${code}`);
+            window.console.log(`點擊股票按鈕: ${code}`);
             elements.input.value = code;
             elements.input.dispatchEvent(new Event('input', { bubbles: true }));
             
@@ -421,19 +447,19 @@ const UIManager = {
     const container = document.getElementById('gpt-button-container');
     if (container) {
       container.remove();
-      console.log('改寫按鈕已移除');
+      window.console.log('改寫按鈕已移除');
     }
   },
 
   /** 初始化所有UI元素 */
   initializeAllUI() {
     if (!window.shouldEnableFeatures()) {
-      console.log('不符合啟用功能條件，移除所有UI元素');
+      window.console.log('不符合啟用功能條件，移除所有UI元素');
       this.removeAllUI();
       return;
     }
     
-    console.log('初始化所有UI元素');
+    window.console.log('初始化所有UI元素');
     this.addRewriteButton();
     this.initializeStockCodeFeature();
     window.ReplaceManager.initializeReplaceUI();
@@ -441,7 +467,7 @@ const UIManager = {
 
   /** 移除所有UI元素 */
   removeAllUI() {
-    console.log('移除所有UI元素');
+    window.console.log('移除所有UI元素');
     this.removeRewriteButton();
     this.removeStockCodeFeature();
     window.ReplaceManager.removeReplaceUI();

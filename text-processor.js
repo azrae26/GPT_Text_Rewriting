@@ -41,7 +41,7 @@ const TextProcessor = {
     const body = isGemini ? {
       contents: [{
         parts: [{
-          text: `${text}\n\n指令：${instruction}`
+          text: `文本：${text}\n\n指令：${instruction}`
         }]
       }],
       // 添加安全設置，降低內容過濾的嚴格程度
@@ -203,7 +203,7 @@ const TextProcessor = {
 
       // 檢查API金鑰
       const isGemini = model.startsWith('gemini');
-      const apiKey = settings.apiKeys[isGemini ? 'gemini-1.5-flash' : 'openai'];
+      const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
       if (!apiKey) throw new Error(`未找到 ${isGemini ? 'Gemini' : 'OpenAI'} 的 API 金鑰`);
 
       console.log('選擇的模型:', model);
@@ -268,7 +268,7 @@ const TextProcessor = {
       // 檢查 API 金鑰
       const model = settings.summaryModel;
       const isGemini = model.startsWith('gemini');
-      const apiKey = settings.apiKeys[isGemini ? 'gemini-1.5-flash' : 'openai'];
+      const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
       
       if (!apiKey) {
         throw new Error(`未找到 ${isGemini ? 'Gemini' : 'OpenAI'} 的 API 金鑰`);

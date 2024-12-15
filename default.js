@@ -1,10 +1,10 @@
 const DefaultSettings = {
   // 模型相關預設值
-  model: 'gemini-1.5-flash',
-  fullRewriteModel: 'gemini-1.5-flash',
-  shortRewriteModel: 'gemini-1.5-flash',
-  autoRewriteModel: 'gemini-1.5-flash',
-  translateModel: 'gemini-1.5-flash',
+  model: 'gemini-2.0-flash-exp',
+  fullRewriteModel: 'gemini-2.0-flash-exp',
+  shortRewriteModel: 'gemini-2.0-flash-exp',
+  autoRewriteModel: 'gemini-2.0-flash-exp',
+  translateModel: 'gemini-2.0-flash-exp',
 
   // 勾選框預設狀態
   confirmModel: false,      // 確認模型：預設不勾選
@@ -189,7 +189,7 @@ Auras=雙鴻
 `請將我給你的文章，從文章中取出5句話，每句都代表全篇的關鍵，每句都不超過15個字。
 請使用原句，盡量不要修改，前後不用加標點符號。`,
 
-  summaryModel: 'gemini-1.5-flash'
+  summaryModel: 'gemini-2.0-flash-exp'
 };
 
 window.DefaultSettings = DefaultSettings;

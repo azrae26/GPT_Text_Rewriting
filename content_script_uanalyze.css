@@ -7,11 +7,16 @@
   margin-top: 1rem !important;
 }
 
-/* 修改按鈕尺寸 */
-.MuiButtonBase-root.MuiButton-root.MuiButton-contained.MuiButton-containedPrimary.MuiButton-sizeMedium.MuiButton-containedSizeMedium.MuiButton-colorPrimary {
-  width: 100px !important;
-  height: 45px !important;
+/* 修改按鈕位置 */
+div.btn-group button.MuiButtonBase-root.MuiButton-root.MuiButton-contained.MuiButton-containedPrimary.MuiButton-sizeMedium.MuiButton-containedSizeMedium.MuiButton-colorPrimary {
   margin-left: 400px; 
+}
+
+/* 修改按鈕尺寸 */
+.MuiButtonBase-root.MuiButton-root.MuiButton-contained.MuiButton-containedPrimary.MuiButton-sizeMedium.MuiButton-containedSizeMedium.MuiButton-colorPrimary,
+.MuiButtonBase-root.MuiButton-root.MuiButton-contained.MuiButton-containedInfo.MuiButton-sizeMedium.MuiButton-containedSizeMedium.MuiButton-colorInfo.MuiButton-root.MuiButton-contained.MuiButton-containedInfo.MuiButton-sizeMedium.MuiButton-containedSizeMedium.MuiButton-colorInfo.css-120o38v {
+  width: 110px !important;
+  height: 50px !important;
 }
 
 /* 針對頁面主容器的樣式修改 */

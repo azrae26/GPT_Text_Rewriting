@@ -75,7 +75,7 @@ window.TranslateManager = {
       }
 
       const settings = await window.GlobalSettings.loadSettings();
-      if (!settings.apiKeys['gemini-1.5-flash'] && !settings.apiKeys['openai']) {
+      if (!settings.apiKeys['gemini-2.0-flash-exp'] && !settings.apiKeys['openai']) {
         alert('請先設置 API 金鑰');
         return;
       }
@@ -202,7 +202,7 @@ window.TranslateManager = {
 
     const settings = await window.GlobalSettings.loadSettings();
     const model = settings.translateModel || settings.model;
-    const apiKey = settings.apiKeys[model.startsWith('gemini') ? 'gemini-1.5-flash' : 'openai'];
+    const apiKey = settings.apiKeys[model.startsWith('gemini') ? 'gemini-2.0-flash-exp' : 'openai'];
 
     console.log(`總共分割成 ${this.totalBatches} 個批次，間隔時間：${this.batchInterval/1000}秒`);
     await window.Notification.showNotification(`
@@ -258,7 +258,7 @@ window.TranslateManager = {
       const settings = await window.GlobalSettings.loadSettings(); // 加載設置
       const model = settings.translateModel || settings.model; // 獲取翻譯模型
       const isGemini = model.startsWith('gemini'); // 檢查是否使用 Gemini 模型
-      const apiKey = settings.apiKeys[isGemini ? 'gemini-1.5-flash' : 'openai']; // 獲取 API 金鑰
+      const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai']; // 獲取 API 金鑰
 
       const { endpoint, body } = TextProcessor._prepareApiConfig( // 準備 API 請求配置
         model,

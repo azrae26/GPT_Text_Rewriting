@@ -13,7 +13,7 @@ const GlobalSettings = {
     models: {
       'gpt-4': 'GPT-4',
       'gpt-4o-mini': 'GPT-4o mini',
-      'gemini-1.5-flash': 'Gemini 1.5 Flash'
+      'gemini-2.0-flash-exp': 'Gemini 2.0 Flash'
     },
     safetySettings: [
       { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -65,18 +65,18 @@ const GlobalSettings = {
       // 確保 apiKeys 物件有正確的結構
       this.apiKeys = {
         'openai': '',
-        'gemini-1.5-flash': '',
+        'gemini-2.0-flash-exp': '',
         ...(syncResult.apiKeys || {})  // 合併已保存的金鑰
       };
 
       // 檢查並輸出 API 金鑰狀態
       console.log('載入的 API 金鑰:', {
         openai: this.apiKeys.openai ? '已設置' : '未設置',
-        gemini: this.apiKeys['gemini-1.5-flash'] ? '已設置' : '未設置'
+        gemini: this.apiKeys['gemini-2.0-flash-exp'] ? '已設置' : '未設置'
       });
 
       // 一般設定使用 sync
-      this.model = syncResult.model || 'gemini-1.5-flash';
+      this.model = syncResult.model || 'gemini-2.0-flash-exp';
       this.instruction = syncResult.instruction || (window.DefaultSettings?.fullRewriteInstruction || '');
       this.shortInstruction = syncResult.shortInstruction || (window.DefaultSettings?.shortRewriteInstruction || '');
       this.fullRewriteModel = syncResult.fullRewriteModel || this.model;
@@ -195,7 +195,7 @@ const GlobalSettings = {
   async saveSingleSetting(key, value) {
     try {
       // 檢查是否為需要使用 local storage 的大型文本
-      if (key === 'translateInstruction') {
+      if (key === 'translateInstruction' || key === 'summaryInstruction') {
         await new Promise((resolve) => {
           chrome.storage.local.set({ [key]: value }, resolve);
         });
@@ -226,7 +226,7 @@ const GlobalSettings = {
   // 添加一個輔助方法來檢查 API 金鑰
   hasApiKey(model) {
     const isGemini = model.startsWith('gemini');
-    const key = this.apiKeys[isGemini ? 'gemini-1.5-flash' : 'openai'];
+    const key = this.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
     return Boolean(key && key.trim());
   }
 };

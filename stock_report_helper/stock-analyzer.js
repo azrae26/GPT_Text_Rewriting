@@ -514,6 +514,10 @@ if (location.href.includes('lynch-tengrower')) {
                 setTimeout(() => {
                     window.open(CONFIG.URLS.STOCK_ANALYSIS, '_blank');
                 }, CONFIG.TIMEOUTS.NEXT_PAGE_DELAY);
+            } else {
+                // 所有股票處理完成，清空 storage
+                await chrome.storage.local.remove(['currentProcessing', 'pendingStockCodes']);
+                Logger.log('所有股票處理完成，已清空 storage', null, 'SUCCESS');
             }
         } catch (error) {
             Logger.log('處理股票時發生錯誤', { error: error.message }, 'ERROR');

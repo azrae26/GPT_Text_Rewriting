@@ -3,6 +3,13 @@
 let contentScriptReady = false;
 // 用於存儲待處理的改寫請求
 let pendingRewriteRequest = null;
+// 用於追踪每個標籤頁的內容腳本狀態
+const tabContentScriptStatus = new Map();
+
+// 監聽標籤頁關閉事件
+chrome.tabs.onRemoved.addListener((tabId) => {
+    tabContentScriptStatus.delete(tabId);
+});
 
 // 監聽來自其他部分的消息
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
@@ -41,13 +48,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // 處理內容腳本準備就緒的通知
   if (request.action === "contentScriptReady") {
-    contentScriptReady = true;
+    const tabId = sender.tab?.id;
+    if (tabId) {
+        tabContentScriptStatus.set(tabId, true);
+        console.log(`標籤頁 ${tabId} 的內容腳本已準備就緒`);
+    }
     sendResponse({received: true});
-    console.log("內容腳本已準備就緒");
   }
   // 檢查內容腳本是否準備就緒
   else if (request.action === "checkContentScriptReady") {
-    sendResponse({ ready: contentScriptReady });
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        const tabId = tabs[0]?.id;
+        const isReady = tabId ? tabContentScriptStatus.get(tabId) : false;
+        sendResponse({ ready: isReady });
+    });
+    return true;
   }
   // 處理改寫請求
   else if (request.action === "rewrite") {
@@ -133,6 +148,14 @@ chrome.runtime.onInstalled.addListener((details) => {
   if(details.reason === "install"){
     chrome.storage.sync.set({ isFirstTime: true });
   }
+});
+
+// 監聽標籤頁更新事件
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+    if (changeInfo.status === 'complete') {
+        // 重置該標籤頁的內容腳本狀態
+        tabContentScriptStatus.set(tabId, false);
+    }
 });
 
 console.log("背景腳本已加載");

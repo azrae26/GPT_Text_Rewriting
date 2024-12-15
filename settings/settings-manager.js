@@ -298,17 +298,33 @@ class SettingsUI {
 
 // 檔案管理器
 class FileManager {
-  static downloadJSON(data, filename) {
-    const url = URL.createObjectURL(
-      new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-    );
-    
-    Object.assign(document.createElement('a'), {
-      href: url,
-      download: filename
-    }).click();
-    
-    URL.revokeObjectURL(url);
+  // 下載 JSON 檔案
+  static async downloadJSON(data, filename) {
+    try {
+      // 取得目前時間並格式化
+      const now = new Date();
+      const timestamp = now.getFullYear().toString().slice(-2) + 
+        String(now.getMonth() + 1).padStart(2, '0') + 
+        String(now.getDate()).padStart(2, '0') + '-' +
+        String(now.getHours()).padStart(2, '0') + 
+        String(now.getMinutes()).padStart(2, '0');
+      
+      // 在檔名加入時間戳記
+      const filenameWithTimestamp = filename.replace('.json', `_${timestamp}.json`);
+      
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filenameWithTimestamp;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      throw new Error('建立下載失敗');
+    }
   }
 
   static readJSONFile(file) {

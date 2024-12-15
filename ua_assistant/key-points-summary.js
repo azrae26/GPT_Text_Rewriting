@@ -583,9 +583,9 @@ const KeyPointsSummaryManager = {
       try {
         console.log('載入設置...');
         const settings = await window.GlobalSettings.loadSettings();
-        const model = settings.summaryModel || 'gemini-1.5-flash';
+        const model = settings.summaryModel || 'gemini-2.0-flash-exp';
         const isGemini = model.startsWith('gemini');
-        const apiKey = settings.apiKeys[isGemini ? 'gemini-1.5-flash' : 'openai'];
+        const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
         
         if (!apiKey) {
           throw new Error(`未找到 ${isGemini ? 'Gemini' : 'OpenAI'} 的 API 金鑰`);

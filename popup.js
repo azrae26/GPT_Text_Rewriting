@@ -39,7 +39,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 2. 初始化設定
   let apiKeys = {
     'openai': '',
-    'gemini-1.5-flash': ''
+    'gemini-2.0-flash-exp': ''
   };
 
   // 載入使用者設定，如果沒有設定，則使用預設設定
@@ -59,18 +59,18 @@ document.addEventListener('DOMContentLoaded', async function() {
     instructionInput.value = settings.instruction || '';
     shortInstructionInput.value = settings.shortInstruction || '';
     autoRewritePatternsInput.value = settings.autoRewritePatterns || '';
-    fullRewriteModelSelect.value = settings.fullRewriteModel || 'gemini-1.5-flash';
-    shortRewriteModelSelect.value = settings.shortRewriteModel || 'gemini-1.5-flash';
-    autoRewriteModelSelect.value = settings.autoRewriteModel || 'gemini-1.5-flash';
+    fullRewriteModelSelect.value = settings.fullRewriteModel || 'gemini-2.0-flash-exp';
+    shortRewriteModelSelect.value = settings.shortRewriteModel || 'gemini-2.0-flash-exp';
+    autoRewriteModelSelect.value = settings.autoRewriteModel || 'gemini-2.0-flash-exp';
     
     // 翻譯相關
-    translateModelSelect.value = settings.translateModel || 'gemini-1.5-flash'; // 預設使用 Gemini 1.5 Flash
+    translateModelSelect.value = settings.translateModel || 'gemini-2.0-flash-exp'; // 預設使用 Gemini 2.0 Flash
     translateInstructionInput.value = settings.translateInstruction || ''; // 預設為空
     removeHashCheckbox.checked = settings.removeHash !== undefined ? settings.removeHash : true; // 預設為勾選
     removeStarCheckbox.checked = settings.removeStar !== undefined ? settings.removeStar : true; // 預設為勾選
     
     // 關鍵要點相關
-    summaryModelSelect.value = settings.summaryModel || 'gemini-1.5-flash'; // 預設使用 Gemini 1.5 Flash
+    summaryModelSelect.value = settings.summaryModel || 'gemini-2.0-flash-exp'; // 預設使用 Gemini 2.0 Flash
     summaryInstructionInput.value = settings.summaryInstruction || ''; // 預設為空
   }
   
@@ -158,8 +158,10 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 關鍵要點指令
   summaryInstructionInput.addEventListener('input', async function() {
     await GlobalSettings.saveSingleSetting('summaryInstruction', summaryInstructionInput.value);
+    console.log('已保存關鍵要點指令:', summaryInstructionInput.value);
   });
 
+ 
   // 5. 所有模型選擇相關事件處理
   // 全改寫模型選擇
   fullRewriteModelSelect.addEventListener('change', async function() {
@@ -314,20 +316,47 @@ document.addEventListener('DOMContentLoaded', async function() {
   }
 
   // 更新 content.js 設置
-  async function updateContentScript() {
-    const settings = await GlobalSettings.loadSettings();
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "updateSettings",
-        settings: settings
-      }, function(response) {
-        if (response && response.success) {
-          console.log('設置已成功更新到 content.js');
-        } else {
-          console.error('更新 content.js 設置失敗');
+  async function updateContentScript(settings) {
+    try {
+        // 先檢查內容腳本是否準備就緒
+        const response = await chrome.runtime.sendMessage({
+            action: "checkContentScriptReady"
+        });
+
+        if (!response || !response.ready) {
+            console.log('內容腳本尚未準備就緒，將設置保存到 storage');
+            // 如果內容腳本未準備就緒，只保存設置到 storage
+            await chrome.storage.sync.set({ settings });
+            return;
         }
-      });
-    });
+
+        // 查找當前活動的標籤頁
+        const tabs = await chrome.tabs.query({active: true, currentWindow: true});
+        if (!tabs || !tabs[0]) {
+            console.warn('未找到活動的標籤頁');
+            return;
+        }
+
+        // 嘗試向內容腳本發送更新
+        try {
+            await chrome.tabs.sendMessage(tabs[0].id, {
+                action: "updateContentScript",
+                settings: settings
+            });
+            console.log('成功更新內容腳本設置');
+        } catch (error) {
+            if (error.message.includes('Receiving end does not exist')) {
+                console.log('內容腳本未載入，將設置保存到 storage');
+                await chrome.storage.sync.set({ settings });
+            } else {
+                throw error;
+            }
+        }
+    } catch (error) {
+        console.warn('更新內容腳本設置時發生錯誤:', error);
+        // 確保設置至少被保存到 storage
+        await chrome.storage.sync.set({ settings });
+    }
   }
 
   // 監聽輸入事件
