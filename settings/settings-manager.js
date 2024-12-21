@@ -80,6 +80,12 @@ class SettingsManager {
 // 儲存管理器
 class StorageManager {
   constructor() {
+    // 定義設定檔識別標記
+    this.SETTINGS_IDENTIFIER = {
+      appName: 'GPT_Text_Rewriting',
+      version: '1.0'
+    };
+
     // 定義所有需要匯出的設定鍵值
     this.settingKeys = {
       // API 和模型相關
@@ -154,7 +160,11 @@ class StorageManager {
         throw new Error('沒有找到可匯出的設定');
       }
       
-      return settings;
+      // 添加設定檔識別標記
+      return {
+        ...this.SETTINGS_IDENTIFIER,
+        settings: settings
+      };
     } catch (error) {
       sendLog('error', '讀取設定失敗', error);
       throw error;
@@ -171,8 +181,14 @@ class StorageManager {
   }
 
   // 儲存設定
-  async saveSettings(settings) {
+  async saveSettings(importedData) {
     try {
+      // 驗證設定檔識別標記
+      if (!this.validateSettingsFile(importedData)) {
+        throw new Error('無效的設定檔：不是本插件的設定檔');
+      }
+
+      const settings = importedData.settings;
       if (!settings || Object.keys(settings).length === 0) {
         throw new Error('無效的設定資料');
       }
@@ -191,6 +207,15 @@ class StorageManager {
       sendLog('error', '儲存設定失敗', error);
       throw error;
     }
+  }
+
+  // 驗證設定檔
+  validateSettingsFile(importedData) {
+    return (
+      importedData &&
+      importedData.appName === this.SETTINGS_IDENTIFIER.appName &&
+      importedData.version === this.SETTINGS_IDENTIFIER.version
+    );
   }
 
   // 新增私有方法來分類設定
@@ -340,7 +365,8 @@ class ErrorHandler {
     ['讀取設定失敗', '無法讀取設定，請確認擴充功能權限'],
     ['無效的設定資料', '設定資料格式不正確'],
     ['建立下載失敗', '無法建立下載，請檢查瀏覽器設定'],
-    ['沒有找到可匯出的設定', '目前沒有任何可匯出的設定']
+    ['沒有找到可匯出的設定', '目前沒有任何可匯出的設定'],
+    ['無效的設定檔', '這不是本插件的設定檔，請確認您選擇的檔案是否正確']
   ]);
 
   static handle(error) {
