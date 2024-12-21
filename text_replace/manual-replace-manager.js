@@ -22,7 +22,7 @@ const ManualReplaceManager = {
     MAX_WIDTH: 300,
     PADDING: 24,
     MANUAL_REPLACE_KEY: 'manualReplaceRules',
-    MAX_PREVIEWS: 500,
+    MAX_PREVIEWS: 1000, // 最大預覽數量
     PREVIEW_COLORS: [
       '#FF0000', // 紅色
       '#FF8C00', // 橙色
@@ -365,6 +365,11 @@ const ManualReplaceManager = {
   PreviewHighlight: {
     container: null,
     highlightGroups: new Map(),
+    virtualScrollData: {
+      allPositions: new Map(),  // groupIndex -> positions[]
+      visibleHighlights: new Map(), // groupIndex -> Map(key -> highlight)
+      bufferSize: 500,  // 緩衝區大小（像素）
+    },
 
     initialize(textArea) {
       if (!textArea) return;
@@ -386,12 +391,54 @@ const ManualReplaceManager = {
     },
 
     _setupScrollHandler(textArea) {
-      let rafId = null;
-      textArea.addEventListener('scroll', () => {
-        if (rafId) return;
-        rafId = requestAnimationFrame(() => {
-          rafId = null;
-          this.updateHighlightsPosition(textArea.scrollTop);
+      // 使用 TextHighlight 的 ScrollHelper
+      TextHighlight.ScrollHelper.bindScrollEvent(
+        textArea,
+        () => this._updateVirtualScrolling(textArea)
+      );
+    },
+
+    _updateVirtualScrolling(textArea) {
+      const scrollTop = textArea.scrollTop;
+      const visibleHeight = textArea.clientHeight;
+      const totalHeight = textArea.scrollHeight;
+      
+      // 計算可見區域的範圍（加上緩衝區）
+      const bufferSize = this.virtualScrollData.bufferSize;
+      const visibleTop = Math.max(0, scrollTop - bufferSize);
+      const visibleBottom = Math.min(totalHeight, scrollTop + visibleHeight + bufferSize);
+
+      // 更新每個組的可見性
+      this.virtualScrollData.allPositions.forEach((positions, groupIndex) => {
+        // 獲取或創建該組的可見高亮 Map
+        if (!this.virtualScrollData.visibleHighlights.has(groupIndex)) {
+          this.virtualScrollData.visibleHighlights.set(groupIndex, new Map());
+        }
+        const groupHighlights = this.virtualScrollData.visibleHighlights.get(groupIndex);
+
+        // 使用共享的虛擬滾動管理器
+        TextHighlight.SharedVirtualScroll.updateVirtualView({
+          allPositions: positions,
+          visibleHighlights: groupHighlights,
+          visibleTop,
+          visibleBottom,
+          scrollTop,
+          createHighlight: (pos) => {
+            const highlight = document.createElement('div');
+            highlight.style.cssText = `
+              position: absolute;
+              left: ${pos.left - 1}px;
+              top: ${pos.top}px;
+              width: ${pos.width + 3}px;
+              height: ${pos.lineHeight}px;
+              border-color: ${pos.color};
+              will-change: transform;
+              z-index: 1001;
+            `;
+            return highlight;
+          },
+          container: this.container,
+          highlightClass: 'replace-preview-highlight'
         });
       });
     },
@@ -424,66 +471,61 @@ const ManualReplaceManager = {
           groupIndex % ManualReplaceManager.CONFIG.PREVIEW_COLORS.length
         ];
 
-        this.clearGroupHighlights(groupIndex);
-        const fragment = document.createDocumentFragment();
-        const newHighlights = [];
-
+        // 收集所有位置信息
+        const positions = [];
         matches.forEach(match => {
-          const position = TextHighlight.PositionCalculator.calculatePosition(
-            textArea, 
-            match.index, 
-            text, 
-            match[0],
-            styles
-          );
+          // 使用 TextHighlight 的全局快取
+          let position = TextHighlight.GlobalPositionCache.get(text, match.index, match[0]);
+          
+          if (!position) {
+            position = TextHighlight.PositionCalculator.calculatePosition(
+              textArea, 
+              match.index, 
+              text, 
+              match[0],
+              styles
+            );
+          }
           
           if (position) {
-            const highlight = document.createElement('div');
-            highlight.className = 'replace-preview-highlight';
-            highlight.style.cssText = `
-              position: absolute;
-              left: ${position.left - 1}px;
-              top: ${position.top}px;
-              width: ${position.width + 3}px;
-              height: ${styles.lineHeight}px;
-              border-color: ${color};
-              will-change: transform;
-              transform: translate3d(0, ${-textArea.scrollTop}px, 0);
-              z-index: 1001;
-            `;
-            
-            fragment.appendChild(highlight);
-            newHighlights.push(highlight);
+            positions.push({
+              ...position,
+              text: match[0],
+              color,
+              lineHeight: styles.lineHeight
+            });
           }
         });
 
-        this.container.appendChild(fragment);
-        this.highlightGroups.set(groupIndex, newHighlights);
+        // 更新虛擬滾動數據
+        this.virtualScrollData.allPositions.set(groupIndex, positions);
+        
+        // 觸發可見性更新
+        this._updateVirtualScrolling(textArea);
 
       } catch (error) {
         console.error('預覽更新失敗:', error);
       }
     },
 
-    updateHighlightsPosition(scrollTop) {
-      this.highlightGroups.forEach(highlights => {
-        highlights.forEach(highlight => {
-          highlight.style.transform = `translate3d(0, ${-scrollTop}px, 0)`;
-        });
-      });
-    },
-
     clearGroupHighlights(groupIndex) {
-      const highlights = this.highlightGroups.get(groupIndex) || [];
-      highlights.forEach(h => h.remove());
-      this.highlightGroups.set(groupIndex, []);
+      // 清除位置數據
+      this.virtualScrollData.allPositions.delete(groupIndex);
+      
+      // 清除可見的高亮元素
+      const groupHighlights = this.virtualScrollData.visibleHighlights.get(groupIndex);
+      if (groupHighlights) {
+        groupHighlights.forEach(highlight => highlight.remove());
+        groupHighlights.clear();
+      }
     },
 
     clearAllHighlights() {
-      this.highlightGroups.forEach((_, groupIndex) => {
-        this.clearGroupHighlights(groupIndex);
+      this.virtualScrollData.allPositions.clear();
+      this.virtualScrollData.visibleHighlights.forEach(groupHighlights => {
+        groupHighlights.forEach(highlight => highlight.remove());
       });
-      this.highlightGroups.clear();
+      this.virtualScrollData.visibleHighlights.clear();
     }
   },
 
