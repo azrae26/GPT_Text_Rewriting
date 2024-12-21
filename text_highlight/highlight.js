@@ -139,28 +139,17 @@ const TextHighlight = {
       highlights: [],        // 所有標示元素的集合
       container: null,       // 標示容器
       textArea: null,        // 文本區域
-      measureCanvas: null,   // 測量文字寬度的 canvas
-      measureContext: null,   // canvas 的 2d context
       highlightPositions: [], // 儲存所有高亮框的絕對位置
       virtualScrollData: {    // 新增：虛擬滾動相關數據
         allPositions: [],     // 所有位置的快取
         visibleHighlights: new Map(), // 當前可見的高亮元素
         lastScrollTop: 0,     // 上次滾動位置
-        bufferSize: 500,      // 緩衝區大小（像素）
+        bufferSize: 200,      // 緩衝區大小（像素）
       }
     },
 
     initialize() {
-      this.setupMeasureCanvas();
       this.setupHighlightContainer();
-    },
-
-    /**
-     * 設置用於測量文字寬度的 canvas
-     */
-    setupMeasureCanvas() {
-      this.elements.measureCanvas = document.createElement('canvas');
-      this.elements.measureContext = this.elements.measureCanvas.getContext('2d');
     },
 
     /**
@@ -225,23 +214,6 @@ const TextHighlight = {
     },
 
     /**
-     * 檢查位置是否在文本區域可視範圍內
-     * @param {Object} position - 位置信息
-     * @param {number} width - 標示寬度
-     * @param {number} height - 標示高度
-     * @returns {boolean} - 是否在可視範圍內
-     */
-    isPositionVisible(position, width, height) {
-      const textArea = this.elements.textArea;
-      return (
-        position.top >= 0 &&
-        position.left >= 0 &&
-        position.top + height <= textArea.offsetHeight &&
-        position.left + width <= textArea.offsetWidth
-      );
-    },
-
-    /**
      * 更新高亮框的可見性和位置
      */
     updateHighlightsVisibility() {
@@ -280,11 +252,20 @@ const TextHighlight = {
    * 位置計算子模組 - 處理文字位置的計算
    */
   PositionCalculator: {
-    // 新增快取對象
     cache: {
       div: null,
       lastText: '',
       positions: new Map(),
+    },
+
+    /**
+     * 快速計算行號
+     * @param {string} text 完整文本
+     * @param {number} index 位置索引
+     * @returns {number} 行號
+     */
+    getLineNumber(text, index) {
+      return (text.slice(0, index).match(/\n/g) || []).length;
     },
 
     /**
@@ -303,24 +284,16 @@ const TextHighlight = {
     },
 
     /**
-     * 優化後的位置計算方法
+     * 計算位置（混合策略）
      */
     calculatePosition(textArea, index, text, matchedText, styles) {
-      if (text.length > 1000) {
-        const visibleStart = Math.max(0, index - 500);
-        const visibleEnd = Math.min(text.length, index + 500);
-        const visibleText = text.substring(visibleStart, visibleEnd);
-        if (!visibleText.includes(matchedText)) {
-          return null;
-        }
-      }
-
-      // 先檢查全局快取
+      // 檢查快取
       const cachedPosition = TextHighlight.GlobalPositionCache.get(text, index, matchedText);
       if (cachedPosition) {
         return cachedPosition;
       }
 
+      // 確保 div 存在
       if (!this.cache.div) {
         this.cache.div = document.createElement('div');
         this.cache.div.style.cssText = `
@@ -350,16 +323,17 @@ const TextHighlight = {
         this.cache.div.style.width = actualWidth;
       }
 
+      // 更新內容（如果需要）
       if (this.cache.lastText !== text) {
         this.cache.div.textContent = text;
         this.cache.lastText = text;
         this.cache.positions.clear();
       }
 
-      let range = null;
-
+      let position = null;
       try {
-        range = document.createRange();
+        // 創建 range 並計算位置
+        const range = document.createRange();
         const textNode = this.cache.div.firstChild;
         if (!textNode) {
           console.error('[PositionCalculator] 找不到文字節點');
@@ -378,25 +352,22 @@ const TextHighlight = {
         const rect = rects[0];
         const divRect = this.cache.div.getBoundingClientRect();
 
-        const position = {
+        position = {
           top: rect.top - divRect.top + styles.paddingTop,
           left: rect.left - divRect.left + styles.paddingLeft + TextHighlight.CONFIG.FIXED_OFFSET.LEFT,
           width: rect.width,
           originalTop: rect.top - divRect.top + styles.paddingTop
         };
 
-        // 將結果存入全局快取
+        // 存入快取
         TextHighlight.GlobalPositionCache.set(text, index, matchedText, position);
 
-        return position;
       } catch (error) {
         console.error('[PositionCalculator] 計算位置時發生錯誤:', error);
         return null;
-      } finally {
-        if (range) {
-          range.detach();
-        }
       }
+
+      return position;
     },
 
     // 清理快取的方法
