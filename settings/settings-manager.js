@@ -100,6 +100,7 @@ class StorageManager {
       'translateInstruction': '翻譯指令',
       'removeHash': '移除 # 設定',
       'removeStar': '移除 * 設定',
+      'zhEnMapping': '中英對照表',
       
       // 關鍵要點相關
       'summaryModel': '摘要模型',
@@ -214,7 +215,8 @@ class StorageManager {
     const localSettings = {
       translateInstruction: settings.translateInstruction,
       summaryInstruction: settings.summaryInstruction,
-      highlightPatterns: settings.highlightPatterns
+      highlightPatterns: settings.highlightPatterns,
+      zhEnMapping: settings.zhEnMapping
     };
 
     const syncSettings = { ...settings };

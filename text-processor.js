@@ -30,27 +30,101 @@ const TextProcessor = {
   },
 
   /**
-   * 準備 API 請求配置
+   * 從網頁獲取日期
+   * @returns {string} 日期字串，如果找不到則返回空字串
    */
-  _prepareApiConfig(model, text, instruction) {
+  _getDateFromPage() {
+    try {
+      // 找到日期輸入框
+      const dateInput = document.querySelector('input[placeholder="YYYY/MM/DD"]');
+      if (!dateInput || !dateInput.value) {
+        return '';
+      }
+
+      // 將 YYYY/MM/DD 格式轉換為 YYYY年MM月DD日
+      const [year, month, day] = dateInput.value.split('/');
+      if (!year || !month || !day) {
+        return dateInput.value;
+      }
+      
+      return `${year}年${month}月${day}日`;
+    } catch (error) {
+      console.warn('獲取日期時發生錯誤:', error);
+      return '';
+    }
+  },
+
+  /**
+   * 處理指令中的日期佔位符
+   * @param {string} instruction - 原始指令
+   * @returns {string} - 處理後的指令
+   */
+  _processInstructionWithDate(instruction) {
+    if (!instruction || !instruction.includes('{date}')) {
+      return instruction;
+    }
+
+    const date = this._getDateFromPage();
+    return instruction.replace(/\{date\}/g, date || '未知日期');
+  },
+
+  /**
+   * 準備 API 請求配置
+   * @param {string} model - 使用的模型名稱
+   * @param {string} text - 主要文本內容
+   * @param {string} instruction - 指令內容
+   * @param {Object} context - 上下文內容，格式為 { role: string, content: string }[]
+   */
+  _prepareApiConfig(model, text, instruction, context = []) {
+    const processedInstruction = this._processInstructionWithDate(instruction);
+    
     const isGemini = model.startsWith('gemini');
     const endpoint = isGemini 
       ? window.GlobalSettings.API.endpoints.gemini.replace(':model', model)
       : window.GlobalSettings.API.endpoints.openai;
 
+    // 確保 context 是一個陣列
+    const contextArray = Array.isArray(context) ? context : [];
+
+    // 將上下文訊息分類
+    const systemMessages = contextArray
+      .filter(ctx => ctx && ctx.role === 'system')
+      .map(ctx => ({
+        role: isGemini ? "user" : "system",  // 對 Gemini API 使用 user role
+        ...(isGemini 
+          ? { parts: [{ text: ctx.content }] }
+          : { content: ctx.content }
+        )
+      }));
+
+    const userMessages = contextArray
+      .filter(ctx => ctx && ctx.role !== 'system')
+      .map(ctx => ({
+        role: "user",  // 統一使用 user role
+        ...(isGemini 
+          ? { parts: [{ text: ctx.content }] }
+          : { content: ctx.content }
+        )
+      }));
+
+    // 組織請求內容
     const body = isGemini ? {
-      contents: [{
-        parts: [{
-          text: `文本：${text}\n\n指令：${instruction}`
-        }]
-      }],
-      // 添加安全設置，降低內容過濾的嚴格程度
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: `${processedInstruction}\n\n${text}` }]  // 使用處理後的指令
+        },
+        ...systemMessages,
+        ...userMessages
+      ],
       safetySettings: window.GlobalSettings.API.safetySettings
     } : {
       model,
       messages: [
-        {role: "system", content: instruction},
-        {role: "user", content: text}
+        { role: "system", content: processedInstruction }, // 使用處理後的指令
+        ...systemMessages,
+        ...userMessages,
+        { role: "user", content: text }
       ]
     };
 
@@ -58,7 +132,9 @@ const TextProcessor = {
       endpoint,
       requestBody: {
         model,
-        systemMessage: instruction,
+        systemMessage: processedInstruction,
+        systemContext: systemMessages,
+        userContext: userMessages,
         userMessage: text
       }
     });
@@ -171,7 +247,7 @@ const TextProcessor = {
   /**
    * 執行文字改寫 (修改後的版本)
    */
-  async rewriteText(textToRewrite, isAutoRewrite = false) {
+  async rewriteText(textToRewrite, isAutoRewrite = false, context = []) {
     try {
       console.log('開始 rewriteText 函數');
       const settings = await window.GlobalSettings.loadSettings();
@@ -195,7 +271,7 @@ const TextProcessor = {
 
       // 檢查改寫指令
       const instruction = useShortInstruction ? settings.shortInstruction : settings.instruction;
-      if (!instruction.trim()) throw new Error(useShortInstruction ? '短文本改寫指令不能為空' : '改寫令不能為空');
+      if (!instruction.trim()) throw new Error(useShortInstruction ? '短文本改寫指令不能為空' : '改寫指令不能為空');
 
       const model = isAutoRewrite ? settings.autoRewriteModel :
                    isPartialRewrite && useShortInstruction ? settings.shortRewriteModel :
@@ -217,7 +293,12 @@ const TextProcessor = {
       `, true);
 
       // 準備API請求
-      const { endpoint, body } = this._prepareApiConfig(model, originalTextToRewrite, instruction);
+      const { endpoint, body } = this._prepareApiConfig(
+        model, 
+        originalTextToRewrite, 
+        instruction,
+        context
+      );
       const rewrittenText = await this._sendRequest(endpoint, body, apiKey, isGemini, false);
 
       console.log('改寫前文本:', originalTextToRewrite);
@@ -261,7 +342,7 @@ const TextProcessor = {
   /**
    * 執行關鍵要點總結
    */
-  async generateSummary(text) {
+  async generateSummary(text, context = []) {
     try {
       const settings = await window.GlobalSettings.loadSettings();
       
@@ -285,7 +366,8 @@ const TextProcessor = {
       const { endpoint, body } = this._prepareApiConfig(
         model,
         text,
-        settings.summaryInstruction
+        settings.summaryInstruction,
+        context
       );
 
       // 發送請求並獲取回應

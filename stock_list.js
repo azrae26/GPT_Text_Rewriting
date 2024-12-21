@@ -1972,6 +1972,7 @@ window.stockList = [
     { code: "7783", name: "佳運" },
     { code: "7786", name: "東方風能" },
     { code: "7788", name: "松川精密" },
+    { code: "7796", name: "擷發科技" },
     { code: "8011", name: "台通" },
     { code: "8016", name: "矽創" },
     { code: "8021", name: "尖點" },

@@ -25,6 +25,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   const translateInstructionInput = document.getElementById('translateInstruction');
   const removeHashCheckbox = document.getElementById('removeHash');
   const removeStarCheckbox = document.getElementById('removeStar');
+  const zhEnMappingInput = document.getElementById('zhEnMapping');
   
   // 關鍵要點相關
   const summaryModelSelect = document.getElementById('summaryModel');
@@ -72,6 +73,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 關鍵要點相關
     summaryModelSelect.value = settings.summaryModel || 'gemini-2.0-flash-exp'; // 預設使用 Gemini 2.0 Flash
     summaryInstructionInput.value = settings.summaryInstruction || ''; // 預設為空
+
+    // 載入中英對照表
+    if (settings.zhEnMapping) {
+      zhEnMappingInput.value = settings.zhEnMapping;
+    }
   }
   
   updateApiKeyInput();
@@ -161,7 +167,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     console.log('已保存關鍵要點指令:', summaryInstructionInput.value);
   });
 
- 
+  // 中英對照表輸入
+  zhEnMappingInput.addEventListener('input', async function() {
+    await GlobalSettings.saveSingleSetting('zhEnMapping', zhEnMappingInput.value);
+    console.log('已保存中英對照表');
+  });
+
   // 5. 所有模型選擇相關事件處理
   // 全改寫模型選擇
   fullRewriteModelSelect.addEventListener('change', async function() {
