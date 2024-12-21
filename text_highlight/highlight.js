@@ -136,30 +136,26 @@ const TextHighlight = {
      * 更新高亮框的可見性和位置
      */
     updateHighlightsVisibility() {
-      const { textArea, container } = this.elements;
-      if (!textArea || !container) return;
+      const { textArea, container, highlights } = this.elements;
+      if (!textArea || !container || !highlights.length) return;
 
       const scrollTop = textArea.scrollTop;
       const visibleHeight = textArea.clientHeight;
       const totalHeight = textArea.scrollHeight;
+      
+      // 計算可見區域的範圍（加上上下緩衝區）
+      const BUFFER_SIZE = visibleHeight; // 上下各預留一個視窗高度的緩衝
+      const visibleTop = Math.max(0, scrollTop - BUFFER_SIZE);
+      const visibleBottom = Math.min(totalHeight, scrollTop + visibleHeight + BUFFER_SIZE);
 
-      this.elements.highlights.forEach((highlight) => {
+      // 直接更新所有高亮元素的位置
+      highlights.forEach((highlight) => {
         const originalTop = parseFloat(highlight.dataset.originalTop);
-        const highlightHeight = parseFloat(highlight.style.height);
+        const isInVisibleRange = originalTop >= visibleTop && originalTop <= visibleBottom;
         
-        // 計算相對於視窗的位置
-        const relativeTop = originalTop - scrollTop;
-        
-        // 判斷是否在可視範圍內（加上一些緩衝空間）
-        const buffer = highlightHeight;
-        const isVisible = (relativeTop + highlightHeight >= -buffer) && 
-                         (relativeTop <= visibleHeight + buffer) &&
-                         (originalTop <= totalHeight);
-
-        if (isVisible) {
+        if (isInVisibleRange) {
           highlight.style.display = 'block';
-          // 使用 transform 來調整位置
-          highlight.style.transform = `translateY(${-scrollTop}px)`;
+          highlight.style.transform = `translate3d(0, ${-scrollTop}px, 0)`;  // 使用 translate3d 啟用硬體加速
         } else {
           highlight.style.display = 'none';
         }
@@ -316,12 +312,15 @@ const TextHighlight = {
       const textArea = TextHighlight.DOMManager.elements.textArea;
       if (!textArea) return;
       
-      // 保留原有的滾動事件處理
+      // 優化滾動事件處理
+      let ticking = false;
       textArea.addEventListener('scroll', () => {
-        requestAnimationFrame(() => {
+        if (!ticking) {
+          ticking = true;
           TextHighlight.DOMManager.updateHighlightsVisibility();
-        });
-      });
+          ticking = false;
+        }
+      }, { passive: true });  // 使用 passive 事件以提高性能
 
       // 使用 requestAnimationFrame 來做輪詢
       let lastValue = textArea.value;
