@@ -38,13 +38,23 @@ function initializeExtension() {
 
     // 檢查內容是否已載入
     const textarea = document.querySelector('textarea[name="content"]');
-    if (!textarea) return false;
+    if (!textarea || !textarea.offsetParent) return false;
 
     // 檢查高亮容器是否正確初始化
     const highlightContainer = document.getElementById('text-highlight-container');
     if (!highlightContainer || !highlightContainer.offsetParent) {
-      console.log('高亮容器未正確初始化，需要重新整理');
-      return true;
+      // 檢查頁面是否已完全載入
+      if (document.readyState !== 'complete') {
+        console.log('頁面尚未完全載入，等待...');
+        return false;
+      }
+      
+      // 確保有足夠的延遲再觸發重新整理
+      if (!window._lastRefreshAttempt || Date.now() - window._lastRefreshAttempt > 1000) {
+        window._lastRefreshAttempt = Date.now();
+        console.log('高亮容器未正確初始化，需要重新整理');
+        return true;
+      }
     }
 
     return false;

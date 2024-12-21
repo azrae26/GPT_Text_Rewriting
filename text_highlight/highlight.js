@@ -256,6 +256,11 @@ const TextHighlight = {
       div: null,
       lastText: '',
       positions: new Map(),
+      lineInfo: {
+        lastLineCount: 0,
+        lastLinePositions: [], // 儲存每行的起始位置
+        modifiedLineIndex: -1  // 最後修改的行號
+      }
     },
 
     /**
@@ -284,13 +289,115 @@ const TextHighlight = {
     },
 
     /**
-     * 計算位置（混合策略）
+     * 分析文本變化
+     * @param {string} oldText 舊文本
+     * @param {string} newText 新文本
+     * @returns {Object} 變化信息
+     */
+    analyzeTextChange(oldText, newText) {
+      const oldLines = oldText.split('\n');
+      const newLines = newText.split('\n');
+      
+      // 找出第一個不同的行
+      let firstDiffIndex = 0;
+      while (firstDiffIndex < oldLines.length && 
+             firstDiffIndex < newLines.length && 
+             oldLines[firstDiffIndex] === newLines[firstDiffIndex]) {
+        firstDiffIndex++;
+      }
+
+      // 計算行數變化
+      const lineDiff = newLines.length - oldLines.length;
+      
+      return {
+        modifiedLineIndex: firstDiffIndex,
+        lineDiff,
+        isMultiLineChange: lineDiff !== 0,
+        affectedLines: {
+          start: firstDiffIndex,
+          end: Math.max(oldLines.length, newLines.length)
+        }
+      };
+    },
+
+    /**
+     * 更新位置信息
+     * @param {Object} change 變化信息
+     * @param {Array} positions 位置信息數組
+     */
+    updatePositionsAfterChange(change, positions) {
+      const { modifiedLineIndex, lineDiff, isMultiLineChange } = change;
+      
+      if (!isMultiLineChange) {
+        // 單行變化，只需要重新計算該行的位置
+        return positions.map(pos => {
+          const posLineIndex = this.getLineNumber(this.cache.lastText, pos.index);
+          if (posLineIndex === modifiedLineIndex) {
+            // 需要重新計算的位置
+            return null; // 標記為需要重新計算
+          }
+          return pos;
+        }).filter(Boolean);
+      } else {
+        // 多行變化，需要調整受影響行的位置
+        const lineHeight = this.cache.lineInfo.lastLinePositions[1] - 
+                         this.cache.lineInfo.lastLinePositions[0];
+        
+        return positions.map(pos => {
+          const posLineIndex = this.getLineNumber(this.cache.lastText, pos.index);
+          if (posLineIndex < modifiedLineIndex) {
+            // 在變化行之前的位置保持不變
+            return pos;
+          } else if (posLineIndex === modifiedLineIndex) {
+            // 變化行的位置需要重新計算
+            return null;
+          } else {
+            // 在變化行之後的位置需要調整
+            return {
+              ...pos,
+              top: pos.top + (lineDiff * lineHeight),
+              originalTop: pos.originalTop + (lineDiff * lineHeight)
+            };
+          }
+        }).filter(Boolean);
+      }
+    },
+
+    /**
+     * 計算位置（優化版本）
      */
     calculatePosition(textArea, index, text, matchedText, styles) {
       // 檢查快取
       const cachedPosition = TextHighlight.GlobalPositionCache.get(text, index, matchedText);
       if (cachedPosition) {
         return cachedPosition;
+      }
+
+      // 分析文本變化
+      if (this.cache.lastText && this.cache.lastText !== text) {
+        const change = this.analyzeTextChange(this.cache.lastText, text);
+        
+        // 更新現有位置
+        const updatedPositions = this.updatePositionsAfterChange(
+          change,
+          Array.from(this.cache.positions.values())
+        );
+        
+        // 更新快取
+        this.cache.positions.clear();
+        updatedPositions.forEach(pos => {
+          if (pos) {
+            this.cache.positions.set(`${pos.index}-${pos.text}`, pos);
+          }
+        });
+        
+        // 更新行信息
+        this.cache.lineInfo.modifiedLineIndex = change.modifiedLineIndex;
+        this.cache.lineInfo.lastLineCount = text.split('\n').length;
+        this.cache.lineInfo.lastLinePositions = text.split('\n').reduce((acc, _, i) => {
+          acc.push(i * styles.lineHeight);
+          return acc;
+        }, []);
       }
 
       // 確保 div 存在
@@ -318,21 +425,18 @@ const TextHighlight = {
         `;
         textArea.parentElement.appendChild(this.cache.div);
         
-        // 確保寬度完全匹配
         const actualWidth = window.getComputedStyle(textArea).width;
         this.cache.div.style.width = actualWidth;
       }
 
-      // 更新內容（如果需要）
+      // 更新內容
       if (this.cache.lastText !== text) {
         this.cache.div.textContent = text;
         this.cache.lastText = text;
-        this.cache.positions.clear();
       }
 
       let position = null;
       try {
-        // 創建 range 並計算位置
         const range = document.createRange();
         const textNode = this.cache.div.firstChild;
         if (!textNode) {
@@ -356,10 +460,13 @@ const TextHighlight = {
           top: rect.top - divRect.top + styles.paddingTop,
           left: rect.left - divRect.left + styles.paddingLeft + TextHighlight.CONFIG.FIXED_OFFSET.LEFT,
           width: rect.width,
-          originalTop: rect.top - divRect.top + styles.paddingTop
+          originalTop: rect.top - divRect.top + styles.paddingTop,
+          index,
+          text: matchedText
         };
 
         // 存入快取
+        this.cache.positions.set(`${index}-${matchedText}`, position);
         TextHighlight.GlobalPositionCache.set(text, index, matchedText, position);
 
       } catch (error) {
@@ -477,24 +584,26 @@ const TextHighlight = {
         // 清除所有現有的高亮
         TextHighlight.DOMManager.clearHighlights();
 
+        // 確保 DOM 完全更新後再開始嘗試更新
+        let retryCount = 0;
+        const maxRetries = 3;
+        
         const tryUpdate = () => {
-          // 強制更新所有高亮
-          TextHighlight.forceUpdate();
+          if (retryCount >= maxRetries) {
+            console.log('[TextHighlight] 達到最大重試次數，停止更新');
+            return;
+          }
           
-          // 檢查是否需要重試
-          setTimeout(() => {
-            const highlights = TextHighlight.DOMManager.elements.highlights;
-            if (highlights.length === 0 && TextHighlight.targetWords.length > 0 && retryCount < MAX_RETRIES) {
-              console.error('[EventHandler] 高亮更新失敗，準備重試');
-              retryCount++;
-              tryUpdate();
-            } else {
-              retryCount = 0;
-            }
-          }, 100);
+          retryCount++;
+          const textArea = TextHighlight.DOMManager.elements.textArea;
+          if (!textArea || !textArea.offsetParent) {
+            console.log('[TextHighlight] 文本區域未就緒，等待下次更新');
+            return;
+          }
+
+          TextHighlight.forceUpdate();
         };
 
-        // 確保 DOM 完全更新後再開始嘗試更新
         requestAnimationFrame(() => {
           tryUpdate();
         });
