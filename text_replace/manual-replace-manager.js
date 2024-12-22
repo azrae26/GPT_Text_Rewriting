@@ -5,6 +5,8 @@
  * 1. text_highlight/highlight.js
  *    - TextHighlight.CONFIG.FIXED_OFFSET：用於設置預覽容器的位置偏移
  *    - TextHighlight.PositionCalculator：用於計算文本位置和樣式
+ *    - TextHighlight.ScrollHelper：用於處理滾動事件
+ *    - TextHighlight.SharedVirtualScroll：用於優化虛擬滾動
  * 
  * 2. regex_helper/regex-helper.js
  *    - RegexHelper.createRegex：用於創建替換用的正則表達式
@@ -368,9 +370,11 @@ const ManualReplaceManager = {
     virtualScrollData: {
       allPositions: new Map(),  // groupIndex -> positions[]
       visibleHighlights: new Map(), // groupIndex -> Map(key -> highlight)
-      bufferSize: 200,  // 緩衝區大小（像素）
-      lastText: '',     // 新增：記錄上次的文本
-      lineInfo: null    // 新增：行信息引用
+      lastScrollTop: 0,     // 上次滾動位置
+      bufferSize: 200,      // 緩衝區大小（像素）
+      lastText: '',     // 記錄上次的文本
+      lineInfo: null,   // 行信息引用
+      positionCache: new Map() // 位置快取
     },
 
     initialize(textArea) {
@@ -378,6 +382,10 @@ const ManualReplaceManager = {
       
       this.container = document.createElement('div');
       this.container.id = ManualReplaceManager.CONFIG.PREVIEW_CONTAINER_ID;
+      
+      // 使用 TextHighlight 的樣式計算方法
+      const styles = TextHighlight.PositionCalculator.getTextAreaStyles(textArea);
+      
       this.container.style.cssText = `
         position: absolute;
         top: ${TextHighlight.CONFIG.FIXED_OFFSET.TOP}px;
@@ -387,11 +395,21 @@ const ManualReplaceManager = {
         pointer-events: none;
         z-index: 1001;
         overflow: hidden;
+        font: ${styles.font};
+        line-height: ${styles.lineHeight}px;
+        padding: ${styles.paddingTop}px ${styles.paddingLeft}px;
       `;
+      
       textArea.parentElement.appendChild(this.container);
-      this._setupScrollHandler(textArea);
+      
+      // 使用 TextHighlight 的滾動處理器
+      TextHighlight.ScrollHelper.bindScrollEvent(
+        textArea,
+        () => this._updateVirtualScrolling(textArea)
+      );
+      
       this._setupResizeObserver(textArea);
-
+      
       // 初始化行信息引用
       this.virtualScrollData.lineInfo = TextHighlight.PositionCalculator.cache.lineInfo;
     },
@@ -439,14 +457,6 @@ const ManualReplaceManager = {
       }
     },
 
-    _setupScrollHandler(textArea) {
-      // 使用 TextHighlight 的 ScrollHelper
-      TextHighlight.ScrollHelper.bindScrollEvent(
-        textArea,
-        () => this._updateVirtualScrolling(textArea)
-      );
-    },
-
     _updateVirtualScrolling(textArea) {
       const scrollTop = textArea.scrollTop;
       const visibleHeight = textArea.clientHeight;
@@ -464,30 +474,59 @@ const ManualReplaceManager = {
           this.virtualScrollData.visibleHighlights.set(groupIndex, new Map());
         }
         const groupHighlights = this.virtualScrollData.visibleHighlights.get(groupIndex);
+        
+        // 記錄現有的高亮元素
+        const existingHighlights = new Map(groupHighlights);
+        groupHighlights.clear();
 
-        // 使用共享的虛擬滾動管理器
-        TextHighlight.SharedVirtualScroll.updateVirtualView({
-          allPositions: positions,
-          visibleHighlights: groupHighlights,
-          visibleTop,
-          visibleBottom,
-          scrollTop,
-          createHighlight: (pos) => {
-            const highlight = document.createElement('div');
+        // 找出需要顯示的位置
+        const visiblePositions = positions.filter(pos => {
+          const top = pos.position ? pos.position.top : pos.top;
+          return top >= visibleTop && top <= visibleBottom;
+        });
+
+        // 更新或創建可見範圍內的高亮
+        visiblePositions.forEach(pos => {
+          const top = pos.position ? pos.position.top : pos.top;
+          const left = pos.position ? pos.position.left : pos.left;
+          const text = pos.position ? pos.position.text : pos.text;
+          
+          const key = `${top}-${left}-${text}`;
+          let highlight = existingHighlights.get(key);
+
+          if (highlight) {
+            // 重用現有元素
+            existingHighlights.delete(key);
+            highlight.style.transform = `translate3d(0, ${top - scrollTop}px, 0)`;
+            highlight.style.display = 'block';
+          } else {
+            // 創建新元素
+            highlight = document.createElement('div');
+            highlight.className = 'replace-preview-highlight';
             highlight.style.cssText = `
               position: absolute;
-              left: ${pos.left - 1}px;
-              top: ${pos.top}px;
+              left: ${left - 1}px;
+              top: 0;
               width: ${pos.width + 3}px;
-              height: ${pos.lineHeight}px;
-              border-color: ${pos.color};
+              height: ${pos.lineHeight - 1}px;
+              border: 0px solid ${pos.color};
+              border-radius: 2px;
               will-change: transform;
               z-index: 1001;
+              transform: translate3d(0, ${top - scrollTop}px, 0);
+              backface-visibility: hidden;
+              -webkit-font-smoothing: antialiased;
+              background: none;
             `;
-            return highlight;
-          },
-          container: this.container,
-          highlightClass: 'replace-preview-highlight'
+            this.container.appendChild(highlight);
+          }
+
+          groupHighlights.set(key, highlight);
+        });
+
+        // 隱藏不再可見的元素
+        existingHighlights.forEach(highlight => {
+          highlight.style.display = 'none';
         });
       });
     },
@@ -514,7 +553,7 @@ const ManualReplaceManager = {
           matches.length = ManualReplaceManager.CONFIG.MAX_PREVIEWS;
         }
 
-        // 獲取文本區域的樣式
+        // 使用 TextHighlight 的樣式計算方法
         const styles = TextHighlight.PositionCalculator.getTextAreaStyles(textArea);
         const color = ManualReplaceManager.CONFIG.PREVIEW_COLORS[
           groupIndex % ManualReplaceManager.CONFIG.PREVIEW_COLORS.length
@@ -522,35 +561,48 @@ const ManualReplaceManager = {
 
         // 檢查文本是否變化
         const textChanged = this.virtualScrollData.lastText !== text;
-        let textChangeInfo = null;
-        
         if (textChanged) {
-          // 使用 TextHighlight 的文本變化分析
-          textChangeInfo = TextHighlight.PositionCalculator.analyzeTextChange(
-            this.virtualScrollData.lastText,
-            text
-          );
+          // 文本變化時清除快取
+          this.virtualScrollData.positionCache.clear();
           this.virtualScrollData.lastText = text;
         }
 
         // 收集所有位置信息
         const positions = [];
         for (const match of matches) {
-          // 使用 TextHighlight 的位置計算
-          let position = TextHighlight.PositionCalculator.calculatePosition(
-            textArea,
-            match.index,
-            text,
-            match[0],
-            styles
-          );
+          // 檢查快取
+          const cacheKey = `${groupIndex}-${match.index}-${match[0]}`;
+          let position = this.virtualScrollData.positionCache.get(cacheKey);
+          
+          // 如果快取未命中或需要重新計算
+          if (!position || textChanged) {
+            position = TextHighlight.PositionCalculator.calculatePosition(
+              textArea,
+              match.index,
+              text,
+              match[0],
+              styles
+            );
+            
+            if (position) {
+              // 更新快取
+              this.virtualScrollData.positionCache.set(cacheKey, {
+                ...position,
+                text: match[0],
+                color,
+                lineHeight: styles.lineHeight,
+                originalTop: position.top
+              });
+            }
+          }
           
           if (position) {
             positions.push({
               ...position,
               text: match[0],
               color,
-              lineHeight: styles.lineHeight
+              lineHeight: styles.lineHeight,
+              originalTop: position.top
             });
           }
         }
@@ -561,6 +613,13 @@ const ManualReplaceManager = {
         // 觸發可見性更新
         this._updateVirtualScrolling(textArea);
 
+        // 清理過期的快取
+        if (this.virtualScrollData.positionCache.size > 1000) {
+          const entries = Array.from(this.virtualScrollData.positionCache.entries());
+          const halfSize = Math.floor(entries.length / 2);
+          this.virtualScrollData.positionCache = new Map(entries.slice(halfSize));
+        }
+
       } catch (error) {
         console.error('預覽更新失敗:', error);
       }
@@ -569,6 +628,11 @@ const ManualReplaceManager = {
     clearGroupHighlights(groupIndex) {
       // 清除位置數據
       this.virtualScrollData.allPositions.delete(groupIndex);
+      
+      // 清除該組的位置快取
+      const cacheKeys = Array.from(this.virtualScrollData.positionCache.keys())
+        .filter(key => key.startsWith(`${groupIndex}-`));
+      cacheKeys.forEach(key => this.virtualScrollData.positionCache.delete(key));
       
       // 清除可見的高亮元素
       const groupHighlights = this.virtualScrollData.visibleHighlights.get(groupIndex);
@@ -580,6 +644,7 @@ const ManualReplaceManager = {
 
     clearAllHighlights() {
       this.virtualScrollData.allPositions.clear();
+      this.virtualScrollData.positionCache.clear();
       this.virtualScrollData.visibleHighlights.forEach(groupHighlights => {
         groupHighlights.forEach(highlight => highlight.remove());
       });
