@@ -348,61 +348,7 @@ const TextHighlight = {
       if (isMultiLineChange && lineDiff !== 0) {
         offsetY = lineDiff * this.baseLineHeight;
       }
-
-      // 批次處理閾值
-      const BATCH_SIZE = 1000;
-      const totalPositions = positions.length;
       
-      // 如果位置數量超過閾值，使用批次處理
-      if (totalPositions > BATCH_SIZE) {
-        console.log(`[PositionUpdate] 檢測到大量位置(${totalPositions})，啟用批次處理`);
-        
-        const batches = Math.ceil(totalPositions / BATCH_SIZE);
-        const updatedPositions = new Array(totalPositions);
-        
-        for (let i = 0; i < batches; i++) {
-          const start = i * BATCH_SIZE;
-          const end = Math.min(start + BATCH_SIZE, totalPositions);
-          
-          // 處理當前批次
-          for (let j = start; j < end; j++) {
-            const pos = positions[j];
-            const posLineIndex = this.getLineNumber(newText, pos.index);
-            
-            if (posLineIndex < modifiedLineIndex) {
-              stats.unchanged++;
-              updatedPositions[j] = pos;
-            } 
-            else if (posLineIndex === modifiedLineIndex) {
-              stats.recalculate++;
-              updatedPositions[j] = {
-                ...pos,
-                needsRecalculation: true
-              };
-            } 
-            else if (isMultiLineChange && offsetY !== 0) {
-              stats.adjusted++;
-              updatedPositions[j] = {
-                ...pos,
-                top: pos.top + offsetY,
-                originalTop: pos.originalTop + offsetY
-              };
-            } else {
-              stats.unchanged++;
-              updatedPositions[j] = pos;
-            }
-          }
-          
-          // 每完成一個批次就讓出主線程
-          if (i < batches - 1) {
-            yield new Promise(resolve => setTimeout(resolve, 0));
-          }
-        }
-        
-        return updatedPositions;
-      }
-      
-      // 對於小量位置，使用原來的處理方式
       const updatedPositions = positions.map(pos => {
         const posLineIndex = this.getLineNumber(newText, pos.index);
         
@@ -417,16 +363,18 @@ const TextHighlight = {
             needsRecalculation: true
           };
         } 
-        else if (isMultiLineChange && offsetY !== 0) {
-          stats.adjusted++;
-          return {
-            ...pos,
-            top: pos.top + offsetY,
-            originalTop: pos.originalTop + offsetY
-          };
-        } else {
-          stats.unchanged++;
-          return pos;
+        else {
+          if (isMultiLineChange && offsetY !== 0) {
+            stats.adjusted++;
+            return {
+              ...pos,
+              top: pos.top + offsetY,
+              originalTop: pos.originalTop + offsetY
+            };
+          } else {
+            stats.unchanged++;
+            return pos;
+          }
         }
       });
 
@@ -851,15 +799,20 @@ const TextHighlight = {
       const highlight = document.createElement('div');
       highlight.className = 'text-highlight';
       
+      // 使用 transform 代替直接設置 top
+      // 將元素固定在初始位置，然後用 transform 移動
       highlight.style.cssText = `
         position: absolute;
         background-color: ${color};
         height: ${lineHeight}px;
         width: ${width}px;
         left: ${position.left}px;
-        top: ${position.top}px;
+        top: 0;
+        transform: translate3d(0, ${position.top}px, 0);
         pointer-events: none;
         will-change: transform;
+        backface-visibility: hidden;
+        -webkit-font-smoothing: antialiased;
       `;
 
       highlight.dataset.originalTop = position.top;
@@ -870,7 +823,7 @@ const TextHighlight = {
   /**
    * 更新所有標示
    */
-  async updateHighlights() {
+  updateHighlights() {
     let lastLogTime = new Date();
     const logWithDiff = (message) => {
       const currentTime = new Date();
@@ -901,7 +854,7 @@ const TextHighlight = {
       const positions = Array.from(this.PositionCalculator.cache.positions.values());
       
       // 更新現有位置
-      const updatedPositions = await this.PositionCalculator.updatePositionsAfterChange(
+      const updatedPositions = this.PositionCalculator.updatePositionsAfterChange(
         change,
         positions,
         text
@@ -923,69 +876,29 @@ const TextHighlight = {
     
     // 收集所有位置信息
     const allPositions = [];
-    const BATCH_SIZE = 5; // 每批處理的關鍵字數量
-    
-    // 批次處理關鍵字
-    for (let i = 0; i < this.targetWords.length; i += BATCH_SIZE) {
-      const batch = this.targetWords.slice(i, i + BATCH_SIZE);
-      
-      await Promise.all(batch.map(async targetWord => {
-        if (!targetWord.trim()) return;
+    this.targetWords.forEach((targetWord) => {
+      if (!targetWord.trim()) return;
 
-        try {
-          const posStartTime = new Date();
-          if (targetWord.startsWith('/') && targetWord.endsWith('/')) {
-            // 正則表達式處理
-            logWithDiff(`開始處理正則關鍵字 "${targetWord}"`);
-            const regexStr = targetWord.slice(1, -1);
-            const regex = RegexHelper.createRegex(targetWord);
-            logWithDiff('正則表達式創建完成');
-            
-            const matchStartTime = new Date();
-            const matches = Array.from(text.matchAll(regex));
-            logWithDiff(`正則匹配完成，找到 ${matches.length} 個匹配`);
+      try {
+        const posStartTime = new Date();
+        if (targetWord.startsWith('/') && targetWord.endsWith('/')) {
+          // 正則表達式處理
+          logWithDiff(`開始處理正則關鍵字 "${targetWord}"`);
+          const regexStr = targetWord.slice(1, -1);
+          const regex = RegexHelper.createRegex(targetWord);
+          logWithDiff('正則表達式創建完成');
+          
+          const matchStartTime = new Date();
+          const matches = Array.from(text.matchAll(regex));
+          logWithDiff(`正則匹配完成，找到 ${matches.length} 個匹配`);
 
-            if (matches.length > 0) {
-              logWithDiff('開始處理匹配結果');
-            }
+          if (matches.length > 0) {
+            logWithDiff('開始處理匹配結果');
+          }
 
-            for (const match of matches) {
-              if (match[0]) {
-                const position = await this.PositionCalculator.calculatePosition(
-                  textArea, 
-                  match.index, 
-                  text, 
-                  match[0], 
-                  styles
-                );
-                
-                if (position) {
-                  allPositions.push({
-                    position,
-                    color: this.getColorForWord(targetWord),
-                    targetWord,
-                    lineHeight: styles.lineHeight
-                  });
-                }
-              }
-            }
-
-            if (matches.length > 0) {
-              logWithDiff('匹配結果處理完成');
-            }
-          } else {
-            // 普通文字匹配
-            logWithDiff(`開始處理普通關鍵字 "${targetWord}"`);
-            const regex = RegexHelper.createRegex(targetWord);
-            const matches = Array.from(text.matchAll(regex));
-            logWithDiff(`文字匹配完成，找到 ${matches.length} 個匹配`);
-            
-            if (matches.length > 0) {
-              logWithDiff('開始處理匹配結果');
-            }
-
-            await Promise.all(matches.map(async match => {
-              const position = await this.PositionCalculator.calculatePosition(
+          for (const match of matches) {
+            if (match[0]) {
+              const position = this.PositionCalculator.calculatePosition(
                 textArea, 
                 match.index, 
                 text, 
@@ -1001,33 +914,59 @@ const TextHighlight = {
                   lineHeight: styles.lineHeight
                 });
               }
-            }));
-
-            if (matches.length > 0) {
-              logWithDiff('匹配結果處理完成');
             }
           }
-          logWithDiff(`處理關鍵字 "${targetWord}" 完成`);
-        } catch (error) {
-          console.error(`[TextHighlight] 處理文字 "${targetWord}" 時發生錯誤:`, error);
+
+          if (matches.length > 0) {
+            logWithDiff('匹配結果處理完成');
+          }
+        } else {
+          // 普通文字匹配
+          logWithDiff(`開始處理普通關鍵字 "${targetWord}"`);
+          const regex = RegexHelper.createRegex(targetWord);
+          const matches = Array.from(text.matchAll(regex));
+          logWithDiff(`文字匹配完成，找到 ${matches.length} 個匹配`);
+          
+          if (matches.length > 0) {
+            logWithDiff('開始處理匹配結果');
+          }
+
+          matches.forEach(match => {
+            const position = this.PositionCalculator.calculatePosition(
+              textArea, 
+              match.index, 
+              text, 
+              match[0], 
+              styles
+            );
+            
+            if (position) {
+              allPositions.push({
+                position,
+                color: this.getColorForWord(targetWord),
+                targetWord,
+                lineHeight: styles.lineHeight
+              });
+            }
+          });
+
+          if (matches.length > 0) {
+            logWithDiff('匹配結果處理完成');
+          }
         }
-      }));
-      
-      // 每處理完一批關鍵字，就更新一次 DOM
-      if (allPositions.length > 0) {
-        this.DOMManager.elements.virtualScrollData.allPositions = allPositions;
-        await this.DOMManager.updateHighlightsVisibility();
+        logWithDiff(`處理關鍵字 "${targetWord}" 完成`);
+      } catch (error) {
+        console.error(`[TextHighlight] 處理文字 "${targetWord}" 時發生錯誤:`, error);
       }
-      
-      // 讓出主線程
-      await new Promise(resolve => setTimeout(resolve, 0));
-    }
+    });
 
     logWithDiff('位置信息收集完成，開始更新 DOM');
-    
-    // 最後更新一次虛擬滾動數據
+
+    // 更新虛擬滾動數據
     this.DOMManager.elements.virtualScrollData.allPositions = allPositions;
-    await this.DOMManager.updateHighlightsVisibility();
+    
+    // 觸發可見性更新
+    this.DOMManager.updateHighlightsVisibility();
     
     logWithDiff('高亮更新完成');
   },
@@ -1065,7 +1004,6 @@ const TextHighlight = {
       highlightClass = 'text-highlight'
     }) {
       const startTime = new Date();
-      console.log(`[${startTime.toISOString()}] 開始更新虛擬視圖`);
       
       // 記錄現有的高亮元素
       const existingHighlights = new Map(visibleHighlights);
@@ -1081,21 +1019,22 @@ const TextHighlight = {
       visiblePositions.forEach(pos => {
         const top = pos.position ? pos.position.top : pos.top;
         const left = pos.position ? pos.position.left : pos.left;
-        const text = pos.position ? pos.position.text : pos.text;  // 使用實際匹配到的文字
+        const text = pos.position ? pos.position.text : pos.text;
         
-        const key = `${top}-${left}-${text}`;  // 使用實際文字作為 key
+        const key = `${top}-${left}-${text}`;
         let highlight = existingHighlights.get(key);
 
         if (highlight) {
-          // 重用現有元素
+          // 重用現有元素，只更新 transform
           existingHighlights.delete(key);
-          highlight.style.transform = `translate3d(0, ${-scrollTop}px, 0)`;
+          highlight.style.transform = `translate3d(0, ${top - scrollTop}px, 0)`;
           highlight.style.display = 'block';
         } else {
-          // 創建新元素
+          // 創建新元素時已經應用了 GPU 加速
           highlight = createHighlight(pos);
           highlight.className = highlightClass;
-          highlight.style.transform = `translate3d(0, ${-scrollTop}px, 0)`;
+          // 直接設置正確的 transform
+          highlight.style.transform = `translate3d(0, ${top - scrollTop}px, 0)`;
           container.appendChild(highlight);
         }
 
@@ -1108,7 +1047,6 @@ const TextHighlight = {
       });
 
       const endTime = new Date();
-      console.log(`[${endTime.toISOString()}] 虛擬視圖更新完成，耗時: ${endTime - startTime}ms`);
       return visibleHighlights;
     }
   }
