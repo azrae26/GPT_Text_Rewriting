@@ -936,9 +936,9 @@ const TextHighlight = {
       visiblePositions.forEach(pos => {
         const top = pos.position ? pos.position.top : pos.top;
         const left = pos.position ? pos.position.left : pos.left;
-        const text = pos.targetWord || pos.text;
+        const text = pos.position ? pos.position.text : pos.text;  // 使用實際匹配到的文字
         
-        const key = `${top}-${left}-${text}`;
+        const key = `${top}-${left}-${text}`;  // 使用實際文字作為 key
         let highlight = existingHighlights.get(key);
 
         if (highlight) {
