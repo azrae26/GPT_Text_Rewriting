@@ -86,7 +86,9 @@ const TextHighlight = {
         return null;
       }
 
-      const key = `${index}-${matchedText}`;
+      // 使用實際的文字內容作為快取 key 的一部分
+      const actualText = text.slice(index, index + matchedText.length);
+      const key = `${index}-${actualText}-${matchedText}`;
       return this.cache.get(key) || null;
     },
 
@@ -98,7 +100,8 @@ const TextHighlight = {
      * @param {Object} position - 位置信息
      */
     set(text, index, matchedText, position) {
-      const key = `${index}-${matchedText}`;
+      const actualText = text.slice(index, index + matchedText.length);
+      const key = `${index}-${actualText}-${matchedText}`;
       this.cache.set(key, position);
 
       // 定期清理快取
@@ -220,6 +223,12 @@ const TextHighlight = {
       const { textArea, container, virtualScrollData } = this.elements;
       if (!textArea || !container) return;
 
+      console.log('[updateHighlightsVisibility] 開始更新，當前數據:', {
+        allPositions: virtualScrollData.allPositions,
+        scrollTop: textArea.scrollTop,
+        visibleHeight: textArea.clientHeight
+      });
+
       const scrollTop = textArea.scrollTop;
       const visibleHeight = textArea.clientHeight;
       const totalHeight = textArea.scrollHeight;
@@ -236,12 +245,15 @@ const TextHighlight = {
         visibleTop,
         visibleBottom,
         scrollTop,
-        createHighlight: (pos) => TextHighlight.Renderer.createHighlight(
-          pos.position,
-          pos.position.width,
-          pos.lineHeight || this.getTextAreaStyles(textArea).lineHeight,
-          pos.color
-        ),
+        createHighlight: (pos) => {
+          console.log('[updateHighlightsVisibility] 創建高亮元素:', pos);
+          return TextHighlight.Renderer.createHighlight(
+            pos.position,
+            pos.position.width,
+            pos.lineHeight || this.getTextAreaStyles(textArea).lineHeight,
+            pos.color
+          );
+        },
         container,
         highlightClass: 'text-highlight'
       });
@@ -367,37 +379,17 @@ const TextHighlight = {
      * 計算位置（優化版本）
      */
     calculatePosition(textArea, index, text, matchedText, styles) {
+      console.log('[PositionCalculator] 開始計算位置:', {
+        index,
+        matchedText,
+        textLength: text.length
+      });
+
       // 檢查快取
       const cachedPosition = TextHighlight.GlobalPositionCache.get(text, index, matchedText);
       if (cachedPosition) {
+        console.log('[PositionCalculator] 使用快取的位置:', cachedPosition);
         return cachedPosition;
-      }
-
-      // 分析文本變化
-      if (this.cache.lastText && this.cache.lastText !== text) {
-        const change = this.analyzeTextChange(this.cache.lastText, text);
-        
-        // 更新現有位置
-        const updatedPositions = this.updatePositionsAfterChange(
-          change,
-          Array.from(this.cache.positions.values())
-        );
-        
-        // 更新快取
-        this.cache.positions.clear();
-        updatedPositions.forEach(pos => {
-          if (pos) {
-            this.cache.positions.set(`${pos.index}-${pos.text}`, pos);
-          }
-        });
-        
-        // 更新行信息
-        this.cache.lineInfo.modifiedLineIndex = change.modifiedLineIndex;
-        this.cache.lineInfo.lastLineCount = text.split('\n').length;
-        this.cache.lineInfo.lastLinePositions = text.split('\n').reduce((acc, _, i) => {
-          acc.push(i * styles.lineHeight);
-          return acc;
-        }, []);
       }
 
       // 確保 div 存在
@@ -465,6 +457,12 @@ const TextHighlight = {
           text: matchedText
         };
 
+        console.log('[PositionCalculator] 計算出的位置:', {
+          position,
+          rect,
+          divRect
+        });
+
         // 存入快取
         this.cache.positions.set(`${index}-${matchedText}`, position);
         TextHighlight.GlobalPositionCache.set(text, index, matchedText, position);
@@ -500,6 +498,7 @@ const TextHighlight = {
       this.setupResizeObserver();
       this.setupFontLoader();
       this.setupInputEvents();
+      this.setupContinuousCheck();
     },
 
     /**
@@ -656,6 +655,24 @@ const TextHighlight = {
           TextHighlight.updateHighlights();
         });
       });
+    },
+
+    /**
+     * 設置持續檢查
+     */
+    setupContinuousCheck() {
+      const textArea = TextHighlight.DOMManager.elements.textArea;
+      if (!textArea) return;
+
+      let lastValue = textArea.value;
+      const checkValue = () => {
+        if (textArea.value !== lastValue) {
+          lastValue = textArea.value;
+          TextHighlight.updateHighlights();
+        }
+        requestAnimationFrame(checkValue);
+      };
+      checkValue();
     }
   },
 
@@ -798,6 +815,7 @@ const TextHighlight = {
         top: ${position.top}px;
         pointer-events: none;
         will-change: transform;
+        white-space: pre-wrap;
       `;
 
       highlight.dataset.originalTop = position.top;
@@ -816,11 +834,12 @@ const TextHighlight = {
     }
 
     const text = textArea.value;
+    console.log('[updateHighlights] 當前文本:', text);
     const styles = this.PositionCalculator.getTextAreaStyles(textArea);
     
-    if (this._lastText === text && this._lastScrollTop === textArea.scrollTop) {
-      return;
-    }
+    // 每次更新時都清除快取
+    this.PositionCalculator.clearCache();
+    this.GlobalPositionCache.clear();
     
     this._lastText = text;
     this._lastScrollTop = textArea.scrollTop;
@@ -829,12 +848,14 @@ const TextHighlight = {
     const allPositions = [];
     this.targetWords.forEach((targetWord) => {
       if (!targetWord.trim()) return;
+      console.log('[updateHighlights] 處理目標文字:', targetWord);
 
       try {
         if (targetWord.startsWith('/') && targetWord.endsWith('/')) {
           // 正則表達式處理
           const regexStr = targetWord.slice(1, -1);
           const matches = Array.from(text.matchAll(RegexHelper.createRegex(targetWord)));
+          console.log('[updateHighlights] 正則匹配結果:', matches.map(m => ({text: m[0], index: m.index})));
 
           for (const match of matches) {
             if (match[0]) {
@@ -845,6 +866,11 @@ const TextHighlight = {
                 match[0], 
                 styles
               );
+              console.log('[updateHighlights] 計算位置結果:', {
+                matchedText: match[0],
+                index: match.index,
+                position
+              });
               
               if (position) {
                 allPositions.push({
@@ -860,6 +886,8 @@ const TextHighlight = {
           // 普通文字匹配
           const regex = RegexHelper.createRegex(targetWord);
           const matches = Array.from(text.matchAll(regex));
+          console.log('[updateHighlights] 普通文字匹配結果:', matches.map(m => ({text: m[0], index: m.index})));
+          
           matches.forEach(match => {
             const position = this.PositionCalculator.calculatePosition(
               textArea, 
@@ -868,6 +896,12 @@ const TextHighlight = {
               match[0], 
               styles
             );
+            console.log('[updateHighlights] 計算位置結果:', {
+              matchedText: match[0],
+              index: match.index,
+              position
+            });
+            
             if (position) {
               allPositions.push({
                 position,
@@ -882,6 +916,8 @@ const TextHighlight = {
         console.error(`[TextHighlight] 處理文字 "${targetWord}" 時發生錯誤:`, error);
       }
     });
+
+    console.log('[updateHighlights] 最終收集的位置:', allPositions);
 
     // 更新虛擬滾動數據
     this.DOMManager.elements.virtualScrollData.allPositions = allPositions;
@@ -922,6 +958,13 @@ const TextHighlight = {
       container,
       highlightClass = 'text-highlight'
     }) {
+      console.log('[SharedVirtualScroll] 開始更新虛擬視圖:', {
+        allPositions,
+        visibleTop,
+        visibleBottom,
+        scrollTop
+      });
+
       // 記錄現有的高亮元素
       const existingHighlights = new Map(visibleHighlights);
       visibleHighlights.clear();
@@ -932,13 +975,15 @@ const TextHighlight = {
         return top >= visibleTop && top <= visibleBottom;
       });
 
+      console.log('[SharedVirtualScroll] 可見的位置:', visiblePositions);
+
       // 更新或創建可見範圍內的高亮
       visiblePositions.forEach(pos => {
         const top = pos.position ? pos.position.top : pos.top;
         const left = pos.position ? pos.position.left : pos.left;
-        const text = pos.targetWord || pos.text;
+        const text = pos.position ? pos.position.text : pos.text;  // 使用實際匹配到的文字
         
-        const key = `${top}-${left}-${text}`;
+        const key = `${top}-${left}-${text}`;  // 使用實際文字作為 key
         let highlight = existingHighlights.get(key);
 
         if (highlight) {
@@ -946,12 +991,20 @@ const TextHighlight = {
           existingHighlights.delete(key);
           highlight.style.transform = `translate3d(0, ${-scrollTop}px, 0)`;
           highlight.style.display = 'block';
+          console.log('[SharedVirtualScroll] 重用高亮元素:', {
+            key,
+            style: highlight.style.cssText
+          });
         } else {
           // 創建新元素
           highlight = createHighlight(pos);
           highlight.className = highlightClass;
           highlight.style.transform = `translate3d(0, ${-scrollTop}px, 0)`;
           container.appendChild(highlight);
+          console.log('[SharedVirtualScroll] 創建新高亮元素:', {
+            key,
+            style: highlight.style.cssText
+          });
         }
 
         visibleHighlights.set(key, highlight);
@@ -960,9 +1013,10 @@ const TextHighlight = {
       // 隱藏不再可見的元素
       existingHighlights.forEach(highlight => {
         highlight.style.display = 'none';
+        console.log('[SharedVirtualScroll] 隱藏不可見元素:', {
+          style: highlight.style.cssText
+        });
       });
-
-      return visibleHighlights;
     }
   }
 };
