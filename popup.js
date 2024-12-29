@@ -37,6 +37,12 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 高亮功能
   const highlightWordsInput = document.getElementById('highlight-words');
 
+  // 獲取新增的元素
+  const reflectModelSelect = document.getElementById('reflectModel');
+  const optimizeModelSelect = document.getElementById('optimizeModel');
+  const reflectInstructionInput = document.getElementById('reflectInstruction');
+  const optimizeInstructionInput = document.getElementById('optimizeInstruction');
+
   // 2. 初始化設定
   let apiKeys = {
     'openai': '',
@@ -65,14 +71,22 @@ document.addEventListener('DOMContentLoaded', async function() {
     autoRewriteModelSelect.value = settings.autoRewriteModel || 'gemini-2.0-flash-exp';
     
     // 翻譯相關
-    translateModelSelect.value = settings.translateModel || 'gemini-2.0-flash-exp'; // 預設使用 Gemini 2.0 Flash
-    translateInstructionInput.value = settings.translateInstruction || ''; // 預設為空
-    removeHashCheckbox.checked = settings.removeHash !== undefined ? settings.removeHash : true; // 預設為勾選
-    removeStarCheckbox.checked = settings.removeStar !== undefined ? settings.removeStar : true; // 預設為勾選
+    translateModelSelect.value = settings.translateModel || 'gemini-2.0-flash-exp';
+    translateInstructionInput.value = settings.translateInstruction || '';
+    removeHashCheckbox.checked = settings.removeHash !== undefined ? settings.removeHash : true;
+    removeStarCheckbox.checked = settings.removeStar !== undefined ? settings.removeStar : true;
+    
+    // 反思相關
+    reflectModelSelect.value = settings.reflectModel || 'gemini-2.0-flash-exp';
+    reflectInstructionInput.value = settings.reflectInstruction || '';
+    
+    // 優化相關
+    optimizeModelSelect.value = settings.optimizeModel || 'gemini-2.0-flash-exp';
+    optimizeInstructionInput.value = settings.optimizeInstruction || '';
     
     // 關鍵要點相關
-    summaryModelSelect.value = settings.summaryModel || 'gemini-2.0-flash-exp'; // 預設使用 Gemini 2.0 Flash
-    summaryInstructionInput.value = settings.summaryInstruction || ''; // 預設為空
+    summaryModelSelect.value = settings.summaryModel || 'gemini-2.0-flash-exp';
+    summaryInstructionInput.value = settings.summaryInstruction || '';
 
     // 載入中英對照表
     if (settings.zhEnMapping) {
@@ -96,29 +110,53 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
   });
 
-  // 新增：載入上次的分頁狀態
+  // 載入已保存的主分頁和子分頁狀態
   chrome.storage.sync.get(['lastMainTab', 'lastSubTab'], function(data) {
+    console.log('載入儲存的設置:', data);
+    
+    // 恢復主分頁狀態
     if (data.lastMainTab) {
-      // 切換主分頁
       const mainTab = document.querySelector(`.main-tab[data-tab="${data.lastMainTab}"]`);
-      const mainTabContent = document.getElementById(`${data.lastMainTab}-tab`);
-      if (mainTab && mainTabContent) {
+      const mainContent = document.getElementById(`${data.lastMainTab}-tab`);
+      if (mainTab && mainContent) {
+        // 移除其他主分頁的活動狀態
         document.querySelectorAll('.main-tab').forEach(t => t.classList.remove('active'));
         document.querySelectorAll('.main-tab-content').forEach(c => c.classList.remove('active'));
+        
+        // 設置保存的主分頁為活動狀態
         mainTab.classList.add('active');
-        mainTabContent.classList.add('active');
+        mainContent.classList.add('active');
+        
+        // 如果是翻譯分頁，恢復其子分頁狀態
+        if (data.lastMainTab === 'translate' && data.lastSubTab) {
+          const subTab = mainContent.querySelector(`.tab[data-tab="${data.lastSubTab}"]`);
+          const subContent = document.getElementById(`${data.lastSubTab}-content`);
+          if (subTab && subContent) {
+            // 移除其他子分頁的活動狀態
+            mainContent.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            mainContent.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            // 設置保存的子分頁為活動狀態
+            subTab.classList.add('active');
+            subContent.classList.add('active');
+          }
+        }
       }
     }
-
-    if (data.lastSubTab) {
-      // 切換子分頁
-      const subTab = document.querySelector(`.tab[data-tab="${data.lastSubTab}"]`);
-      const subTabContent = document.getElementById(`${data.lastSubTab}-tab`);
-      if (subTab && subTabContent) {
-        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    
+    // 恢復改寫分頁的子分頁狀態
+    const rewriteTab = document.getElementById('rewrite-tab');
+    if (rewriteTab && data.lastSubTab) {
+      const subTab = rewriteTab.querySelector(`.tab[data-tab="${data.lastSubTab}"]`);
+      const subContent = document.getElementById(`${data.lastSubTab}-tab`);
+      if (subTab && subContent) {
+        // 移除其他子分頁的活動狀態
+        rewriteTab.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        rewriteTab.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        
+        // 設置保存的子分頁為活動狀態
         subTab.classList.add('active');
-        subTabContent.classList.add('active');
+        subContent.classList.add('active');
       }
     }
   });
@@ -243,19 +281,23 @@ document.addEventListener('DOMContentLoaded', async function() {
   rewriteButton.addEventListener('click', function() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       chrome.tabs.sendMessage(tabs[0].id, {
-        action: "rewrite", // 改寫請求
-        apiKeys: apiKeys, // API 金鑰
-        model: modelSelect.value, // API 模型
-        instruction: instructionInput.value, // 改寫指令
-        shortInstruction: shortInstructionInput.value, // 短改寫指令
-        autoRewritePatterns: autoRewritePatternsInput.value, // 自動改寫匹配模式
-        fullRewriteModel: fullRewriteModelSelect.value, // 全改寫模型
-        shortRewriteModel: shortRewriteModelSelect.value, // 短改寫模型
-        autoRewriteModel: autoRewriteModelSelect.value, // 自動改寫模型
-        translateModel: translateModelSelect.value, // 翻譯模型
-        translateInstruction: translateInstructionInput.value, // 翻譯指令
-        removeHash: removeHashCheckbox.checked, // 移除##設置
-        removeStar: removeStarCheckbox.checked // 移除**設置
+        action: "rewrite",
+        apiKeys: apiKeys,
+        model: modelSelect.value,
+        instruction: instructionInput.value,
+        shortInstruction: shortInstructionInput.value,
+        autoRewritePatterns: autoRewritePatternsInput.value,
+        fullRewriteModel: fullRewriteModelSelect.value,
+        shortRewriteModel: shortRewriteModelSelect.value,
+        autoRewriteModel: autoRewriteModelSelect.value,
+        translateModel: translateModelSelect.value,
+        translateInstruction: translateInstructionInput.value,
+        reflectModel: reflectModelSelect.value,
+        reflectInstruction: reflectInstructionInput.value,
+        optimizeModel: optimizeModelSelect.value,
+        optimizeInstruction: optimizeInstructionInput.value,
+        removeHash: removeHashCheckbox.checked,
+        removeStar: removeStarCheckbox.checked
       }, function(response) {
         if (response && response.success) {
           console.log('改寫請求已發送');
@@ -282,14 +324,67 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   tabs.forEach(tab => {
     tab.addEventListener('click', function() {
+      console.group('子分頁切換');
       const tabName = this.getAttribute('data-tab');
-      tabs.forEach(t => t.classList.remove('active'));
-      tabContents.forEach(c => c.classList.remove('active'));
+      console.log('切換到子分頁:', tabName);
+      
+      // 找到最近的 tab-container 父元素
+      const container = this.closest('.tab-container');
+      console.log('tab-container:', container);
+      
+      // 只切換同一個 container 內的分頁
+      const siblingTabs = container.querySelectorAll('.tab');
+      console.log('同級分頁數量:', siblingTabs.length);
+      
+      const containerContent = this.closest('.content');
+      console.log('content container:', containerContent);
+      
+      const containerContents = containerContent.querySelectorAll('.tab-content');
+      console.log('內容區塊數量:', containerContents.length);
+      
+      siblingTabs.forEach(t => {
+        console.log('移除分頁活動狀態:', t.getAttribute('data-tab'));
+        t.classList.remove('active');
+      });
+      
+      containerContents.forEach(c => {
+        console.log('移除內容區塊活動狀態:', c.id);
+        c.classList.remove('active');
+      });
+      
+      console.log('設置當前分頁為活動狀態:', this.getAttribute('data-tab'));
       this.classList.add('active');
-      document.getElementById(`${tabName}-tab`).classList.add('active');
+      
+      // 根據分頁位置選擇正確的內容元素 ID
+      const isInMainTab = container.closest('.main-tab-content');
+      const isInTranslateTab = isInMainTab && isInMainTab.id === 'translate-tab';
+      console.log('是否在主分頁內:', !!isInMainTab);
+      console.log('是否在翻譯分頁內:', isInTranslateTab);
+      
+      let contentId;
+      if (isInTranslateTab) {
+        contentId = `${tabName}-content`;  // 在翻譯分頁內的子分頁
+      } else if (isInMainTab) {
+        contentId = `${tabName}-tab`;      // 在主分頁內的子分頁
+      } else {
+        contentId = `${tabName}-content`;  // 其他情況
+      }
+      console.log('目標內容區塊ID:', contentId);
+      
+      const targetContent = document.getElementById(contentId);
+      console.log('找到目標內容區塊:', !!targetContent);
+      
+      if (targetContent) {
+        console.log('設置目標內容區塊為活動狀態');
+        targetContent.classList.add('active');
+      } else {
+        console.warn('未找到目標內容區塊:', contentId);
+      }
       
       // 保存子分頁狀態
       chrome.storage.sync.set({ lastSubTab: tabName });
+      console.log('已保存子分頁狀態:', tabName);
+      console.groupEnd();
     });
   });
 
@@ -299,14 +394,37 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   mainTabs.forEach(tab => {
     tab.addEventListener('click', function() {
+      console.group('主分頁切換');
       const tabName = this.getAttribute('data-tab');
-      mainTabs.forEach(t => t.classList.remove('active'));
-      mainTabContents.forEach(c => c.classList.remove('active'));
+      console.log('切換到主分頁:', tabName);
+      
+      mainTabs.forEach(t => {
+        console.log('移除主分頁活動狀態:', t.getAttribute('data-tab'));
+        t.classList.remove('active');
+      });
+      
+      mainTabContents.forEach(c => {
+        console.log('移除主內容區塊活動狀態:', c.id);
+        c.classList.remove('active');
+      });
+      
+      console.log('設置當前主分頁為活動狀態:', tabName);
       tab.classList.add('active');
-      document.getElementById(`${tabName}-tab`).classList.add('active');
+      
+      const targetContent = document.getElementById(`${tabName}-tab`);
+      console.log('找到目標主內容區塊:', !!targetContent);
+      
+      if (targetContent) {
+        console.log('設置目標主內容區塊為活動狀態');
+        targetContent.classList.add('active');
+      } else {
+        console.warn('未找到目標主內容區塊:', `${tabName}-tab`);
+      }
       
       // 保存主分頁狀態
       chrome.storage.sync.set({ lastMainTab: tabName });
+      console.log('已保存主分頁狀態:', tabName);
+      console.groupEnd();
     });
   });
 
@@ -329,141 +447,53 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 更新 content.js 設置
   async function updateContentScript(settings) {
     try {
-        // 先檢查內容腳本是否準備就緒
-        const response = await chrome.runtime.sendMessage({
-            action: "checkContentScriptReady"
+      const tabs = await chrome.tabs.query({active: true, currentWindow: true});
+      if (!tabs || !tabs[0]) {
+        console.log('未找到活動的標籤頁');
+        return;
+      }
+
+      // 保存設置到 storage，確保設置不會丟失
+      await chrome.storage.sync.set({ settings });
+      console.log('設置已保存到 storage');
+
+      try {
+        // 嘗試發送消息到 content script
+        await chrome.tabs.sendMessage(tabs[0].id, {
+          action: "updateSettings",
+          settings: settings
         });
-
-        if (!response || !response.ready) {
-            console.log('內容腳本尚未準備就緒，將設置保存到 storage');
-            // 如果內容腳本未準備就緒，只保存設置到 storage
-            await chrome.storage.sync.set({ settings });
-            return;
+        console.log('設置已成功發送到 content script');
+      } catch (error) {
+        // 忽略連接錯誤，因為設置已經保存到 storage
+        if (error.message.includes('Receiving end does not exist')) {
+          console.log('content script 未載入，設置將在下次載入時應用');
+        } else {
+          console.warn('更新 content script 時發生錯誤:', error);
         }
-
-        // 查找當前活動的標籤頁
-        const tabs = await chrome.tabs.query({active: true, currentWindow: true});
-        if (!tabs || !tabs[0]) {
-            console.warn('未找到活動的標籤頁');
-            return;
-        }
-
-        // 嘗試向內容腳本發送更新
-        try {
-            await chrome.tabs.sendMessage(tabs[0].id, {
-                action: "updateContentScript",
-                settings: settings
-            });
-            console.log('成功更新內容腳本設置');
-        } catch (error) {
-            if (error.message.includes('Receiving end does not exist')) {
-                console.log('內容腳本未載入，將設置保存到 storage');
-                await chrome.storage.sync.set({ settings });
-            } else {
-                throw error;
-            }
-        }
+      }
     } catch (error) {
-        console.warn('更新內容腳本設置時發生錯誤:', error);
-        // 確保設置至少被保存到 storage
-        await chrome.storage.sync.set({ settings });
+      console.warn('updateContentScript 發生錯誤:', error);
     }
   }
 
-  // 監聽輸入事件
-  highlightWordsInput?.addEventListener('input', function(e) {
-    console.group('高亮文字修改');
-    const oldLines = this.value.split('\n');
-    const cursorPosition = this.selectionStart;
-    
-    console.log('當前完整文字:', this.value);
-    console.log('this._previousValue:', this._previousValue);
-    
-    // 找出被修改的是哪一行
-    let currentLineNumber = 0;
-    let charCount = 0;
-    while (charCount <= cursorPosition && currentLineNumber < oldLines.length) {
-      charCount += oldLines[currentLineNumber].length + 1;
-      currentLineNumber++;
-    }
-    currentLineNumber--;
-    
-    console.log('計算出的行號:', currentLineNumber);
-    
-    const currentLine = oldLines[currentLineNumber];
-    const previousText = this._previousValue || '';
-    const previousLines = previousText.split('\n');
-    const previousLine = previousLines[currentLineNumber];
-    
-    console.log('當前行:', currentLine);
-    console.log('修改前的行:', previousLine);
-    console.log('修改前行的顏色:', wordColors[previousLine]);
-    console.log('當前所有顏色設定的鍵值:', Object.keys(wordColors));
-    
-    // 如果是修改現有文字，保持原來的顏色
-    if (previousLine && wordColors[previousLine]) {
-        console.log('符合轉移條件：', {
-            'previousLine存在': !!previousLine,
-            'previousLine有顏色': !!wordColors[previousLine]
-        });
-        console.log('轉移顏色 - 從:', previousLine, '到:', currentLine);
-        const oldColor = wordColors[previousLine];
-        delete wordColors[previousLine];
-        wordColors[currentLine] = oldColor;
-    } else {
-        console.log('不符合轉移條件：', {
-            'previousLine存在': !!previousLine,
-            'previousLine有顏色': !!wordColors[previousLine],
-            'currentLine有顏色': !!wordColors[currentLine]
-        });
-    }
-    
-    // 儲存當前值供下次比對用
-    this._previousValue = this.value;
-    console.log('已更新 this._previousValue:', this._previousValue);
-    
-    // 保存和更新
-    chrome.storage.sync.set({ 
-        highlightWords: this.value,
-        highlightColors: wordColors 
-    });
-    updateHighlightWords(this.value);
-    updatePreview();
-    
-    console.groupEnd();
-  });
-
-  // 修改消息發送函數，添加錯誤處理
+  // 修改消息發送函數
   function sendMessageToTab(message, callback) {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       if (!tabs[0]) {
-        console.debug('沒有找到活動的標籤頁');
+        console.log('未找到活動的標籤頁');
         return;
       }
       
-      try {
-        chrome.tabs.sendMessage(tabs[0].id, message, function(response) {
-          if (chrome.runtime.lastError) {
-            // 這是正常的情況，不需要顯示為錯誤
-            console.debug('通信未建立，可能是 content script 尚未載入');
-            return;
-          }
-          if (callback) callback(response);
-        });
-      } catch (error) {
-        console.debug('發送消息時出錯:', error);
-      }
-    });
-  }
-
-  // 修改所有使用 chrome.tabs.sendMessage 的地方
-  // 例如在 updateHighlightWords 函數中：
-  function updateHighlightWords(text) {
-    const words = text.split('\n').filter(word => word.trim());
-    sendMessageToTab({
-      action: "updateHighlightWords",
-      words: words,
-      colors: wordColors || {}
+      chrome.tabs.sendMessage(tabs[0].id, message, function(response) {
+        if (chrome.runtime.lastError) {
+          console.log('content script 未載入或無法連接');
+          // 如果有回調函數，則調用它並傳遞錯誤信息
+          if (callback) callback({ error: 'content script 未載入' });
+          return;
+        }
+        if (callback) callback(response);
+      });
     });
   }
 
@@ -517,10 +547,25 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 修改 updateHighlightWords 函數
   function updateHighlightWords(text) {
     const words = text.split('\n').filter(word => word.trim());
-    sendMessageToTab({
+    const data = {
       action: "updateHighlightWords",
       words: words,
       colors: wordColors || {}
+    };
+
+    // 保存到 storage
+    chrome.storage.sync.set({
+      highlightWords: text,
+      highlightColors: wordColors
+    }, function() {
+      // 然後嘗試發送到 content script
+      sendMessageToTab(data, function(response) {
+        if (response && response.error) {
+          console.log('高亮設置已保存，將在頁面重新載入時應用');
+        } else {
+          console.log('高亮設置已更新');
+        }
+      });
     });
   }
 
@@ -657,4 +702,25 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 直接使用已載入的 AutoReplaceManager
     AutoReplaceManager.initializeAutoReplaceGroups(autoReplaceContainer, document.createElement('textarea'));
   }
+
+  // 添加反思和優化分頁的事件監聽器
+  reflectModelSelect.addEventListener('change', async function() {
+    await GlobalSettings.saveSingleSetting('reflectModel', this.value);
+    updateContentScript();
+  });
+
+  optimizeModelSelect.addEventListener('change', async function() {
+    await GlobalSettings.saveSingleSetting('optimizeModel', this.value);
+    updateContentScript();
+  });
+
+  reflectInstructionInput.addEventListener('input', async function() {
+    await GlobalSettings.saveSingleSetting('reflectInstruction', this.value);
+    updateContentScript();
+  });
+
+  optimizeInstructionInput.addEventListener('input', async function() {
+    await GlobalSettings.saveSingleSetting('optimizeInstruction', this.value);
+    updateContentScript();
+  });
 });

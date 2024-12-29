@@ -873,11 +873,16 @@ const TextHighlight = {
   updateHighlights() {
     let lastLogTime = new Date();
     const logWithDiff = (message) => {
-      const currentTime = new Date();
-      const timeStr = currentTime.toISOString();
-      const diffStr = lastLogTime ? `, 耗時: ${currentTime - lastLogTime}ms` : '';
-      console.log(`[高亮效能計算][${timeStr}] ${message}${diffStr}`);
-      lastLogTime = currentTime;
+      // 只在關鍵節點輸出日誌
+      if (message.includes('開始更新高亮') || 
+          message.includes('位置信息收集完成') || 
+          message.includes('高亮更新完成')) {
+        const currentTime = new Date();
+        const timeStr = currentTime.toISOString();
+        const diffStr = lastLogTime ? `, 耗時: ${currentTime - lastLogTime}ms` : '';
+        console.log(`[高亮效能計算][${timeStr}] ${message}${diffStr}`);
+        lastLogTime = currentTime;
+      }
     };
 
     logWithDiff('開始更新高亮');
@@ -927,21 +932,12 @@ const TextHighlight = {
       if (!targetWord.trim()) return;
 
       try {
-        const posStartTime = new Date();
         if (targetWord.startsWith('/') && targetWord.endsWith('/')) {
           // 正則表達式處理
-          logWithDiff(`開始處理正則關鍵字 "${targetWord}"`);
           const regexStr = targetWord.slice(1, -1);
           const regex = RegexHelper.createRegex(targetWord);
-          logWithDiff('正則表達式創建完成');
           
-          const matchStartTime = new Date();
           const matches = Array.from(text.matchAll(regex));
-          logWithDiff(`正則匹配完成，找到 ${matches.length} 個匹配`);
-
-          if (matches.length > 0) {
-            logWithDiff('開始處理匹配結果');
-          }
 
           for (const match of matches) {
             if (match[0]) {
@@ -965,20 +961,10 @@ const TextHighlight = {
               }
             }
           }
-
-          if (matches.length > 0) {
-            logWithDiff('匹配結果處理完成');
-          }
         } else {
           // 普通文字匹配
-          logWithDiff(`開始處理普通關鍵字 "${targetWord}"`);
           const regex = RegexHelper.createRegex(targetWord);
           const matches = Array.from(text.matchAll(regex));
-          logWithDiff(`文字匹配完成，找到 ${matches.length} 個匹配`);
-          
-          if (matches.length > 0) {
-            logWithDiff('開始處理匹配結果');
-          }
 
           matches.forEach(match => {
             const positions = this.PositionCalculator.calculatePosition(
@@ -1000,12 +986,7 @@ const TextHighlight = {
               });
             }
           });
-
-          if (matches.length > 0) {
-            logWithDiff('匹配結果處理完成');
-          }
         }
-        logWithDiff(`處理關鍵字 "${targetWord}" 完成`);
       } catch (error) {
         console.error(`[TextHighlight] 處理文字 "${targetWord}" 時發生錯誤:`, error);
       }

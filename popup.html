@@ -9,11 +9,13 @@
 <body>
   <div class="main-tab-container">
     <div class="main-tab active" data-tab="rewrite">改寫</div>
+    <div class="main-tab" data-tab="translate">翻譯</div>
     <div class="main-tab" data-tab="highlight">高亮</div>
     <div class="main-tab" data-tab="auto-replace">替換</div>
     <div class="main-tab" data-tab="settings">設定</div>
   </div>
 
+  <!-- 改寫 -->
   <div id="rewrite-tab" class="main-tab-content active">
     <div class="content">
       <div class="input-group">
@@ -28,8 +30,6 @@
         <div class="tab active" data-tab="full">全文改寫</div>
         <div class="tab" data-tab="short">10字內改寫</div>
         <div class="tab" data-tab="auto">雙擊改寫</div>
-        <div class="tab" data-tab="translate">翻譯</div>
-        <div class="tab" data-tab="zh-en-mapping">中英對照</div>
         <div class="tab" data-tab="summary">關鍵要點</div>
       </div>
       
@@ -60,33 +60,6 @@
         <textarea id="autoRewritePatterns" placeholder="輸入反白自動改寫匹配模式"></textarea>
       </div>
 
-      <div id="translate-tab" class="tab-content">
-        <select id="translateModel" class="model-select">
-          <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
-          <option value="gpt-4o-mini">GPT-4o mini</option>
-          <option value="gpt-4">GPT-4</option>
-        </select>
-        <textarea id="translateInstruction" placeholder="輸入翻譯要求"></textarea>
-        <div class="checkbox-group">
-          <label class="checkbox-label">
-            <input type="checkbox" id="removeHash">
-            <span>刪除##</span>
-          </label>
-          <label class="checkbox-label">
-            <input type="checkbox" id="removeStar">
-            <span>刪除**</span>
-          </label>
-        </div>
-      </div>
-
-      <div id="zh-en-mapping-tab" class="tab-content">
-        <textarea id="zhEnMapping" placeholder="請輸入中英對照表，每行一個對照
-例如：
-台積電 = TSMC
-鴻海 = Foxconn
-營業額 = Revenue"></textarea>
-      </div>
-      
       <div id="summary-tab" class="tab-content">
         <select id="summaryModel" class="model-select">
           <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
@@ -100,6 +73,66 @@
     </div>
   </div>
 
+  <!-- 翻譯 -->
+  <div id="translate-tab" class="main-tab-content">
+    <div class="content">
+      <div class="translate-container">
+        <div class="tab-container">
+          <div class="tab active" data-tab="translate">初始翻譯</div>
+          <div class="tab" data-tab="reflect">反思</div>
+          <div class="tab" data-tab="optimize">優化</div>
+          <div class="tab" data-tab="zh-en-mapping">中英對照</div>
+        </div>
+
+        <div id="translate-content" class="tab-content active">
+          <select id="translateModel" class="model-select">
+            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
+            <option value="gpt-4o-mini">GPT-4o mini</option>
+            <option value="gpt-4">GPT-4</option>
+          </select>
+          <textarea id="translateInstruction" placeholder="輸入翻譯要求"></textarea>
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="removeHash">
+              <span>刪除##</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="removeStar">
+              <span>刪除**</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="reflect-content" class="tab-content">
+          <select id="reflectModel" class="model-select">
+            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
+            <option value="gpt-4o-mini">GPT-4o mini</option>
+            <option value="gpt-4">GPT-4</option>
+          </select>
+          <textarea id="reflectInstruction" placeholder="輸入翻譯反思要求"></textarea>
+        </div>
+
+        <div id="optimize-content" class="tab-content">
+          <select id="optimizeModel" class="model-select">
+            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
+            <option value="gpt-4o-mini">GPT-4o mini</option>
+            <option value="gpt-4">GPT-4</option>
+          </select>
+          <textarea id="optimizeInstruction" placeholder="輸入翻譯優化要求"></textarea>
+        </div>
+
+        <div id="zh-en-mapping-content" class="tab-content">
+          <textarea id="zhEnMapping" placeholder="請輸入中英對照表，每行一個對照
+例如：
+台積電 = TSMC
+鴻海 = Foxconn
+營業額 = Revenue"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 高亮 -->
   <div id="highlight-tab" class="main-tab-content">
     <div class="content">
       <div class="color-picker">
@@ -148,6 +181,7 @@
     </div>
   </div>
 
+  <!-- 替換 -->
   <div id="auto-replace-tab" class="main-tab-content">
     <div class="content">
       <div class="auto-replace-container">
@@ -156,6 +190,7 @@
     </div>
   </div>
 
+  <!-- 設定 -->
   <div id="settings-tab" class="main-tab-content">
     <div class="content">
       <div class="settings-container">

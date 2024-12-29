@@ -379,18 +379,21 @@ const ManualReplaceManager = {
     },
 
     // 添加效能計算日誌方法
-    _logWithDiff(message) {
-      const currentTime = new Date();
-      const timeStr = currentTime.toISOString();
-      const diffStr = this.virtualScrollData.lastLogTime ? `, 耗時: ${currentTime - this.virtualScrollData.lastLogTime}ms` : '';
-      console.log(`[替換效能計算][${timeStr}] ${message}${diffStr}`);
-      this.virtualScrollData.lastLogTime = currentTime;
+    _logWithDiff(message, startTime) {
+      const endTime = performance.now();
+      const timeDiff = endTime - startTime;
+      
+      // 只保留初始化相關的日誌
+      if (message.includes('開始初始化替換預覽') || 
+          message.includes('替換預覽初始化完成')) {
+        console.log(`${message} (耗時: ${timeDiff.toFixed(2)}ms)`);
+      }
     },
 
     initialize(textArea) {
       if (!textArea) return;
       
-      this._logWithDiff('開始初始化替換預覽');
+      this._logWithDiff('開始初始化替換預覽', performance.now());
       
       this.container = document.createElement('div');
       this.container.id = ManualReplaceManager.CONFIG.PREVIEW_CONTAINER_ID;
@@ -425,7 +428,7 @@ const ManualReplaceManager = {
       // 初始化行信息引用
       this.virtualScrollData.lineInfo = TextHighlight.PositionCalculator.cache.lineInfo;
       
-      this._logWithDiff('替換預覽初始化完成');
+      this._logWithDiff('替換預覽初始化完成', performance.now());
     },
 
     _setupResizeObserver(textArea) {
@@ -472,8 +475,6 @@ const ManualReplaceManager = {
     },
 
     _updateVirtualScrolling(textArea) {
-      this._logWithDiff('開始更新虛擬滾動');
-      
       const scrollTop = textArea.scrollTop;
       const visibleHeight = textArea.clientHeight;
       const totalHeight = textArea.scrollHeight;
@@ -549,8 +550,6 @@ const ManualReplaceManager = {
           highlight.style.display = 'none';
         });
       });
-      
-      this._logWithDiff(`虛擬滾動更新完成，當前可見高亮數：${totalVisiblePositions}`);
     },
 
     updatePreview(textArea, searchText, groupIndex) {
@@ -636,7 +635,7 @@ const ManualReplaceManager = {
           }
         }
 
-        this._logWithDiff(`收集到 ${positions.length} 個位置信息`);
+        this._logWithDiff(`收集到 ${positions.length} 個位置信息`, performance.now());
 
         // 更新虛擬滾動數據
         this.virtualScrollData.allPositions.set(groupIndex, positions);

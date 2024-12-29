@@ -101,7 +101,7 @@ button:hover {
 .input-group {
   display: flex;
   align-items: stretch;
-  margin-top: 8px;
+  margin-bottom: 15px;
 }
 
 /* 核取方塊樣式 */
@@ -123,7 +123,6 @@ input[type="checkbox"] {
 /* 分頁容器樣式 */
 .tab-container {
   display: flex;
-  margin-top: 15px;
   border: 1px solid #ddd;
   border-bottom: none;
   border-radius: 4px 4px 0 0;

@@ -1,12 +1,53 @@
 /* global GlobalSettings, Notification, TextProcessor */
 
+// 常數配置
+window.TranslateConfig = {
+  // API 相關
+  API: {
+    RETRY: {
+      MAX_RETRIES: 3,      // 最大重試次數
+      DELAY: 8000,        // 重試延遲時間（毫秒）
+      TIMEOUT: {
+        TRANSLATE: 20000,  // 翻譯超時時間（毫秒）
+        REFLECT: 40000,    // 反思超時時間（毫秒）
+        OPTIMIZE: 20000    // 優化超時時間（毫秒）
+      }
+    },
+    INTERVAL: {
+      WAIT: 6000          // API 請求間隔（毫秒）
+    }
+  },
+  
+  // 批次處理相關
+  BATCH: {
+    INTERVALS: [
+      [5, 500],    // 5次以下，0.5秒
+      [10, 1000],  // 10次以下，1秒
+      [15, 3000],  // 15次以下，3秒
+      [20, 5000],  // 20次以下，5秒
+      [25, 6000]   // 25次以下，6秒
+    ],
+    DEFAULT_INTERVAL: 5000,  // 預設間隔
+    TEXT_LIMIT: {
+      LINE: 1700,           // 單行最大字數
+      BATCH: 1200          // 批次最大字數
+    },
+    MAX_PREVIOUS_BLOCKS: 3  // 最大前文區塊數
+  }
+};
+
 // 確保在全局範圍內定義 TranslateManager
 window.TranslateManager = {
   isTranslating: false,
   currentBatchIndex: 0,
   translationQueue: [],
   pendingTranslations: new Map(),
-  completedTranslations: new Set(), // 新增：追踪已完成的翻譯
+  completedTranslations: new Set(),
+  translationResults: {
+    initial: new Map(),    // 初始翻譯結果
+    reflection: new Map(),  // 反思結果
+    optimize: new Map()     // 優化結果
+  },
   shouldCancel: false,
   totalBatches: 0,
   timeoutId: null,
@@ -22,15 +63,9 @@ window.TranslateManager = {
    * 根據批次數量決定發送間隔
    */
   getBatchInterval() {
-    const intervals = [
-      [5, 500],   // 5次以下，0.5秒
-      [10, 1000], // 10次以下，1秒
-      [15, 3000], // 15次以下，3秒
-      [20, 4000], // 20次以下，4秒
-      [25, 5000]  // 25次以下，5秒
-    ];
-
-    return intervals.find(([count]) => this.totalBatches <= count)?.[1] || 5000;
+    return TranslateConfig.BATCH.INTERVALS.find(
+      ([count]) => this.totalBatches <= count
+    )?.[1] || TranslateConfig.BATCH.DEFAULT_INTERVAL;
   },
 
   /**
@@ -98,20 +133,24 @@ window.TranslateManager = {
    */
   resetTranslation() {
     console.log('重置翻譯狀態');
-    this.isTranslating = false; // 重置翻譯狀態
-    this.shouldCancel = false; // 重置取消標誌
-    this.currentBatchIndex = 0; // 重置批次索引
-    this.translationQueue = []; // 重置翻譯隊列
-    this.pendingTranslations.clear(); // 清除待翻譯的文本
-    this.completedTranslations.clear(); // 清除已完成的翻譯記錄
-    this.isLastBatchProcessed = false; // 重置最後一個批次處理標誌
-    this.batchInterval = 5000; // 重置批次間隔
-    this.selectionStart = null; // 重置選取位置
-    this.selectionEnd = null; // 重置選取位置
+    this.isTranslating = false;
+    this.shouldCancel = false;
+    this.currentBatchIndex = 0;
+    this.translationQueue = [];
+    this.pendingTranslations.clear();
+    this.completedTranslations.clear();
+    // 清除所有階段的翻譯結果
+    this.translationResults.initial.clear();
+    this.translationResults.reflection.clear();
+    this.translationResults.optimize.clear();
+    this.isLastBatchProcessed = false;
+    this.batchInterval = 5000;
+    this.selectionStart = null;
+    this.selectionEnd = null;
 
     if (this.timeoutId) { 
-      clearTimeout(this.timeoutId); // 清除定時器
-      this.timeoutId = null; // 重置定時器
+      clearTimeout(this.timeoutId);
+      this.timeoutId = null;
     }
 
     // 重置按鈕文本
@@ -144,7 +183,7 @@ window.TranslateManager = {
 
     // 按換行分割文本
     text.split('\n').forEach(line => {
-      if (line.length > 2000) { // 如果行長度超過2000字
+      if (line.length > TranslateConfig.BATCH.TEXT_LIMIT.LINE) {
         const remainder = processLongLine(line);
         currentBatch = remainder;
         return;
@@ -154,16 +193,16 @@ window.TranslateManager = {
       const newBatch = currentBatch ? `${currentBatch}\n${line}` : line;
       const hasPeriod = /[.。]$/.test(line.trim());
 
-      // 如果新批次包含句號，且長度超過1500字，則添加到段落
-      if (hasPeriod && newBatch.length > 1500) {
+      // 如果新批次包含句號，且長度超過限制，則添加到段落
+      if (hasPeriod && newBatch.length > TranslateConfig.BATCH.TEXT_LIMIT.BATCH) {
         addToParagraphs(newBatch);
         currentBatch = '';
-      } else { // 否則，將新批次設置為當前批次
+      } else {
         currentBatch = newBatch;
       }
     });
 
-    addToParagraphs(currentBatch); // 添加剩餘文本
+    addToParagraphs(currentBatch);
     return paragraphs;
   },
 
@@ -289,7 +328,7 @@ window.TranslateManager = {
     this.totalBatches = this.translationQueue.length;
     this.batchInterval = this.getBatchInterval();
     this.pendingTranslations.clear();
-    this.completedTranslations.clear(); // 重置已完成的翻譯記錄
+    this.completedTranslations.clear();
     this.timeoutId = null;
 
     // 更新按鈕狀態
@@ -327,6 +366,125 @@ window.TranslateManager = {
   },
 
   /**
+   * 獲取前文上下文
+   */
+  getPreviousContext(currentIndex) {
+    const previousBlocks = [];
+    const maxBlocks = TranslateConfig.BATCH.MAX_PREVIOUS_BLOCKS;
+    
+    console.log(`開始收集前文上下文，當前區塊索引: ${currentIndex}, 最大區塊數: ${maxBlocks}`);
+    
+    // 從當前區塊往前收集
+    for (let i = currentIndex - 1; i >= 0 && i > currentIndex - maxBlocks; i--) {
+      // 獲取原文和優化後的譯文
+      const initialResult = this.translationResults.initial.get(i);
+      const optimizeResult = this.translationResults.optimize.get(i);
+
+      if (!initialResult || !optimizeResult) {
+        console.log(`警告：找不到區塊 ${i} 的完整翻譯結果`);
+        continue;
+      }
+
+      previousBlocks.unshift({
+        original: initialResult.original,
+        optimized: optimizeResult
+      });
+    }
+
+    if (previousBlocks.length === 0) {
+      console.log('沒有找到任何前文上下文');
+      return [];
+    }
+
+    console.log(`成功收集到 ${previousBlocks.length} 個區塊的上下文`);
+    return [{
+      role: "system",
+      content: `請參考前文的翻譯：\n${previousBlocks.map(block => 
+        `原文：\n${block.original}\n\n譯文：\n${block.optimized}\n---`
+      ).join('\n')}`
+    }];
+  },
+
+  /**
+   * 處理反思階段
+   */
+  async processReflection(translatedText, sourceText, blockIndex) {
+    if (this.shouldCancel) {
+      console.log('流程已取消，停止反思處理');
+      return;
+    }
+
+    const settings = await window.GlobalSettings.loadSettings();
+    const model = settings.reflectModel || settings.model;
+    const isGemini = model.startsWith('gemini');
+    const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
+
+    // 替換指令中的變數
+    const instruction = settings.reflectInstruction
+      .replace('{{source_text}}', sourceText)
+      .replace('{{translation_1}}', translatedText);
+
+    // 獲取前文上下文
+    const context = blockIndex > 0 ? this.getPreviousContext(blockIndex) : [];
+
+    const { endpoint, body } = TextProcessor._prepareApiConfig(
+      model,
+      instruction,
+      '',
+      context
+    );
+
+    console.log('反思階段請求體:', JSON.stringify(body, null, 2));
+
+    const reflectionResult = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'reflect');
+    
+    // 保存反思結果
+    this.translationResults.reflection.set(blockIndex, reflectionResult);
+    
+    return reflectionResult;
+  },
+
+  /**
+   * 處理優化階段
+   */
+  async processOptimization(translatedText, sourceText, reflectionResult, blockIndex) {
+    if (this.shouldCancel) {
+      console.log('流程已取消，停止優化處理');
+      return;
+    }
+
+    const settings = await window.GlobalSettings.loadSettings();
+    const model = settings.optimizeModel || settings.model;
+    const isGemini = model.startsWith('gemini');
+    const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
+
+    // 替換指令中的變數
+    const instruction = settings.optimizeInstruction
+      .replace('{{source_text}}', sourceText)
+      .replace('{{translation_1}}', translatedText)
+      .replace('{{reflection}}', reflectionResult);
+
+    // 獲取前文上下文
+    const context = blockIndex > 0 ? this.getPreviousContext(blockIndex) : [];
+
+    const { endpoint, body } = TextProcessor._prepareApiConfig(
+      model,
+      instruction,
+      '',
+      context
+    );
+
+    console.log('優化階段請求體:', JSON.stringify(body, null, 2));
+
+    const optimizedResult = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'optimize');
+    
+    // 保存優化結果
+    this.translationResults.optimize.set(blockIndex, optimizedResult);
+    
+    return optimizedResult;
+  },
+
+  /**
    * 處理下一個批次
    */
   async processNextBatch() {
@@ -343,23 +501,22 @@ window.TranslateManager = {
       return;
     }
 
-    const originalText = this.translationQueue[this.currentBatchIndex]; // 獲取當前批次的原始文本
-    const batchIndex = this.currentBatchIndex; // 獲取當前批次索引
+    const originalText = this.translationQueue[this.currentBatchIndex];
+    const batchIndex = this.currentBatchIndex;
 
-    // 設置當前批次的原始文本
-    this.pendingTranslations.set(batchIndex, originalText); // 設置待翻譯的文本
-    this.currentBatchIndex++; // 遞增批次索引
+    this.pendingTranslations.set(batchIndex, originalText);
+    this.currentBatchIndex++;
 
     try {
-      const settings = await window.GlobalSettings.loadSettings(); // 加載設置
-      const model = settings.translateModel || settings.model; // 獲取翻譯模型
-      const isGemini = model.startsWith('gemini'); // 檢查是否使用 Gemini 模型
-      const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai']; // 獲取 API 金鑰
+      const settings = await window.GlobalSettings.loadSettings();
+      const model = settings.translateModel || settings.model;
+      const isGemini = model.startsWith('gemini');
+      const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
 
       // 獲取翻譯上下文
       const context = await this.getTranslationContext();
 
-      const { endpoint, body } = TextProcessor._prepareApiConfig( // 準備 API 請求配置
+      const { endpoint, body } = TextProcessor._prepareApiConfig(
         model,
         originalText,
         settings.translateInstruction,
@@ -367,25 +524,71 @@ window.TranslateManager = {
       );
 
       console.log(`正在翻譯第 ${batchIndex + 1}/${this.totalBatches} 批次`);
-      const translatedText = await TextProcessor._sendRequest(endpoint, body, apiKey, isGemini); // 發送 API 請求
+      const translatedText = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true);
 
       if (this.shouldCancel) {
         console.log('翻譯已取消，忽略結果');
         return;
       }
 
-      // 更新已翻譯的文本，刪除待翻譯的文本，記錄已完成的批次
-      if (this.pendingTranslations.has(batchIndex)) { // 檢查是否存在待翻譯的文本
-        this.updateTranslatedText(batchIndex, translatedText.trim(), settings); // 更新已翻譯的文本
-        this.pendingTranslations.delete(batchIndex); // 刪除待翻譯的文本
-        this.completedTranslations.add(batchIndex); // 記錄已完成的批次
+      if (this.pendingTranslations.has(batchIndex)) {
+        this.updateTranslatedText(batchIndex, translatedText.trim(), settings);
+        this.pendingTranslations.delete(batchIndex);
+        this.completedTranslations.add(batchIndex);
 
-        // 檢查是否所有批次都已完成
-        if (this.isAllBatchesCompleted()) {
-          console.log('所有批次已完成，顯示完成通知');
+        if (this.isAllBatchesCompleted() && !this.shouldCancel) {
+          console.log('所有翻譯批次已完成，開始分區塊反思和優化流程');
           clearTimeout(this.timeoutId);
-          await window.Notification.showNotification('翻譯完成', false);
-          this.resetTranslation();
+
+          try {
+            const results = [];
+            // 對每個區塊進行反思和優化
+            for (let i = 0; i < this.translationQueue.length; i++) {
+              const originalBlock = this.translationQueue[i];
+              const translatedBlock = this.getTranslatedTextForBlock(i);
+
+              // 1. 反思階段
+              await window.Notification.showNotification(`開始進行第 ${i + 1} 區塊的翻譯反思...`, true);
+              const reflectionResult = await this.processReflection(translatedBlock, originalBlock, i);
+              if (this.shouldCancel) {
+                console.log('流程已取消，停止反思更新');
+                return;
+              }
+              
+              // 反思後等待指定時間
+              await new Promise(resolve => setTimeout(resolve, TranslateConfig.API.INTERVAL.WAIT));
+              console.log(`第 ${i + 1} 區塊反思完成，等待 ${TranslateConfig.API.INTERVAL.WAIT/1000} 秒...`);
+
+              // 2. 優化階段
+              await window.Notification.showNotification(`開始進行第 ${i + 1} 區塊的翻譯優化...`, true);
+              const optimizedResult = await this.processOptimization(translatedBlock, originalBlock, reflectionResult, i);
+              if (this.shouldCancel) {
+                console.log('流程已取消，停止優化更新');
+                return;
+              }
+
+              // 優化後等待指定時間
+              await new Promise(resolve => setTimeout(resolve, TranslateConfig.API.INTERVAL.WAIT));
+              console.log(`第 ${i + 1} 區塊優化完成，等待 ${TranslateConfig.API.INTERVAL.WAIT/1000} 秒...`);
+
+              results.push(optimizedResult);
+            }
+
+            // 更新最終文本
+            const finalText = results.join('\n');
+            this.updateFinalText(finalText);
+            await window.Notification.showNotification('翻譯優化完成', false);
+
+          } catch (error) {
+            if (!this.shouldCancel) {
+              console.error('反思優化處理失敗:', error);
+              await window.Notification.showNotification('反思優化處理失敗: ' + error.message, false);
+            }
+          } finally {
+            if (!this.shouldCancel) {
+              this.resetTranslation();
+            }
+          }
         } else if (!this.shouldCancel) {
           // 如果還有未完成的批次，更新進度通知
           await window.Notification.showNotification(`
@@ -412,17 +615,28 @@ window.TranslateManager = {
   },
 
   /**
-   * 更新已翻譯的文本，顯示批次更新日誌，並直接替換整個文本
+   * 獲取特定區塊的翻譯文本
+   */
+  getTranslatedTextForBlock(blockIndex) {
+    // 從 translationResults 中獲取初始翻譯結果
+    const result = this.translationResults.initial.get(blockIndex);
+    if (!result) {
+      console.log(`警告：找不到區塊 ${blockIndex} 的譯文`);
+      return '';
+    }
+    return result.translated;
+  },
+
+  /**
+   * 更新已翻譯的文本
    */
   updateTranslatedText(batchIndex, translatedText, settings) {
-    const textArea = document.querySelector('textarea[name="content"]'); // 獲取文本區域
-    if (!textArea) return; // 如果文本區域不存在，返回
+    const textArea = document.querySelector('textarea[name="content"]');
+    if (!textArea) return;
 
-    const originalText = this.translationQueue[batchIndex]; // 獲取當前批次的原始文本
-    // 如果不是第一批次，在翻譯文本前添加換行符
+    const originalText = this.translationQueue[batchIndex];
     let finalTranslatedText = batchIndex > 0 ? '\n' + translatedText : translatedText;
 
-    // 使用類別中保存的 checkbox 值
     if (settings.removeHash) {
       finalTranslatedText = finalTranslatedText.replace(/##\s*|\s*##/g, '');
     }
@@ -430,17 +644,19 @@ window.TranslateManager = {
       finalTranslatedText = finalTranslatedText.replace(/\*\*\s*|\s*\*\*/g, '');
     }
 
-    // 顯示批次更新日誌
+    // 保存初始翻譯結果
+    this.translationResults.initial.set(batchIndex, {
+      original: originalText,
+      translated: finalTranslatedText
+    });
+
     console.log(`\n=== 批次 ${batchIndex + 1}/${this.totalBatches} 翻譯更新 ===`);
     console.log('原始文本：\n' + (originalText.length > 500 ? originalText.substring(0, 500) + '...' : originalText));
     console.log('翻譯結果：\n' + (finalTranslatedText.length > 500 ? finalTranslatedText.substring(0, 500) + '...' : finalTranslatedText));
     console.log(`原始長度：${originalText.length}，翻譯後長度：${finalTranslatedText.length}`);
     console.log('=====================================\n');
 
-    // 直接替換整個文本
     textArea.value = textArea.value.replace(originalText, finalTranslatedText);
-
-
     textArea.dispatchEvent(new Event('input', { bubbles: true }));
   },
 
@@ -485,6 +701,55 @@ window.TranslateManager = {
   },
 
   /**
+   * 處理 API 請求並支援重試機制
+   */
+  async sendRequestWithRetry(endpoint, body, apiKey, isGemini, showProgress, requestType = 'translate') {
+    let retryCount = 0;
+    const { MAX_RETRIES, DELAY, TIMEOUT } = TranslateConfig.API.RETRY;
+    const timeoutDuration = TIMEOUT[requestType.toUpperCase()];
+
+    while (retryCount < MAX_RETRIES) {
+      try {
+        const startTime = Date.now();  // 記錄開始時間
+
+        // 建立一個帶有超時的 Promise
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error('請求超時'));
+          }, timeoutDuration);
+        });
+
+        // 建立實際的請求 Promise
+        const requestPromise = TextProcessor._sendRequest(endpoint, body, apiKey, isGemini, showProgress);
+
+        // 使用 Promise.race 來競爭，誰先完成就用誰的結果
+        const response = await Promise.race([
+          requestPromise,
+          timeoutPromise
+        ]);
+
+        // 如果請求成功但已經超時，則忽略這個回應
+        if (Date.now() - startTime > timeoutDuration) {
+          console.log(`收到回應但已超時 (${requestType})，忽略此回應`);
+          continue;
+        }
+
+        return response;
+      } catch (error) {
+        // 所有錯誤都重試，但最後一次失敗時拋出錯誤
+        if (retryCount < MAX_RETRIES - 1) {
+          retryCount++;
+          const errorMessage = error.status ? `狀態碼 ${error.status}` : error.message;
+          console.log(`收到錯誤 (${errorMessage})，等待 ${DELAY/1000} 秒後進行第 ${retryCount} 次重試...`);
+          await new Promise(resolve => setTimeout(resolve, DELAY));
+          continue;
+        }
+        throw error;
+      }
+    }
+  },
+
+  /**
    * 處理翻譯請求
    */
   async processTranslation(text, settings) {
@@ -504,11 +769,54 @@ window.TranslateManager = {
         context
       };
 
-      // 發送翻譯請求
-      return await window.TextProcessor.processText(text, config);
+      const { endpoint, body } = TextProcessor._prepareApiConfig(
+        model,
+        text,
+        settings.translateInstruction,
+        context
+      );
+
+      return await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'translate');
     } catch (error) {
       console.error('翻譯處理失敗:', error);
       throw error;
     }
+  },
+
+  /**
+   * 獲取當前翻譯後的文本
+   */
+  getTranslatedText() {
+    const textArea = document.querySelector('textarea[name="content"]');
+    if (!textArea) return '';
+    
+    // 如果有選取範圍，只返回選取的部分
+    if (this.selectionStart !== null && this.selectionEnd !== null) {
+      return textArea.value.substring(this.selectionStart, this.selectionEnd);
+    }
+    return textArea.value;
+  },
+
+  /**
+   * 更新最終文本
+   */
+  updateFinalText(finalText) {
+    if (this.shouldCancel) {
+      console.log('流程已取消，停止文本更新');
+      return;
+    }
+
+    const textArea = document.querySelector('textarea[name="content"]');
+    if (!textArea) return;
+
+    if (this.selectionStart !== null && this.selectionEnd !== null) {
+      const beforeSelection = textArea.value.substring(0, this.selectionStart);
+      const afterSelection = textArea.value.substring(this.selectionEnd);
+      textArea.value = beforeSelection + finalText + afterSelection;
+    } else {
+      textArea.value = finalText;
+    }
+
+    textArea.dispatchEvent(new Event('input', { bubbles: true }));
   }
 };
