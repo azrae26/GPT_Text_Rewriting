@@ -683,7 +683,7 @@ const TextHighlight = {
         const currentTime = new Date();
         const timeStr = currentTime.toISOString();
         const diffStr = lastLogTime ? `, 耗時: ${currentTime - lastLogTime}ms` : '';
-        console.log(`[${timeStr}] ${message}${diffStr}`);
+        console.log(`[高亮效能計算][${timeStr}] ${message}${diffStr}`);
         lastLogTime = currentTime;
       };
       
@@ -876,7 +876,7 @@ const TextHighlight = {
       const currentTime = new Date();
       const timeStr = currentTime.toISOString();
       const diffStr = lastLogTime ? `, 耗時: ${currentTime - lastLogTime}ms` : '';
-      console.log(`[${timeStr}] ${message}${diffStr}`);
+      console.log(`[高亮效能計算][${timeStr}] ${message}${diffStr}`);
       lastLogTime = currentTime;
     };
 

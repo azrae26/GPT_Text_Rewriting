@@ -374,11 +374,23 @@ const ManualReplaceManager = {
       bufferSize: 200,      // 緩衝區大小（像素）
       lastText: '',     // 記錄上次的文本
       lineInfo: null,   // 行信息引用
-      positionCache: new Map() // 位置快取
+      positionCache: new Map(), // 位置快取
+      lastLogTime: null // 效能計算用
+    },
+
+    // 添加效能計算日誌方法
+    _logWithDiff(message) {
+      const currentTime = new Date();
+      const timeStr = currentTime.toISOString();
+      const diffStr = this.virtualScrollData.lastLogTime ? `, 耗時: ${currentTime - this.virtualScrollData.lastLogTime}ms` : '';
+      console.log(`[替換效能計算][${timeStr}] ${message}${diffStr}`);
+      this.virtualScrollData.lastLogTime = currentTime;
     },
 
     initialize(textArea) {
       if (!textArea) return;
+      
+      this._logWithDiff('開始初始化替換預覽');
       
       this.container = document.createElement('div');
       this.container.id = ManualReplaceManager.CONFIG.PREVIEW_CONTAINER_ID;
@@ -412,6 +424,8 @@ const ManualReplaceManager = {
       
       // 初始化行信息引用
       this.virtualScrollData.lineInfo = TextHighlight.PositionCalculator.cache.lineInfo;
+      
+      this._logWithDiff('替換預覽初始化完成');
     },
 
     _setupResizeObserver(textArea) {
@@ -458,6 +472,8 @@ const ManualReplaceManager = {
     },
 
     _updateVirtualScrolling(textArea) {
+      this._logWithDiff('開始更新虛擬滾動');
+      
       const scrollTop = textArea.scrollTop;
       const visibleHeight = textArea.clientHeight;
       const totalHeight = textArea.scrollHeight;
@@ -466,6 +482,8 @@ const ManualReplaceManager = {
       const bufferSize = this.virtualScrollData.bufferSize;
       const visibleTop = Math.max(0, scrollTop - bufferSize);
       const visibleBottom = Math.min(totalHeight, scrollTop + visibleHeight + bufferSize);
+
+      let totalVisiblePositions = 0;
 
       // 更新每個組的可見性
       this.virtualScrollData.allPositions.forEach((positions, groupIndex) => {
@@ -484,6 +502,8 @@ const ManualReplaceManager = {
           const top = pos.position ? pos.position.top : pos.top;
           return top >= visibleTop && top <= visibleBottom;
         });
+
+        totalVisiblePositions += visiblePositions.length;
 
         // 更新或創建可見範圍內的高亮
         visiblePositions.forEach(pos => {
@@ -529,6 +549,8 @@ const ManualReplaceManager = {
           highlight.style.display = 'none';
         });
       });
+      
+      this._logWithDiff(`虛擬滾動更新完成，當前可見高亮數：${totalVisiblePositions}`);
     },
 
     updatePreview(textArea, searchText, groupIndex) {
@@ -549,7 +571,6 @@ const ManualReplaceManager = {
 
         // 檢查匹配數量是否超過上限
         if (matches.length > ManualReplaceManager.CONFIG.MAX_PREVIEWS) {
-          console.log(`匹配數量(${matches.length})超過上限(${ManualReplaceManager.CONFIG.MAX_PREVIEWS})，只顯示前${ManualReplaceManager.CONFIG.MAX_PREVIEWS}個預覽`);
           matches.length = ManualReplaceManager.CONFIG.MAX_PREVIEWS;
         }
 
@@ -569,6 +590,9 @@ const ManualReplaceManager = {
 
         // 收集所有位置信息
         const positions = [];
+        let cacheHits = 0;
+        let cacheMisses = 0;
+        
         for (const match of matches) {
           // 檢查快取
           const cacheKey = `${groupIndex}-${match.index}-${match[0]}`;
@@ -576,6 +600,7 @@ const ManualReplaceManager = {
           
           // 如果快取未命中或需要重新計算
           if (!positionList || textChanged) {
+            cacheMisses++;
             positionList = TextHighlight.PositionCalculator.calculatePosition(
               textArea,
               match.index,
@@ -594,6 +619,8 @@ const ManualReplaceManager = {
                 originalTop: pos.top
               })));
             }
+          } else {
+            cacheHits++;
           }
           
           if (positionList) {
@@ -608,6 +635,8 @@ const ManualReplaceManager = {
             });
           }
         }
+
+        this._logWithDiff(`收集到 ${positions.length} 個位置信息`);
 
         // 更新虛擬滾動數據
         this.virtualScrollData.allPositions.set(groupIndex, positions);
