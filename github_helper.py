@@ -88,13 +88,17 @@ class GitHubHelper:
         else:
             print(f"❌ 文件添加失敗：{output}")
 
-    def commit_changes(self, message: str):
-        """提交更改"""
+    def commit_changes(self, message: str, description: str = None):
+        """提交更改，支援兩段式提交信息"""
         if not self.is_git_repo:
             print("❌ 當前目錄不是 Git 倉庫")
             return
             
-        success, output = self._run_command(['git', 'commit', '-m', message])
+        command = ['git', 'commit', '-m', message]
+        if description:
+            command.extend(['-m', description])
+            
+        success, output = self._run_command(command)
         if success:
             print("✅ 更改提交成功")
             print(output)
@@ -200,9 +204,17 @@ class GitHubHelper:
                 self.add_files(files)
                 
             elif choice == "4":
-                message = input("請輸入提交信息：")
+                print("\n=== 提交信息格式說明 ===")
+                print("第一行格式：[類別]主要改動")
+                print("第二行格式：1.詳細說明1 2.詳細說明2 ...")
+                print("例如：")
+                print("[工具]新增GitHub助手")
+                print("1.新增互動式工具 2.支援基礎操作 3.完整中文化\n")
+                
+                message = input("請輸入第一行提交信息：")
                 if message.strip():
-                    self.commit_changes(message)
+                    description = input("請輸入第二行提交信息（可選）：")
+                    self.commit_changes(message, description if description.strip() else None)
                 else:
                     print("❌ 提交信息不能為空")
                     
