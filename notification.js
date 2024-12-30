@@ -81,11 +81,12 @@ const Notification = {
           console.log('更新進度條 - 當前批次:', currentBatch, '總批次:', totalBatches);
           // 設定 data-segments 屬性
           const totalBatchesNum = parseInt(totalBatches);
-          if (totalBatchesNum > 60) {
+          const totalSegments = totalBatchesNum * 3;
+          if (totalSegments > 60) {
             progressBar.setAttribute('data-segments', 'most');
-          } else if (totalBatchesNum > 40) {
+          } else if (totalSegments > 40) {
             progressBar.setAttribute('data-segments', 'more');
-          } else if (totalBatchesNum > 25) {
+          } else if (totalSegments > 25) {
             progressBar.setAttribute('data-segments', 'many');
           } else {
             progressBar.removeAttribute('data-segments');
