@@ -32,6 +32,19 @@ const Notification = {
     const currentBatch = batchMatch ? batchMatch[1] : null;
     const totalBatches = batchMatch ? batchMatch[2] : null;
 
+    // 判斷是否為取消翻譯的通知
+    const isCancelTranslation = message === '已取消翻譯';
+    // 判斷是否為翻譯相關的通知
+    const isTranslation = message.includes('翻譯') || message.includes('反思階段') || message.includes('優化階段') || isCancelTranslation;
+
+    // 判斷翻譯階段
+    let translationPhase = '初步翻譯中';
+    if (message.includes('反思階段')) {
+      translationPhase = '反思翻譯中';
+    } else if (message.includes('優化階段')) {
+      translationPhase = '優化翻譯中';
+    }
+
     if (isLoading) {
       this.lastModelName = modelName;
       this.lastApiKeyPrefix = apiKeyPrefix;
@@ -52,30 +65,64 @@ const Notification = {
       }
     }
 
-    // 判斷是否為取消翻譯的通知
-    const isCancelTranslation = message === '已取消翻譯';
-    // 判斷是否為翻譯相關的通知
-    const isTranslation = message.includes('翻譯中') || message.includes('翻譯完成') || isCancelTranslation;
-
     // 如果是批次進度更新，只更新進度相關的內容
     if (currentBatch && this.notificationElement && isLoading) {
       const batchElement = this.notificationElement.querySelector('.current-batch');
       if (batchElement) {
         batchElement.textContent = currentBatch;
+        const titleElement = this.notificationElement.querySelector('.notification-title');
+        if (titleElement) {
+          titleElement.textContent = translationPhase;
+        }
+        
+        // 更新進度條
+        const progressBar = this.notificationElement.querySelector('.progress-bar');
+        if (progressBar) {
+          console.log('更新進度條 - 當前批次:', currentBatch, '總批次:', totalBatches);
+          // 設定 data-segments 屬性
+          const totalBatchesNum = parseInt(totalBatches);
+          if (totalBatchesNum > 60) {
+            progressBar.setAttribute('data-segments', 'most');
+          } else if (totalBatchesNum > 40) {
+            progressBar.setAttribute('data-segments', 'more');
+          } else if (totalBatchesNum > 25) {
+            progressBar.setAttribute('data-segments', 'many');
+          } else {
+            progressBar.removeAttribute('data-segments');
+          }
+          progressBar.innerHTML = Array.from({ length: parseInt(totalBatches) }, (_, i) => {
+            const isCompleted = i < (parseInt(currentBatch) - 1);
+            return `<div class="progress-segment ${isCompleted ? 'completed' : ''}"></div>`;
+          }).join('');
+        }
         return;
       }
     }
 
     // 重建完整的通知內容
+    console.log('當前批次:', currentBatch, '總批次:', totalBatches);
+
     this.notificationElement.innerHTML = `
       <div class="notification-title">
         ${isCancelTranslation ? '已取消翻譯' : 
           isTranslation ? 
-            (isLoading ? '翻譯中' : '翻譯完成') : 
+            (isLoading ? translationPhase : '翻譯完成') : 
             (isLoading ? '正在改寫' : '改寫完成')}
       </div>
       ${currentBatch && !isCancelTranslation ? `
         <div class="batch-progress">批次：<span class="current-batch">${currentBatch}</span> / ${totalBatches}</div>
+      ` : ''}
+      ${currentBatch && totalBatches && !isCancelTranslation ? `
+        <div class="progress-bar" ${
+          parseInt(totalBatches) > 60 ? 'data-segments="most"' :
+          parseInt(totalBatches) > 40 ? 'data-segments="more"' :
+          parseInt(totalBatches) > 25 ? 'data-segments="many"' : ''
+        }>
+          ${Array.from({ length: parseInt(totalBatches) }, (_, i) => {
+            const isCompleted = i < (parseInt(currentBatch) - 1);
+            return `<div class="progress-segment ${isCompleted ? 'completed' : ''}"></div>`;
+          }).join('')}
+        </div>
       ` : ''}
       ${isLoading && !isCancelTranslation ? '<div class="spinner-container"><div class="spinner"></div><div id="countdown">0</div></div>' : ''}
       ${!isCancelTranslation ? `

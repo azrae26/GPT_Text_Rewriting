@@ -153,11 +153,24 @@ const TextProcessor = {
 
   /**
    * 發送 API 請求
+   * @param {string} endpoint - API 端點
+   * @param {Object} body - 請求體
+   * @param {string} apiKey - API 金鑰
+   * @param {boolean} isGemini - 是否為 Gemini API
+   * @param {boolean} isTranslation - 是否為翻譯請求
+   * @param {string} requestType - 請求類型：'translate' | 'reflect' | 'optimize'
    */
-  async _sendRequest(endpoint, body, apiKey, isGemini, isTranslation = false) {
+  async _sendRequest(endpoint, body, apiKey, isGemini, isTranslation = false, requestType = 'translate') {
     console.log('[_sendRequest] 開始處理請求');
-    // 限制日誌輸出的文本長度為500字
-    console.log('[_sendRequest] 請求體:', JSON.stringify(body).substring(0, 1500) + (JSON.stringify(body).length > 1500 ? '...' : '')); 
+    
+    // 根據請求類型輸出不同格式的日誌
+    if (requestType === 'reflect') {
+      console.log('反思階段請求體:', JSON.stringify(body, null, 2));
+    } else if (requestType === 'optimize') {
+      console.log('優化階段請求體:', JSON.stringify(body, null, 2));
+    } else {
+      console.log('[_sendRequest] 請求體:', JSON.stringify(body).substring(0, 2500) + (JSON.stringify(body).length > 2500 ? '...' : '')); 
+    }
 
     const controller = new AbortController();
     const signal = controller.signal;
