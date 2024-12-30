@@ -21,10 +21,24 @@ class GitHubHelper:
     def _run_command(self, command: List[str]) -> tuple[bool, str]:
         """執行 Git 命令並返回結果"""
         try:
-            result = subprocess.run(command, capture_output=True, text=True, check=True)
+            # 設置環境變量以處理中文
+            my_env = os.environ.copy()
+            my_env["PYTHONIOENCODING"] = "utf-8"
+            my_env["LANG"] = "zh_TW.UTF-8"
+            
+            # 使用 utf-8 編碼執行命令
+            result = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                env=my_env,
+                check=True
+            )
             return True, result.stdout
         except subprocess.CalledProcessError as e:
-            return False, e.stderr
+            return False, e.stderr if e.stderr else str(e)
             
     def _get_current_branch(self) -> str:
         """獲取當前分支名稱"""
