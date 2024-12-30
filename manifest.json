@@ -36,6 +36,7 @@
         "ui-manager.js",
         "stock_report_helper/quick-copy.js",
         "stock_report_helper/stock-analyzer.js",
+        "text_complete/auto-complete.js",
         "content.js"
       ],
       "css": ["content_script_uanalyze.css", "text_replace/replace.css"]
