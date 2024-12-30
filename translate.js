@@ -14,7 +14,11 @@ window.TranslateConfig = {
       }
     },
     INTERVAL: {
-      WAIT: 6000          // API 請求間隔（毫秒）
+      WAIT: {
+        NONE: 0,           // 無等待
+        SHORT: 4000,       // 短等待（4秒）
+        LONG: 6000         // 長等待（6秒）
+      }
     }
   },
   
@@ -25,7 +29,7 @@ window.TranslateConfig = {
       [10, 1000],  // 10次以下，1秒
       [15, 3000],  // 15次以下，3秒
       [20, 5000],  // 20次以下，5秒
-      [25, 6000]   // 25次以下，6秒
+      [25, 6000]   // 25次以下，7秒
     ],
     DEFAULT_INTERVAL: 5000,  // 預設間隔
     TEXT_LIMIT: {
@@ -433,79 +437,137 @@ window.TranslateManager = {
    * 處理反思階段
    */
   async processReflection(translatedText, sourceText, blockIndex) {
-    const settings = await window.GlobalSettings.loadSettings();
-    const model = settings.reflectModel || settings.model;
-    const isGemini = model.startsWith('gemini');
-    const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
+    try {
+      const settings = await window.GlobalSettings.loadSettings();
+      const model = settings.reflectModel || settings.model;
+      const isGemini = model.startsWith('gemini');
+      const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
 
-    // 組織帶有 XML 標記的文本
-    const taggedText = 
-      this.translationQueue.slice(0, blockIndex).join('\n') +
-      `<TRANSLATE_THIS>${sourceText}</TRANSLATE_THIS>` +
-      this.translationQueue.slice(blockIndex + 1).join('\n');
+      // 顯示反思階段的通知
+      await window.Notification.showNotification(`
+        模型: ${window.GlobalSettings.API.models[model] || model}<br>
+        API KEY: ${apiKey.substring(0, 5)}...<br>
+        反思階段<br>
+        批次進度: ${blockIndex + 1}/${this.totalBatches}
+      `, true);
 
-    // 準備替換用的參數
-    const replaceParams = {
-      tagged_text: taggedText,
-      chunk_to_translate: sourceText,
-      translation_1_chunk: translatedText
-    };
+      // 獲取前文6個區塊的原文和初始譯文
+      const prevBlocksStart = Math.max(0, blockIndex - 6);
+      const prevBlocks = this.translationQueue.slice(prevBlocksStart, blockIndex);
+      const prevTranslatedBlocks = Array.from({ length: blockIndex - prevBlocksStart }, (_, i) => {
+        const initialResult = this.translationResults.initial.get(prevBlocksStart + i);
+        return initialResult?.translated || '';
+      });
 
-    const { endpoint, body } = TextProcessor._prepareApiConfig(
-      model,
-      replaceParams,  // 傳入替換參數而不是文本
-      settings.reflectInstruction,
-      []
-    );
+      // 獲取後文6個區塊的原文
+      const nextBlocksEnd = Math.min(this.translationQueue.length, blockIndex + 7);
+      const nextBlocks = this.translationQueue.slice(blockIndex + 1, nextBlocksEnd);
 
-    console.log('反思階段請求體:', JSON.stringify(body, null, 2));
+      // 組織帶有 XML 標記的文本
+      const taggedText = [
+        // 前文原文和譯文
+        ...prevBlocks.map((text, i) => `<PREVIOUS_SOURCE>${text}</PREVIOUS_SOURCE>\n<PREVIOUS_TRANSLATION>${prevTranslatedBlocks[i]}</PREVIOUS_TRANSLATION>`),
+        // 當前要翻譯的區塊
+        `<TRANSLATE_THIS>${sourceText}</TRANSLATE_THIS>`,
+        // 後文原文
+        ...nextBlocks.map(text => `<NEXT_SOURCE>${text}</NEXT_SOURCE>`)
+      ].join('\n');
 
-    const reflectionResult = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'reflect');
-    
-    // 保存反思結果
-    this.translationResults.reflection.set(blockIndex, reflectionResult);
-    
-    return reflectionResult;
+      // 準備替換用的參數
+      const replaceParams = {
+        tagged_text: taggedText,
+        chunk_to_translate: sourceText,
+        translation_1_chunk: translatedText
+      };
+
+      const { endpoint, body } = TextProcessor._prepareApiConfig(
+        model,
+        replaceParams,  // 傳入替換參數而不是文本
+        settings.reflectInstruction,
+        []
+      );
+
+      console.log('反思階段請求體:', JSON.stringify(body, null, 2));
+
+      const reflectionResult = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'reflect');
+      
+      // 保存反思結果
+      this.translationResults.reflection.set(blockIndex, reflectionResult);
+      
+      return reflectionResult;
+    } catch (error) {
+      console.error('反思階段處理失敗:', error);
+      return null;
+    }
   },
 
   /**
    * 處理優化階段
    */
   async processOptimization(translatedText, sourceText, reflectionResult, blockIndex) {
-    const settings = await window.GlobalSettings.loadSettings();
-    const model = settings.optimizeModel || settings.model;
-    const isGemini = model.startsWith('gemini');
-    const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
+    try {
+      const settings = await window.GlobalSettings.loadSettings();
+      const model = settings.optimizeModel || settings.model;
+      const isGemini = model.startsWith('gemini');
+      const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
 
-    // 組織帶有 XML 標記的文本
-    const taggedText = 
-      this.translationQueue.slice(0, blockIndex).join('\n') +
-      `<TRANSLATE_THIS>${sourceText}</TRANSLATE_THIS>` +
-      this.translationQueue.slice(blockIndex + 1).join('\n');
+      // 顯示優化階段的通知
+      await window.Notification.showNotification(`
+        模型: ${window.GlobalSettings.API.models[model] || model}<br>
+        API KEY: ${apiKey.substring(0, 5)}...<br>
+        優化階段<br>
+        批次進度: ${blockIndex + 1}/${this.totalBatches}
+      `, true);
 
-    // 準備替換用的參數
-    const replaceParams = {
-      tagged_text: taggedText,
-      chunk_to_translate: sourceText,
-      translation_1_chunk: translatedText,
-      reflection_chunk: reflectionResult
-    };
+      // 獲取前文6個區塊的原文和優化後譯文
+      const prevBlocksStart = Math.max(0, blockIndex - 6);
+      const prevBlocks = this.translationQueue.slice(prevBlocksStart, blockIndex);
+      const prevOptimizedBlocks = Array.from({ length: blockIndex - prevBlocksStart }, (_, i) => {
+        const optimizedText = this.translationResults.optimize.get(prevBlocksStart + i);
+        return optimizedText || this.translationResults.initial.get(prevBlocksStart + i)?.translated || '';
+      });
 
-    const { endpoint, body } = TextProcessor._prepareApiConfig(
-      model,
-      replaceParams,  // 傳入替換參數而不是文本
-      settings.optimizeInstruction,
-      []
-    );
+      // 獲取後文6個區塊的原文
+      const nextBlocksEnd = Math.min(this.translationQueue.length, blockIndex + 7);
+      const nextBlocks = this.translationQueue.slice(blockIndex + 1, nextBlocksEnd);
 
-    console.log('優化階段請求體:', JSON.stringify(body, null, 2));
+      // 組織帶有 XML 標記的文本
+      const taggedText = [
+        // 前文原文和譯文
+        ...prevBlocks.map((text, i) => `<PREVIOUS_SOURCE>${text}</PREVIOUS_SOURCE>\n<PREVIOUS_TRANSLATION>${prevOptimizedBlocks[i]}</PREVIOUS_TRANSLATION>`),
+        // 當前要翻譯的區塊
+        `<TRANSLATE_THIS>${sourceText}</TRANSLATE_THIS>`,
+        // 後文原文
+        ...nextBlocks.map(text => `<NEXT_SOURCE>${text}</NEXT_SOURCE>`)
+      ].join('\n');
 
-    const optimizedResult = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'optimize');
-    
-    // 保存優化結果
-    this.translationResults.optimize.set(blockIndex, optimizedResult);
-    
-    return optimizedResult;
+      // 準備替換用的參數
+      const replaceParams = {
+        tagged_text: taggedText,
+        chunk_to_translate: sourceText,
+        translation_1_chunk: translatedText,
+        reflection_chunk: reflectionResult
+      };
+
+      const { endpoint, body } = TextProcessor._prepareApiConfig(
+        model,
+        replaceParams,  // 傳入替換參數而不是文本
+        settings.optimizeInstruction,
+        []
+      );
+
+      console.log('優化階段請求體:', JSON.stringify(body, null, 2));
+
+      const optimizedResult = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'optimize');
+      
+      // 保存優化結果
+      this.translationResults.optimize.set(blockIndex, optimizedResult);
+      
+      return optimizedResult;
+    } catch (error) {
+      console.error('優化階段處理失敗:', error);
+      return null;
+    }
   },
 
   /**
@@ -567,7 +629,7 @@ window.TranslateManager = {
           await window.Notification.showNotification(`
             模型: ${window.GlobalSettings.API.models[model] || model}<br>
             API KEY: ${apiKey.substring(0, 5)}...<br>
-            翻譯中<br>
+            初步翻譯階段<br>
             批次進度: ${this.completedTranslations.size}/${this.totalBatches}<br>
             發送間隔: ${this.batchInterval/1000}秒
           `, true);
@@ -808,7 +870,17 @@ window.TranslateManager = {
       try {
         // 反思階段...
         const reflectionResult = await this.processReflection(translatedBlock, originalBlock, i);
-        await new Promise(resolve => setTimeout(resolve, TranslateConfig.API.INTERVAL.WAIT));
+        
+        // 根據總區塊數決定等待時間
+        let waitTime;
+        if (this.translationQueue.length <= 4) {
+          waitTime = TranslateConfig.API.INTERVAL.WAIT.NONE;
+        } else if (this.translationQueue.length < 7) {
+          waitTime = TranslateConfig.API.INTERVAL.WAIT.SHORT;
+        } else {
+          waitTime = TranslateConfig.API.INTERVAL.WAIT.LONG;
+        }
+        await new Promise(resolve => setTimeout(resolve, waitTime));
 
         // 優化階段...
         const optimizedResult = await this.processOptimization(translatedBlock, originalBlock, reflectionResult, i);
@@ -820,7 +892,7 @@ window.TranslateManager = {
         resultsMap.set(i, optimizedResult);
 
         if (i < this.translationQueue.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, TranslateConfig.API.INTERVAL.WAIT));
+          await new Promise(resolve => setTimeout(resolve, waitTime));
         }
       } catch (error) {
         if (error.message === '翻譯請求已取消') {
