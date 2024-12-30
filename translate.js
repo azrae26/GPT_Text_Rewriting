@@ -52,6 +52,7 @@ window.TranslateManager = {
     reflection: new Map(),  // 反思結果
     optimize: new Map()     // 優化結果
   },
+  completedStepsCount: 0,  // 新增：追踪完成的步驟數
   shouldCancel: false,
   totalBatches: 0,
   timeoutId: null,
@@ -145,7 +146,8 @@ window.TranslateManager = {
       queueLength: this.translationQueue.length,
       pendingCount: this.pendingTranslations.size,
       completedCount: this.completedTranslations.size,
-      activeRequests: this.activeRequests?.size || 0
+      activeRequests: this.activeRequests?.size || 0,
+      completedStepsCount: this.completedStepsCount
     });
 
     this.isTranslating = false;
@@ -154,6 +156,7 @@ window.TranslateManager = {
     this.translationQueue = [];
     this.pendingTranslations.clear();
     this.completedTranslations.clear();
+    this.completedStepsCount = 0;
     // 清除所有階段的翻譯結果
     this.translationResults.initial.clear();
     this.translationResults.reflection.clear();
@@ -480,19 +483,23 @@ window.TranslateManager = {
         translation_1_chunk: translatedText
       };
 
+      // 獲取中英對照表上下文
+      const context = await this.getTranslationContext();
+
       const { endpoint, body } = TextProcessor._prepareApiConfig(
         model,
         replaceParams,  // 傳入替換參數而不是文本
         settings.reflectInstruction,
-        []
+        context  // 加入中英對照表
       );
-
-      console.log('反思階段請求體:', JSON.stringify(body, null, 2));
 
       const reflectionResult = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'reflect');
       
       // 保存反思結果
       this.translationResults.reflection.set(blockIndex, reflectionResult);
+      
+      // 增加完成步驟計數
+      this.completedStepsCount++;
       
       return reflectionResult;
     } catch (error) {
@@ -549,19 +556,23 @@ window.TranslateManager = {
         reflection_chunk: reflectionResult
       };
 
+      // 獲取中英對照表上下文
+      const context = await this.getTranslationContext();
+
       const { endpoint, body } = TextProcessor._prepareApiConfig(
         model,
         replaceParams,  // 傳入替換參數而不是文本
         settings.optimizeInstruction,
-        []
+        context  // 加入中英對照表
       );
-
-      console.log('優化階段請求體:', JSON.stringify(body, null, 2));
 
       const optimizedResult = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'optimize');
       
       // 保存優化結果
       this.translationResults.optimize.set(blockIndex, optimizedResult);
+      
+      // 增加完成步驟計數
+      this.completedStepsCount++;
       
       return optimizedResult;
     } catch (error) {
@@ -679,7 +690,10 @@ window.TranslateManager = {
       original: originalText,
       translated: finalTranslatedText
     });
-
+    
+    // 增加完成步驟計數
+    this.completedStepsCount++;
+    
     console.log(`\n=== 批次 ${batchIndex + 1}/${this.totalBatches} 翻譯更新 ===`);
     console.log('原始文本：\n' + (originalText.length > 500 ? originalText.substring(0, 500) + '...' : originalText));
     console.log('翻譯結果：\n' + (finalTranslatedText.length > 500 ? finalTranslatedText.substring(0, 500) + '...' : finalTranslatedText));
@@ -750,7 +764,7 @@ window.TranslateManager = {
         });
 
         // 建立實際的請求 Promise
-        const requestPromise = TextProcessor._sendRequest(endpoint, body, apiKey, isGemini, showProgress);
+        const requestPromise = TextProcessor._sendRequest(endpoint, body, apiKey, isGemini, showProgress, requestType);
 
         // 使用 Promise.race 來競爭，誰先完成就用誰的結果
         const response = await Promise.race([
@@ -804,12 +818,15 @@ window.TranslateManager = {
         `<TRANSLATE_THIS>${text}</TRANSLATE_THIS>\n` +
         this.translationQueue.slice(currentIndex + 1).join('\n');
 
+      // 獲取中英對照表上下文
+      const context = await this.getTranslationContext();
+
       // 準備 API 請求配置
       const { endpoint, body } = TextProcessor._prepareApiConfig(
         model,
         taggedText,
         settings.translateInstruction,
-        []
+        context  // 加入中英對照表
       );
 
       return await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'translate');

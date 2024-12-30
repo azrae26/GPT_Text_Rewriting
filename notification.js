@@ -90,8 +90,8 @@ const Notification = {
           } else {
             progressBar.removeAttribute('data-segments');
           }
-          progressBar.innerHTML = Array.from({ length: parseInt(totalBatches) }, (_, i) => {
-            const isCompleted = i < (parseInt(currentBatch) - 1);
+          progressBar.innerHTML = Array.from({ length: parseInt(totalBatches) * 3 }, (_, i) => {
+            const isCompleted = i < window.TranslateManager.completedStepsCount;
             return `<div class="progress-segment ${isCompleted ? 'completed' : ''}"></div>`;
           }).join('');
         }
@@ -114,12 +114,12 @@ const Notification = {
       ` : ''}
       ${currentBatch && totalBatches && !isCancelTranslation ? `
         <div class="progress-bar" ${
-          parseInt(totalBatches) > 60 ? 'data-segments="most"' :
-          parseInt(totalBatches) > 40 ? 'data-segments="more"' :
-          parseInt(totalBatches) > 25 ? 'data-segments="many"' : ''
+          parseInt(totalBatches) * 3 > 60 ? 'data-segments="most"' :
+          parseInt(totalBatches) * 3 > 40 ? 'data-segments="more"' :
+          parseInt(totalBatches) * 3 > 25 ? 'data-segments="many"' : ''
         }>
-          ${Array.from({ length: parseInt(totalBatches) }, (_, i) => {
-            const isCompleted = i < (parseInt(currentBatch) - 1);
+          ${Array.from({ length: parseInt(totalBatches) * 3 }, (_, i) => {
+            const isCompleted = i < window.TranslateManager.completedStepsCount;
             return `<div class="progress-segment ${isCompleted ? 'completed' : ''}"></div>`;
           }).join('')}
         </div>
