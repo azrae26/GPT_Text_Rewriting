@@ -71,17 +71,28 @@ const TextProcessor = {
   /**
    * 準備 API 請求配置
    * @param {string} model - 使用的模型名稱
-   * @param {string} text - 主要文本內容
+   * @param {Object|string} replaceParams - 替換參數或文本內容
    * @param {string} instruction - 指令內容
-   * @param {Object} context - 上下文內容，格式為 { role: string, content: string }[]
+   * @param {Array} context - 上下文內容
    */
-  _prepareApiConfig(model, text, instruction, context = []) {
+  _prepareApiConfig(model, replaceParams, instruction, context = []) {
     const processedInstruction = this._processInstructionWithDate(instruction);
-    
     const isGemini = model.startsWith('gemini');
     const endpoint = isGemini 
       ? window.GlobalSettings.API.endpoints.gemini.replace(':model', model)
       : window.GlobalSettings.API.endpoints.openai;
+
+    // 處理指令中的佔位符替換
+    let finalPrompt = processedInstruction;
+    if (typeof replaceParams === 'object') {
+      for (const [key, value] of Object.entries(replaceParams)) {
+        const placeholder = `{${key}}`;
+        finalPrompt = finalPrompt.replace(new RegExp(placeholder, 'g'), value);
+      }
+    } else {
+      // 向後兼容：如果 replaceParams 是字符串，則視為文本內容
+      finalPrompt = `${processedInstruction}\n\n${replaceParams}`;
+    }
 
     // 確保 context 是一個陣列
     const contextArray = Array.isArray(context) ? context : [];
@@ -112,7 +123,7 @@ const TextProcessor = {
       contents: [
         {
           role: "user",
-          parts: [{ text: `${processedInstruction}\n\n${text}` }]  // 使用處理後的指令
+          parts: [{ text: finalPrompt }]
         },
         ...systemMessages,
         ...userMessages
@@ -121,10 +132,9 @@ const TextProcessor = {
     } : {
       model,
       messages: [
-        { role: "system", content: processedInstruction }, // 使用處理後的指令
+        { role: "system", content: finalPrompt },
         ...systemMessages,
-        ...userMessages,
-        { role: "user", content: text }
+        ...userMessages
       ]
     };
 
@@ -132,10 +142,9 @@ const TextProcessor = {
       endpoint,
       requestBody: {
         model,
-        systemMessage: processedInstruction,
+        finalPrompt,
         systemContext: systemMessages,
-        userContext: userMessages,
-        userMessage: text
+        userContext: userMessages
       }
     });
 
@@ -146,22 +155,40 @@ const TextProcessor = {
    * 發送 API 請求
    */
   async _sendRequest(endpoint, body, apiKey, isGemini, isTranslation = false) {
-    console.log('準備發送 API 請求');
+    console.log('[_sendRequest] 開始處理請求');
     // 限制日誌輸出的文本長度為500字
-    console.log('請求體:', JSON.stringify(body).substring(0, 1500) + (JSON.stringify(body).length > 1500 ? '...' : '')); 
+    console.log('[_sendRequest] 請求體:', JSON.stringify(body).substring(0, 1500) + (JSON.stringify(body).length > 1500 ? '...' : '')); 
 
     const controller = new AbortController();
     const signal = controller.signal;
 
-    // 只在翻譯模式下檢查 shouldCancel
-    if (isTranslation && window.TranslateManager?.shouldCancel) {
-      controller.abort();
-      console.log('翻譯請求已取消');
-      throw new Error('翻譯請求已取消');
+    // 註冊到活動請求集合
+    if (isTranslation && window.TranslateManager?.activeRequests) {
+      console.log('[_sendRequest] 將請求添加到活動請求集合');
+      window.TranslateManager.activeRequests.add(controller);
+      console.log('[_sendRequest] 當前活動請求數:', window.TranslateManager.activeRequests.size);
+
+      // 監聽取消狀態
+      const checkCancel = () => {
+        if (window.TranslateManager?.shouldCancel) {
+          console.log('[_sendRequest] 檢測到取消狀態，中止請求');
+          controller.abort();
+          return true;
+        }
+        return false;
+      };
+
+      // 如果已經是取消狀態，直接中止
+      if (checkCancel()) {
+        throw new Error('翻譯請求已取消');
+      }
+
+      // 設置定期檢查
+      const intervalId = setInterval(checkCancel, 100);
     }
 
-    // 發送API請求
     try {
+      console.log('[_sendRequest] 開始發送 fetch 請求');
       const response = await fetch(
         isGemini ? `${endpoint}?key=${apiKey}` : endpoint,
         {
@@ -176,52 +203,60 @@ const TextProcessor = {
       );
 
       // 檢查API響應
-      console.log('收到 API 響應');
+      console.log('[_sendRequest] 收到 API 響應');
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('API 錯誤響應:', errorData);
+        console.error('[_sendRequest] API 錯誤響應:', errorData);
         throw new Error(`HTTP error! status: ${response.status}, message: ${JSON.stringify(errorData)}`);
       }
 
-      // 只在翻譯模式下檢查是否已取消
-      if (isTranslation && window.TranslateManager?.shouldCancel) {
-        console.log('翻譯已取消，忽略 API 響應');
-        throw new Error('翻譯請求已取消');
-      }
-
       const data = await response.json();
-      console.log('API Response:', data);
-
-      // 最後一次檢查是否已取消
-      if (isTranslation && window.TranslateManager?.shouldCancel) {
-        console.log('翻譯已取消，忽略 API 響應');
-        throw new Error('翻譯請求已取消');
-      }
+      console.log('[_sendRequest] 成功解析 API 響應:', data);
 
       // 處理 Gemini API 的安全限制回應
       if (isGemini && data.candidates && data.candidates[0].finishReason === "SAFETY") {
+        console.log('[_sendRequest] 檢測到 Gemini API 安全限制');
         throw new Error('內容被 Gemini API 的安全限制阻擋，請嘗試修改文本或使用其他模型');
       }
 
       // 檢查回應格式是否正確
+      let result;
       if (isGemini) {
         if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
+          console.error('[_sendRequest] Gemini API 回應格式無效');
           throw new Error('Gemini API 回應格式無效');
         }
-        return data.candidates[0].content.parts[0].text;
+        result = data.candidates[0].content.parts[0].text;
       } else {
         if (!data.choices?.[0]?.message?.content) {
+          console.error('[_sendRequest] OpenAI API 回應格式無效');
           throw new Error('OpenAI API 回應格式無效');
         }
-        return data.choices[0].message.content;
+        result = data.choices[0].message.content;
       }
+
+      console.log('[_sendRequest] 請求成功完成');
+      return result;
 
     } catch (error) {
       if (error.name === 'AbortError' || error.message === '翻譯請求已取消') {
-        console.log('請求已被取消');
+        console.log('[_sendRequest] 請求被取消');
         throw new Error('翻譯請求已取消');
       }
+      console.error('[_sendRequest] 請求失敗:', error);
       throw error;
+    } finally {
+      // 清除定期檢查
+      if (typeof intervalId !== 'undefined') {
+        clearInterval(intervalId);
+      }
+      
+      // 從活動請求集合中移除請求
+      if (isTranslation && window.TranslateManager?.activeRequests) {
+        console.log('[_sendRequest] 從活動請求集合中移除請求');
+        window.TranslateManager.activeRequests.delete(controller);
+        console.log('[_sendRequest] 剩餘活動請求數:', window.TranslateManager.activeRequests.size);
+      }
     }
   },
 
