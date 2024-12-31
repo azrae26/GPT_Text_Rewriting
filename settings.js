@@ -43,6 +43,14 @@ const GlobalSettings = {
   translateModel: '',
   /** 翻譯指令。 */
   translateInstruction: '',
+  /** 反思模型名稱。 */
+  reflectModel: '',
+  /** 反思指令。 */
+  reflectInstruction: '',
+  /** 優化模型名稱。 */
+  optimizeModel: '',
+  /** 優化指令。 */
+  optimizeInstruction: '',
   /** 摘要模型名稱。 */
   summaryModel: '',
   /** 中英對照表。 */
@@ -60,7 +68,13 @@ const GlobalSettings = {
           chrome.storage.sync.get(null, (items) => resolve(items));
         }),
         new Promise((resolve) => {
-          chrome.storage.local.get(['translateInstruction', 'summaryInstruction', 'zhEnMapping'], (items) => resolve(items));
+          chrome.storage.local.get([
+            'translateInstruction', 
+            'summaryInstruction', 
+            'zhEnMapping',
+            'reflectInstruction',
+            'optimizeInstruction'
+          ], (items) => resolve(items));
         })
       ]);
 
@@ -85,9 +99,17 @@ const GlobalSettings = {
       this.shortRewriteModel = syncResult.shortRewriteModel || this.model;
       this.autoRewriteModel = syncResult.autoRewriteModel || this.model;
       this.translateModel = syncResult.translateModel || this.model;
+      this.reflectModel = syncResult.reflectModel || this.model;
+      this.optimizeModel = syncResult.optimizeModel || this.model;
       this.translateInstruction = localResult.translateInstruction || 
                                 syncResult.translateInstruction || 
                                 (window.DefaultSettings?.translateInstruction || '');
+      this.reflectInstruction = localResult.reflectInstruction || 
+                               syncResult.reflectInstruction || 
+                               (window.DefaultSettings?.reflectInstruction || '');
+      this.optimizeInstruction = localResult.optimizeInstruction || 
+                                syncResult.optimizeInstruction || 
+                                (window.DefaultSettings?.optimizeInstruction || '');
       this.summaryModel = syncResult.summaryModel || this.model;
       this.summaryInstruction = localResult.summaryInstruction || 
                                syncResult.summaryInstruction || 
@@ -167,6 +189,8 @@ const GlobalSettings = {
             shortRewriteModel: this.shortRewriteModel,
             autoRewriteModel: this.autoRewriteModel,
             translateModel: this.translateModel,
+            reflectModel: this.reflectModel,
+            optimizeModel: this.optimizeModel,
             confirmModel: this.confirmModel,
             confirmContent: this.confirmContent,
             removeHash: this.removeHash,
@@ -180,6 +204,8 @@ const GlobalSettings = {
         new Promise((resolve) => {
           chrome.storage.local.set({
             translateInstruction: this.translateInstruction,
+            reflectInstruction: this.reflectInstruction,
+            optimizeInstruction: this.optimizeInstruction,
             summaryInstruction: this.summaryInstruction,
             zhEnMapping: this.zhEnMapping  // 加入中英對照表到本地儲存
           }, resolve);
@@ -199,7 +225,7 @@ const GlobalSettings = {
   async saveSingleSetting(key, value) {
     try {
       // 檢查是否為需要使用 local storage 的大型文本
-      if (key === 'translateInstruction' || key === 'summaryInstruction' || key === 'zhEnMapping') {
+      if (['translateInstruction', 'summaryInstruction', 'zhEnMapping', 'reflectInstruction', 'optimizeInstruction'].includes(key)) {
         await new Promise((resolve) => {
           chrome.storage.local.set({ [key]: value }, resolve);
         });
