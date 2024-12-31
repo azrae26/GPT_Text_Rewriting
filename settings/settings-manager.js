@@ -75,6 +75,25 @@ class SettingsManager {
       ErrorHandler.handle(error);
     }
   }
+
+  async saveSingleSetting(key, value) {
+    try {
+      // 檢查是否為需要使用 local storage 的大型文本
+      if (['translateInstruction', 'summaryInstruction', 'zhEnMapping', 'reflectInstruction', 'optimizeInstruction'].includes(key)) {
+        await new Promise((resolve) => {
+          chrome.storage.local.set({ [key]: value }, resolve);
+        });
+      } else {
+        await new Promise((resolve) => {
+          chrome.storage.sync.set({ [key]: value }, resolve);
+        });
+      }
+      // 同時更新本地值
+      this[key] = value;
+    } catch (error) {
+      console.warn('儲存單一設定時出錯:', error);
+    }
+  }
 }
 
 // 儲存管理器
@@ -107,6 +126,14 @@ class StorageManager {
       'removeHash': '移除 # 設定',
       'removeStar': '移除 * 設定',
       'zhEnMapping': '中英對照表',
+      
+      // 反思相關
+      'reflectModel': '反思模型',
+      'reflectInstruction': '反思指令',
+      
+      // 優化相關
+      'optimizeModel': '優化模型',
+      'optimizeInstruction': '優化指令',
       
       // 關鍵要點相關
       'summaryModel': '摘要模型',
@@ -240,6 +267,8 @@ class StorageManager {
     const localSettings = {
       translateInstruction: settings.translateInstruction,
       summaryInstruction: settings.summaryInstruction,
+      reflectInstruction: settings.reflectInstruction,
+      optimizeInstruction: settings.optimizeInstruction,
       highlightPatterns: settings.highlightPatterns,
       zhEnMapping: settings.zhEnMapping
     };
