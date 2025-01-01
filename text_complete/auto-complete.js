@@ -120,12 +120,13 @@ window.AutoComplete = {
 
   // 處理按鍵按下事件
   handleKeyDown(event) {
-    if (event.key === 'Control') {
+    if (event.key === 'Control' && !event.repeat) {  // 添加 !event.repeat 來排除按住的情況
       const currentTime = Date.now();
       
       // 檢查是否在 500ms 內的連續按鍵
       if (currentTime - this.lastCtrlTime < 500) {
         this.ctrlCount++;
+        console.log('[AutoComplete] Ctrl 點擊次數:', this.ctrlCount); // 添加日誌
         
         // 如果是第三次按下，觸發自動完成
         if (this.ctrlCount === 3) {
