@@ -464,14 +464,14 @@ window.GenerationConfig = {
 
         // 準備替換用的參數
         const replaceParams = {
-          tagged_text: taggedText,
-          chunk_to_generate: sourceText,
-          generation_1_chunk: generatedText
+          tagged_text: taggedText,      // 包含了完整的上下文標記文本，包括前文、當前文本和後文，使用XML標記格式
+          chunk_to_generate: sourceText, // 當前需要處理的原始文本區塊
+          generation_1_chunk: generatedText  // 初始生成的結果
         };
 
         // 在優化階段添加反思結果
         if (!isReflectStage && reflectionResult) {
-          replaceParams.generate_reflection_chunk = reflectionResult;
+          replaceParams.generate_reflection_chunk = reflectionResult; // 反思階段產生的結果，用於優化階段參考
         }
 
         // 獲取背景知識上下文
@@ -480,7 +480,7 @@ window.GenerationConfig = {
         const { endpoint, body } = TextProcessor._prepareApiConfig(
           model,
           replaceParams,
-          isReflectStage ? settings.reflect1Instruction : settings.finalOptimizeInstruction,
+          isReflectStage ? settings.reflect1Instruction : settings.generationOptimize_1_Instruction,
           context
         );
 
