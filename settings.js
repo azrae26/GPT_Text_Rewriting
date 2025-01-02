@@ -51,6 +51,20 @@ const GlobalSettings = {
   optimizeModel: '',
   /** 優化指令。 */
   optimizeInstruction: '',
+  /** 生成模型名稱。 */
+  generateModel: '',
+  /** 生成指令。 */
+  generateInstruction: '',
+  /** 反思一模型名稱。 */
+  reflect1Model: '',
+  /** 反思一指令。 */
+  reflect1Instruction: '',
+  /** 最終優化模型名稱。 */
+  finalOptimizeModel: '',
+  /** 最終優化指令。 */
+  finalOptimizeInstruction: '',
+  /** 背景知識。 */
+  backgroundKnowledge: '',
   /** 摘要模型名稱。 */
   summaryModel: '',
   /** 中英對照表。 */
@@ -73,7 +87,11 @@ const GlobalSettings = {
             'summaryInstruction', 
             'zhEnMapping',
             'reflectInstruction',
-            'optimizeInstruction'
+            'optimizeInstruction',
+            'generateInstruction',
+            'reflect1Instruction',
+            'finalOptimizeInstruction',
+            'backgroundKnowledge'
           ], (items) => resolve(items));
         })
       ]);
@@ -101,6 +119,9 @@ const GlobalSettings = {
       this.translateModel = syncResult.translateModel || this.model;
       this.reflectModel = syncResult.reflectModel || this.model;
       this.optimizeModel = syncResult.optimizeModel || this.model;
+      this.generateModel = syncResult.generateModel || this.model;
+      this.reflect1Model = syncResult.reflect1Model || this.model;
+      this.finalOptimizeModel = syncResult.finalOptimizeModel || this.model;
       this.translateInstruction = localResult.translateInstruction || 
                                 syncResult.translateInstruction || 
                                 (window.DefaultSettings?.translateInstruction || '');
@@ -110,6 +131,18 @@ const GlobalSettings = {
       this.optimizeInstruction = localResult.optimizeInstruction || 
                                 syncResult.optimizeInstruction || 
                                 (window.DefaultSettings?.optimizeInstruction || '');
+      this.generateInstruction = localResult.generateInstruction || 
+                                syncResult.generateInstruction || 
+                                (window.DefaultSettings?.generateInstruction || '');
+      this.reflect1Instruction = localResult.reflect1Instruction || 
+                                syncResult.reflect1Instruction || 
+                                (window.DefaultSettings?.reflect1Instruction || '');
+      this.finalOptimizeInstruction = localResult.finalOptimizeInstruction || 
+                                     syncResult.finalOptimizeInstruction || 
+                                     (window.DefaultSettings?.finalOptimizeInstruction || '');
+      this.backgroundKnowledge = localResult.backgroundKnowledge || 
+                                syncResult.backgroundKnowledge || 
+                                (window.DefaultSettings?.backgroundKnowledge || '');
       this.summaryModel = syncResult.summaryModel || this.model;
       this.summaryInstruction = localResult.summaryInstruction || 
                                syncResult.summaryInstruction || 
@@ -191,6 +224,9 @@ const GlobalSettings = {
             translateModel: this.translateModel,
             reflectModel: this.reflectModel,
             optimizeModel: this.optimizeModel,
+            generateModel: this.generateModel,
+            reflect1Model: this.reflect1Model,
+            finalOptimizeModel: this.finalOptimizeModel,
             confirmModel: this.confirmModel,
             confirmContent: this.confirmContent,
             removeHash: this.removeHash,
@@ -207,7 +243,11 @@ const GlobalSettings = {
             reflectInstruction: this.reflectInstruction,
             optimizeInstruction: this.optimizeInstruction,
             summaryInstruction: this.summaryInstruction,
-            zhEnMapping: this.zhEnMapping  // 加入中英對照表到本地儲存
+            zhEnMapping: this.zhEnMapping,  // 加入中英對照表到本地儲存
+            generateInstruction: this.generateInstruction,
+            reflect1Instruction: this.reflect1Instruction,
+            finalOptimizeInstruction: this.finalOptimizeInstruction,
+            backgroundKnowledge: this.backgroundKnowledge
           }, resolve);
         })
       ]);
@@ -225,7 +265,9 @@ const GlobalSettings = {
   async saveSingleSetting(key, value) {
     try {
       // 檢查是否為需要使用 local storage 的大型文本
-      if (['translateInstruction', 'summaryInstruction', 'zhEnMapping', 'reflectInstruction', 'optimizeInstruction'].includes(key)) {
+      if (['translateInstruction', 'summaryInstruction', 'zhEnMapping', 'reflectInstruction', 
+        'optimizeInstruction', 'generateInstruction', 'reflect1Instruction', 'finalOptimizeInstruction', 
+        'backgroundKnowledge'].includes(key)) {
         await new Promise((resolve) => {
           chrome.storage.local.set({ [key]: value }, resolve);
         });

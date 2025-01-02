@@ -4,7 +4,12 @@ const DefaultSettings = {
   fullRewriteModel: 'gemini-2.0-flash-exp',
   shortRewriteModel: 'gemini-2.0-flash-exp',
   autoRewriteModel: 'gemini-2.0-flash-exp',
-  translateModel: 'gemini-2.0-flash-exp',
+  translateModel: 'gemini-2.0-flash-exp',      // 初始翻譯模型
+  reflectModel: 'gemini-2.0-flash-exp',        // 反思模型
+  optimizeModel: 'gemini-2.0-flash-exp',       // 優化模型
+  generateModel: 'gemini-2.0-flash-exp',       // 初始生成模型
+  reflect1Model: 'gemini-2.0-flash-exp',       // 反思一模型
+  finalOptimizeModel: 'gemini-2.0-flash-exp',  // 最終優化模型
 
   // 勾選框預設狀態
   confirmModel: false,      // 確認模型：預設不勾選
@@ -189,7 +194,13 @@ Auras=雙鴻
 `請將我給你的文章，從文章中取出5句話，每句都代表全篇的關鍵，每句都不超過15個字。
 請使用原句，盡量不要修改，前後不用加標點符號。`,
 
-  summaryModel: 'gemini-2.0-flash-exp'
+  summaryModel: 'gemini-2.0-flash-exp',
+
+  // 生成功能預設設定
+  generateInstruction: '',      // 初始生成指令
+  reflect1Instruction: '',      // 反思一指令
+  finalOptimizeInstruction: '', // 最終優化指令
+  backgroundKnowledge: ''       // 背景知識
 };
 
 window.DefaultSettings = DefaultSettings;

@@ -39,7 +39,7 @@ div.btn-group button.MuiButtonBase-root.MuiButton-root.MuiButton-contained.MuiBu
 }
 
 /* 改寫按鈕樣式 */
-#gpt-rewrite-button, #gpt-translate-button {
+#gpt-rewrite-button, #gpt-translate-button, #gpt-generate-button {
   padding: 5px 10px;
   background-color: #5b8cdb;
   color: white;
@@ -51,12 +51,12 @@ div.btn-group button.MuiButtonBase-root.MuiButton-root.MuiButton-contained.MuiBu
 }
 
 /* 改寫按鈕懸停效果 */
-#gpt-rewrite-button:hover, #gpt-translate-button:hover {
+#gpt-rewrite-button:hover, #gpt-translate-button:hover, #gpt-generate-button:hover {
   background-color: #1a73e8;
 }
 
 /* 取消按鈕樣式 */
-#gpt-translate-button.canceling {
+#gpt-translate-button.canceling, #gpt-generate-button.canceling {
   background-color: #dc3545;
 }
 

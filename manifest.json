@@ -33,6 +33,7 @@
         "stock_list.js",
         "text-processor.js",
         "translate.js",
+        "multiple_generation/multiple-generation.js",
         "ui-manager.js",
         "stock_report_helper/quick-copy.js",
         "stock_report_helper/stock-analyzer.js",

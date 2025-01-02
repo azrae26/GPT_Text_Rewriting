@@ -158,16 +158,18 @@ const TextProcessor = {
    * @param {string} apiKey - API 金鑰
    * @param {boolean} isGemini - 是否為 Gemini API
    * @param {boolean} isTranslation - 是否為翻譯請求
-   * @param {string} requestType - 請求類型：'translate' | 'reflect' | 'optimize'
+   * @param {string} requestType - 請求類型：'translate' | 'reflect' | 'optimize' | 'generate' | 'reflect1' | 'finalOptimize'
    */
   async _sendRequest(endpoint, body, apiKey, isGemini, isTranslation = false, requestType = 'translate') {
     console.log('[_sendRequest] 開始處理請求');
     
     // 根據請求類型輸出不同格式的日誌
-    if (requestType === 'reflect') {
+    if (requestType === 'reflect' || requestType === 'reflect1') {
       console.log('反思階段請求體:', JSON.stringify(body, null, 2));
-    } else if (requestType === 'optimize') {
+    } else if (requestType === 'optimize' || requestType === 'finalOptimize') {
       console.log('優化階段請求體:', JSON.stringify(body, null, 2));
+    } else if (requestType === 'generate') {
+      console.log('生成階段請求體:', JSON.stringify(body, null, 2));
     } else {
       console.log('[_sendRequest] 請求體:', JSON.stringify(body).substring(0, 2500) + (JSON.stringify(body).length > 2500 ? '...' : '')); 
     }
@@ -176,14 +178,16 @@ const TextProcessor = {
     const signal = controller.signal;
 
     // 註冊到活動請求集合
-    if (isTranslation && window.TranslateManager?.activeRequests) {
+    if ((isTranslation && window.TranslateManager?.activeRequests) || 
+        (requestType === 'generate' && window.GenerationManager?.activeRequests)) {
       console.log('[_sendRequest] 將請求添加到活動請求集合');
-      window.TranslateManager.activeRequests.add(controller);
-      console.log('[_sendRequest] 當前活動請求數:', window.TranslateManager.activeRequests.size);
+      const manager = isTranslation ? window.TranslateManager : window.GenerationManager;
+      manager.activeRequests.add(controller);
+      console.log('[_sendRequest] 當前活動請求數:', manager.activeRequests.size);
 
       // 監聽取消狀態
       const checkCancel = () => {
-        if (window.TranslateManager?.shouldCancel) {
+        if (manager?.shouldCancel) {
           console.log('[_sendRequest] 檢測到取消狀態，中止請求');
           controller.abort();
           return true;
@@ -193,7 +197,7 @@ const TextProcessor = {
 
       // 如果已經是取消狀態，直接中止
       if (checkCancel()) {
-        throw new Error('翻譯請求已取消');
+        throw new Error(isTranslation ? '翻譯請求已取消' : '生成請求已取消');
       }
 
       // 設置定期檢查
@@ -252,9 +256,9 @@ const TextProcessor = {
       return result;
 
     } catch (error) {
-      if (error.name === 'AbortError' || error.message === '翻譯請求已取消') {
-        console.log('[_sendRequest] 請求被取消');
-        throw new Error('翻譯請求已取消');
+      if (error.name === 'AbortError' || error.message === '翻譯請求已取消' || error.message === '生成請求已取消') {
+        console.log('[_sendRequest] 請求已被取消');
+        throw new Error(isTranslation ? '翻譯請求已取消' : '生成請求已取消');
       }
       console.error('[_sendRequest] 請求失敗:', error);
       throw error;
@@ -264,11 +268,13 @@ const TextProcessor = {
         clearInterval(intervalId);
       }
       
-      // 從活動請求集合中移除請求
-      if (isTranslation && window.TranslateManager?.activeRequests) {
+      // 從活動請求集合中移除
+      if ((isTranslation && window.TranslateManager?.activeRequests) || 
+          (requestType === 'generate' && window.GenerationManager?.activeRequests)) {
+        const manager = isTranslation ? window.TranslateManager : window.GenerationManager;
         console.log('[_sendRequest] 從活動請求集合中移除請求');
-        window.TranslateManager.activeRequests.delete(controller);
-        console.log('[_sendRequest] 剩餘活動請求數:', window.TranslateManager.activeRequests.size);
+        manager.activeRequests.delete(controller);
+        console.log('[_sendRequest] 剩餘活動請求數:', manager.activeRequests.size);
       }
     }
   },

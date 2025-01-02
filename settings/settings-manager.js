@@ -79,7 +79,8 @@ class SettingsManager {
   async saveSingleSetting(key, value) {
     try {
       // 檢查是否為需要使用 local storage 的大型文本
-      if (['translateInstruction', 'summaryInstruction', 'zhEnMapping', 'reflectInstruction', 'optimizeInstruction'].includes(key)) {
+      if (['translateInstruction', 'summaryInstruction', 'zhEnMapping', 'reflectInstruction', 'optimizeInstruction',
+           'generateInstruction', 'reflect1Instruction', 'finalOptimizeInstruction', 'backgroundKnowledge'].includes(key)) {
         await new Promise((resolve) => {
           chrome.storage.local.set({ [key]: value }, resolve);
         });
@@ -134,6 +135,15 @@ class StorageManager {
       // 優化相關
       'optimizeModel': '優化模型',
       'optimizeInstruction': '優化指令',
+      
+      // 生成相關
+      'generateModel': '初始生成模型',
+      'generateInstruction': '初始生成指令',
+      'reflect1Model': '反思一模型',
+      'reflect1Instruction': '反思一指令',
+      'finalOptimizeModel': '最終優化模型',
+      'finalOptimizeInstruction': '最終優化指令',
+      'backgroundKnowledge': '背景知識',
       
       // 關鍵要點相關
       'summaryModel': '摘要模型',
@@ -269,6 +279,10 @@ class StorageManager {
       summaryInstruction: settings.summaryInstruction,
       reflectInstruction: settings.reflectInstruction,
       optimizeInstruction: settings.optimizeInstruction,
+      generateInstruction: settings.generateInstruction,
+      reflect1Instruction: settings.reflect1Instruction,
+      finalOptimizeInstruction: settings.finalOptimizeInstruction,
+      backgroundKnowledge: settings.backgroundKnowledge,
       highlightPatterns: settings.highlightPatterns,
       zhEnMapping: settings.zhEnMapping
     };

@@ -34,8 +34,12 @@ const Notification = {
 
     // 判斷是否為取消翻譯的通知
     const isCancelTranslation = message === '已取消翻譯';
+    // 判斷是否為取消生成的通知
+    const isCancelGeneration = message === '已取消生成';
     // 判斷是否為翻譯相關的通知
     const isTranslation = message.includes('翻譯') || message.includes('反思階段') || message.includes('優化階段') || isCancelTranslation;
+    // 判斷是否為生成相關的通知
+    const isGeneration = message.includes('生成') || message.includes('反思一') || message.includes('最終優化') || isCancelGeneration;
 
     // 判斷翻譯階段
     let translationPhase = '初步翻譯中';
@@ -43,6 +47,14 @@ const Notification = {
       translationPhase = '反思翻譯中';
     } else if (message.includes('優化階段')) {
       translationPhase = '優化翻譯中';
+    }
+
+    // 判斷生成階段
+    let generationPhase = '初始生成中';
+    if (message.includes('反思一')) {
+      generationPhase = '反思一中';
+    } else if (message.includes('最終優化')) {
+      generationPhase = '最終優化中';
     }
 
     if (isLoading) {
@@ -106,27 +118,30 @@ const Notification = {
     this.notificationElement.innerHTML = `
       <div class="notification-title">
         ${isCancelTranslation ? '已取消翻譯' : 
+          isCancelGeneration ? '已取消生成' :
           isTranslation ? 
             (isLoading ? translationPhase : '翻譯完成') : 
+          isGeneration ?
+            (isLoading ? generationPhase : '生成完成') :
             (isLoading ? '正在改寫' : '改寫完成')}
       </div>
-      ${currentBatch && !isCancelTranslation ? `
+      ${currentBatch && !isCancelTranslation && !isCancelGeneration ? `
         <div class="batch-progress">批次：<span class="current-batch">${currentBatch}</span> / ${totalBatches}</div>
       ` : ''}
-      ${currentBatch && totalBatches && !isCancelTranslation ? `
+      ${currentBatch && totalBatches && !isCancelTranslation && !isCancelGeneration ? `
         <div class="progress-bar" ${
           parseInt(totalBatches) * 3 > 60 ? 'data-segments="most"' :
           parseInt(totalBatches) * 3 > 40 ? 'data-segments="more"' :
           parseInt(totalBatches) * 3 > 25 ? 'data-segments="many"' : ''
         }>
           ${Array.from({ length: parseInt(totalBatches) * 3 }, (_, i) => {
-            const isCompleted = i < window.TranslateManager.completedStepsCount;
+            const isCompleted = i < (isTranslation ? window.TranslateManager.completedStepsCount : window.GenerationManager.completedStepsCount);
             return `<div class="progress-segment ${isCompleted ? 'completed' : ''}"></div>`;
           }).join('')}
         </div>
       ` : ''}
-      ${isLoading && !isCancelTranslation ? '<div class="spinner-container"><div class="spinner"></div><div id="countdown">0</div></div>' : ''}
-      ${!isCancelTranslation ? `
+      ${isLoading && !isCancelTranslation && !isCancelGeneration ? '<div class="spinner-container"><div class="spinner"></div><div id="countdown">0</div></div>' : ''}
+      ${!isCancelTranslation && !isCancelGeneration ? `
         <div class="notification-info">
           模型: ${modelName}<br>
           API KEY: ${apiKeyPrefix}

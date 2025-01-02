@@ -27,6 +27,15 @@ document.addEventListener('DOMContentLoaded', async function() {
   const removeStarCheckbox = document.getElementById('removeStar');
   const zhEnMappingInput = document.getElementById('zhEnMapping');
   
+  // 生成相關
+  const generateModelSelect = document.getElementById('initialGenModel');
+  const generateInstructionInput = document.getElementById('initialGenInstruction');
+  const reflect1ModelSelect = document.getElementById('reflect1Model');
+  const reflect1InstructionInput = document.getElementById('reflect1Instruction');
+  const finalOptimizeModelSelect = document.getElementById('finalOptimizeModel');
+  const finalOptimizeInstructionInput = document.getElementById('finalOptimizeInstruction');
+  const backgroundKnowledgeInput = document.getElementById('backgroundKnowledge');
+  
   // 關鍵要點相關
   const summaryModelSelect = document.getElementById('summaryModel');
   const summaryInstructionInput = document.getElementById('summaryInstruction');
@@ -56,7 +65,8 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 如果首次載入，則應用預設設定
   if (settings.firstRun === true && typeof DefaultSettings !== 'undefined') {
     console.log('首次載入，應用預設設定');
-    await GlobalSettings.saveSettings();
+    settings = { ...DefaultSettings };  // 使用預設設定
+    await GlobalSettings.saveSettings(settings);
   } else {
     console.log('非首次載入，應用已保存的設定');
     // API 相關
@@ -75,6 +85,15 @@ document.addEventListener('DOMContentLoaded', async function() {
     translateInstructionInput.value = settings.translateInstruction || '';
     removeHashCheckbox.checked = settings.removeHash !== undefined ? settings.removeHash : true;
     removeStarCheckbox.checked = settings.removeStar !== undefined ? settings.removeStar : true;
+    
+    // 生成相關
+    generateModelSelect.value = settings.generateModel || 'gemini-2.0-flash-exp';
+    generateInstructionInput.value = settings.generateInstruction || '';
+    reflect1ModelSelect.value = settings.reflect1Model || 'gemini-2.0-flash-exp';
+    reflect1InstructionInput.value = settings.reflect1Instruction || '';
+    finalOptimizeModelSelect.value = settings.finalOptimizeModel || 'gemini-2.0-flash-exp';
+    finalOptimizeInstructionInput.value = settings.finalOptimizeInstruction || '';
+    backgroundKnowledgeInput.value = settings.backgroundKnowledge || '';
     
     // 反思相關
     reflectModelSelect.value = settings.reflectModel || 'gemini-2.0-flash-exp';
@@ -159,6 +178,24 @@ document.addEventListener('DOMContentLoaded', async function() {
         subContent.classList.add('active');
       }
     }
+
+    // 如果是生成分頁，恢復其子分頁狀態
+    if (data.lastMainTab === 'multiple-generation' && data.lastSubTab) {
+      const tabContent = document.getElementById('multiple-generation-tab');
+      if (tabContent) {
+        const tab = tabContent.querySelector(`.tab[data-tab="${data.lastSubTab}"]`);
+        const subContent = document.getElementById(`${data.lastSubTab}-content`);
+        if (tab && subContent) {
+          // 移除其他子分頁的活動狀態
+          tabContent.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+          tabContent.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+          
+          // 設置保存的子分頁為活動狀態
+          tab.classList.add('active');
+          subContent.classList.add('active');
+        }
+      }
+    }
   });
 
   // 3. API 和模型相關事件處理
@@ -180,35 +217,59 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 4. 所有指令輸入相關事件處理
   // 全文改寫指令
   instructionInput.addEventListener('input', async function() {
-    await GlobalSettings.saveSingleSetting('instruction', instructionInput.value);
+    await GlobalSettings.saveSingleSetting('instruction', this.value);
+    updateContentScript();
   });
 
   // 短改寫指令
   shortInstructionInput.addEventListener('input', async function() {
-    await GlobalSettings.saveSingleSetting('shortInstruction', shortInstructionInput.value);
+    await GlobalSettings.saveSingleSetting('shortInstruction', this.value);
+    updateContentScript();
   });
 
   // 自動改寫匹配模式
   autoRewritePatternsInput.addEventListener('input', async function() {
-    await GlobalSettings.saveSingleSetting('autoRewritePatterns', autoRewritePatternsInput.value);
+    await GlobalSettings.saveSingleSetting('autoRewritePatterns', this.value);
     sendAutoRewritePatternsUpdate();
   });
 
   // 翻譯指令
   translateInstructionInput.addEventListener('input', async function() {
-    await GlobalSettings.saveSingleSetting('translateInstruction', translateInstructionInput.value);
+    await GlobalSettings.saveSingleSetting('translateInstruction', this.value);
+    updateContentScript();
+  });
+
+  // 生成指令
+  generateInstructionInput.addEventListener('input', async function() {
+    await GlobalSettings.saveSingleSetting('generateInstruction', this.value);
+    updateContentScript();
+  });
+
+  reflect1InstructionInput.addEventListener('input', async function() {
+    await GlobalSettings.saveSingleSetting('reflect1Instruction', this.value);
+    updateContentScript();
+  });
+
+  finalOptimizeInstructionInput.addEventListener('input', async function() {
+    await GlobalSettings.saveSingleSetting('finalOptimizeInstruction', this.value);
+    updateContentScript();
+  });
+
+  backgroundKnowledgeInput.addEventListener('input', async function() {
+    await GlobalSettings.saveSingleSetting('backgroundKnowledge', this.value);
+    updateContentScript();
   });
 
   // 關鍵要點指令
   summaryInstructionInput.addEventListener('input', async function() {
-    await GlobalSettings.saveSingleSetting('summaryInstruction', summaryInstructionInput.value);
-    console.log('已保存關鍵要點指令:', summaryInstructionInput.value);
+    await GlobalSettings.saveSingleSetting('summaryInstruction', this.value);
+    updateContentScript();
   });
 
   // 中英對照表輸入
   zhEnMappingInput.addEventListener('input', async function() {
-    await GlobalSettings.saveSingleSetting('zhEnMapping', zhEnMappingInput.value);
-    console.log('已保存中英對照表');
+    await GlobalSettings.saveSingleSetting('zhEnMapping', this.value);
+    updateContentScript();
   });
 
   // 5. 所有模型選擇相關事件處理
@@ -247,14 +308,31 @@ document.addEventListener('DOMContentLoaded', async function() {
     updateContentScript();
   });
 
-  // 7. 關鍵要點相關事件處理
+  // 7. 生成相關事件處理
+  // 生成模型選擇
+  generateModelSelect.addEventListener('change', async function() {
+    await GlobalSettings.saveModelSelection('generateModel', this.value);
+    updateContentScript();
+  });
+
+  reflect1ModelSelect.addEventListener('change', async function() {
+    await GlobalSettings.saveModelSelection('reflect1Model', this.value);
+    updateContentScript();
+  });
+
+  finalOptimizeModelSelect.addEventListener('change', async function() {
+    await GlobalSettings.saveModelSelection('finalOptimizeModel', this.value);
+    updateContentScript();
+  });
+
+  // 8. 關鍵要點相關事件處理
   // 關鍵要點模型選擇
   summaryModelSelect.addEventListener('change', async function() {
     await GlobalSettings.saveModelSelection('summaryModel', this.value);
     updateContentScript();
   });
 
-  // 8. 保存按鈕事件處理
+  // 9. 保存按鈕事件處理
   // saveButton.addEventListener('click', async function() {
   //   apiKeys[modelSelect.value] = apiKeyInput.value;
   //   await GlobalSettings.saveSettings({
@@ -277,7 +355,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   //   updateContentScript();
   // });
 
-  // 9. 功能按鈕事件處理
+  // 10. 功能按鈕事件處理
   rewriteButton.addEventListener('click', function() {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       chrome.tabs.sendMessage(tabs[0].id, {
@@ -362,10 +440,10 @@ document.addEventListener('DOMContentLoaded', async function() {
       console.log('是否在翻譯分頁內:', isInTranslateTab);
       
       let contentId;
-      if (isInTranslateTab) {
-        contentId = `${tabName}-content`;  // 在翻譯分頁內的子分頁
+      if (isInTranslateTab || isInMainTab.id === 'multiple-generation-tab') {
+        contentId = `${tabName}-content`;  // 在翻譯分頁或生成分頁內的子分頁
       } else if (isInMainTab) {
-        contentId = `${tabName}-tab`;      // 在主分頁內的子分頁
+        contentId = `${tabName}-tab`;      // 在其他主分頁內的子分頁
       } else {
         contentId = `${tabName}-content`;  // 其他情況
       }

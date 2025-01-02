@@ -10,6 +10,7 @@
   <div class="main-tab-container">
     <div class="main-tab active" data-tab="rewrite">改寫</div>
     <div class="main-tab" data-tab="translate">翻譯</div>
+    <div class="main-tab" data-tab="multiple-generation">多重生成</div>
     <div class="main-tab" data-tab="highlight">高亮</div>
     <div class="main-tab" data-tab="auto-replace">替換</div>
     <div class="main-tab" data-tab="settings">設定</div>
@@ -132,6 +133,65 @@
     </div>
   </div>
 
+  <!-- 多重生成 -->
+  <div id="multiple-generation-tab" class="main-tab-content">
+    <div class="content">
+      <div class="multiple-generation-container">
+        <div class="tab-container">
+          <div class="tab active" data-tab="initial-gen">初始生成</div>
+          <div class="tab" data-tab="reflect-1">反思一</div>
+          <div class="tab" data-tab="final-optimize">最終優化</div>
+          <div class="tab" data-tab="background">背景知識</div>
+        </div>
+
+        <div id="initial-gen-content" class="tab-content active">
+          <select id="initialGenModel" class="model-select">
+            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
+            <option value="gpt-4o-mini">GPT-4o mini</option>
+            <option value="gpt-4">GPT-4</option>
+          </select>
+          <textarea id="initialGenInstruction" placeholder="輸入初始生成要求"></textarea>
+          <div class="checkbox-group">
+            <label class="checkbox-label">
+              <input type="checkbox" id="removeHashGen">
+              <span>刪除##</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" id="removeStarGen">
+              <span>刪除**</span>
+            </label>
+          </div>
+        </div>
+
+        <div id="reflect-1-content" class="tab-content">
+          <select id="reflect1Model" class="model-select">
+            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
+            <option value="gpt-4o-mini">GPT-4o mini</option>
+            <option value="gpt-4">GPT-4</option>
+          </select>
+          <textarea id="reflect1Instruction" placeholder="輸入反思一要求"></textarea>
+        </div>
+
+        <div id="final-optimize-content" class="tab-content">
+          <select id="finalOptimizeModel" class="model-select">
+            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
+            <option value="gpt-4o-mini">GPT-4o mini</option>
+            <option value="gpt-4">GPT-4</option>
+          </select>
+          <textarea id="finalOptimizeInstruction" placeholder="輸入最終優化要求"></textarea>
+        </div>
+
+        <div id="background-content" class="tab-content">
+          <textarea id="backgroundKnowledge" placeholder="請輸入背景知識，每行一個知識點
+例如：
+這是一篇關於科技產業的文章
+文章主要討論 AI 發展
+重點在於 AI 對就業市場的影響"></textarea>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 高亮 -->
   <div id="highlight-tab" class="main-tab-content">
     <div class="content">
@@ -213,6 +273,7 @@
   <script src="settings.js"></script>
   <script src="default.js"></script>
   <script src="translate.js"></script>
+  <script src="multiple_generation/multiple-generation.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

@@ -469,11 +469,24 @@ window.TranslateManager = {
       // 組織帶有 XML 標記的文本
       const taggedText = [
         // 前文原文和譯文
-        ...prevBlocks.map((text, i) => `<PREVIOUS_SOURCE>${text}</PREVIOUS_SOURCE>\n<PREVIOUS_TRANSLATION>${prevTranslatedBlocks[i]}</PREVIOUS_TRANSLATION>`),
+        ...prevBlocks.map((text, i) => 
+          `<PREVIOUS_SOURCE>
+            ${text}
+          </PREVIOUS_SOURCE>
+          <PREVIOUS_TRANSLATION>
+            ${prevTranslatedBlocks[i]}
+          </PREVIOUS_TRANSLATION>`
+        ),
         // 當前要翻譯的區塊
-        `<TRANSLATE_THIS>${sourceText}</TRANSLATE_THIS>`,
+        `<TRANSLATE_THIS>
+          ${sourceText}
+        </TRANSLATE_THIS>`,
         // 後文原文
-        ...nextBlocks.map(text => `<NEXT_SOURCE>${text}</NEXT_SOURCE>`)
+        ...nextBlocks.map(text => 
+          `<NEXT_SOURCE>
+            ${text}
+          </NEXT_SOURCE>`
+        )
       ].join('\n');
 
       // 準備替換用的參數
@@ -541,11 +554,24 @@ window.TranslateManager = {
       // 組織帶有 XML 標記的文本
       const taggedText = [
         // 前文原文和譯文
-        ...prevBlocks.map((text, i) => `<PREVIOUS_SOURCE>${text}</PREVIOUS_SOURCE>\n<PREVIOUS_TRANSLATION>${prevOptimizedBlocks[i]}</PREVIOUS_TRANSLATION>`),
+        ...prevBlocks.map((text, i) => 
+          `<PREVIOUS_SOURCE>
+            ${text}
+          </PREVIOUS_SOURCE>
+          <PREVIOUS_TRANSLATION>
+            ${prevOptimizedBlocks[i]}
+          </PREVIOUS_TRANSLATION>`
+        ),
         // 當前要翻譯的區塊
-        `<TRANSLATE_THIS>${sourceText}</TRANSLATE_THIS>`,
+        `<TRANSLATE_THIS>
+          ${sourceText}
+        </TRANSLATE_THIS>`,
         // 後文原文
-        ...nextBlocks.map(text => `<NEXT_SOURCE>${text}</NEXT_SOURCE>`)
+        ...nextBlocks.map(text => 
+          `<NEXT_SOURCE>
+            ${text}
+          </NEXT_SOURCE>`
+        )
       ].join('\n');
 
       // 準備替換用的參數
