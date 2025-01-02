@@ -59,10 +59,18 @@ const GlobalSettings = {
   reflect1Model: '',
   /** 反思一指令。 */
   reflect1Instruction: '',
-  /** 最終優化模型名稱。 */
-  finalOptimizeModel: '',
-  /** 最終優化指令。 */
-  finalOptimizeInstruction: '',
+  /** 生成優化一模型名稱。 */
+  generationOptimize_1_Model: '',
+  /** 生成優化一指令。 */
+  generationOptimize_1_Instruction: '',
+  /** 反思二模型名稱。 */
+  reflect2Model: '',
+  /** 反思二指令。 */
+  reflect2Instruction: '',
+  /** 生成優化二模型名稱。 */
+  generationOptimize_2_Model: '',
+  /** 生成優化二指令。 */
+  generationOptimize_2_Instruction: '',
   /** 背景知識。 */
   backgroundKnowledge: '',
   /** 摘要模型名稱。 */
@@ -90,7 +98,7 @@ const GlobalSettings = {
             'optimizeInstruction',
             'generateInstruction',
             'reflect1Instruction',
-            'finalOptimizeInstruction',
+            'generationOptimize_1_Instruction',
             'backgroundKnowledge'
           ], (items) => resolve(items));
         })
@@ -121,7 +129,9 @@ const GlobalSettings = {
       this.optimizeModel = syncResult.optimizeModel || this.model;
       this.generateModel = syncResult.generateModel || this.model;
       this.reflect1Model = syncResult.reflect1Model || this.model;
-      this.finalOptimizeModel = syncResult.finalOptimizeModel || this.model;
+      this.generationOptimize_1_Model = syncResult.generationOptimize_1_Model || this.model;
+      this.reflect2Model = syncResult.reflect2Model || this.model;
+      this.generationOptimize_2_Model = syncResult.generationOptimize_2_Model || this.model;
       this.translateInstruction = localResult.translateInstruction || 
                                 syncResult.translateInstruction || 
                                 (window.DefaultSettings?.translateInstruction || '');
@@ -137,9 +147,15 @@ const GlobalSettings = {
       this.reflect1Instruction = localResult.reflect1Instruction || 
                                 syncResult.reflect1Instruction || 
                                 (window.DefaultSettings?.reflect1Instruction || '');
-      this.finalOptimizeInstruction = localResult.finalOptimizeInstruction || 
-                                     syncResult.finalOptimizeInstruction || 
-                                     (window.DefaultSettings?.finalOptimizeInstruction || '');
+      this.generationOptimize_1_Instruction = localResult.generationOptimize_1_Instruction || 
+                                     syncResult.generationOptimize_1_Instruction || 
+                                     (window.DefaultSettings?.generationOptimize_1_Instruction || '');
+      this.reflect2Instruction = localResult.reflect2Instruction || 
+                                syncResult.reflect2Instruction || 
+                                (window.DefaultSettings?.reflect2Instruction || '');
+      this.generationOptimize_2_Instruction = localResult.generationOptimize_2_Instruction || 
+                                     syncResult.generationOptimize_2_Instruction || 
+                                     (window.DefaultSettings?.generationOptimize_2_Instruction || '');
       this.backgroundKnowledge = localResult.backgroundKnowledge || 
                                 syncResult.backgroundKnowledge || 
                                 (window.DefaultSettings?.backgroundKnowledge || '');
@@ -226,7 +242,9 @@ const GlobalSettings = {
             optimizeModel: this.optimizeModel,
             generateModel: this.generateModel,
             reflect1Model: this.reflect1Model,
-            finalOptimizeModel: this.finalOptimizeModel,
+            generationOptimize_1_Model: this.generationOptimize_1_Model,
+            reflect2Model: this.reflect2Model,
+            generationOptimize_2_Model: this.generationOptimize_2_Model,
             confirmModel: this.confirmModel,
             confirmContent: this.confirmContent,
             removeHash: this.removeHash,
@@ -246,7 +264,9 @@ const GlobalSettings = {
             zhEnMapping: this.zhEnMapping,  // 加入中英對照表到本地儲存
             generateInstruction: this.generateInstruction,
             reflect1Instruction: this.reflect1Instruction,
-            finalOptimizeInstruction: this.finalOptimizeInstruction,
+            generationOptimize_1_Instruction: this.generationOptimize_1_Instruction,
+            reflect2Instruction: this.reflect2Instruction,
+            generationOptimize_2_Instruction: this.generationOptimize_2_Instruction,
             backgroundKnowledge: this.backgroundKnowledge
           }, resolve);
         })
@@ -266,7 +286,7 @@ const GlobalSettings = {
     try {
       // 檢查是否為需要使用 local storage 的大型文本
       if (['translateInstruction', 'summaryInstruction', 'zhEnMapping', 'reflectInstruction', 
-        'optimizeInstruction', 'generateInstruction', 'reflect1Instruction', 'finalOptimizeInstruction', 
+        'optimizeInstruction', 'generateInstruction', 'reflect1Instruction', 'generationOptimize_1_Instruction', 
         'backgroundKnowledge'].includes(key)) {
         await new Promise((resolve) => {
           chrome.storage.local.set({ [key]: value }, resolve);

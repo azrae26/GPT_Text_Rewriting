@@ -140,7 +140,9 @@
         <div class="tab-container">
           <div class="tab active" data-tab="initial-gen">初始生成</div>
           <div class="tab" data-tab="reflect-1">反思一</div>
-          <div class="tab" data-tab="final-optimize">最終優化</div>
+          <div class="tab" data-tab="generation-optimize-1">生成優化一</div>
+          <div class="tab" data-tab="reflect-2">反思二</div>
+          <div class="tab" data-tab="generation-optimize-2">生成優化二</div>
           <div class="tab" data-tab="background">背景知識</div>
         </div>
 
@@ -172,13 +174,31 @@
           <textarea id="reflect1Instruction" placeholder="輸入反思一要求"></textarea>
         </div>
 
-        <div id="final-optimize-content" class="tab-content">
-          <select id="finalOptimizeModel" class="model-select">
+        <div id="generation-optimize-1-content" class="tab-content">
+          <select id="generationOptimize_1_Model" class="model-select">
             <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
             <option value="gpt-4o-mini">GPT-4o mini</option>
             <option value="gpt-4">GPT-4</option>
           </select>
-          <textarea id="finalOptimizeInstruction" placeholder="輸入最終優化要求"></textarea>
+          <textarea id="generationOptimize_1_Instruction" placeholder="輸入生成優化一要求"></textarea>
+        </div>
+
+        <div id="reflect-2-content" class="tab-content">
+          <select id="reflect2Model" class="model-select">
+            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
+            <option value="gpt-4o-mini">GPT-4o mini</option>
+            <option value="gpt-4">GPT-4</option>
+          </select>
+          <textarea id="reflect2Instruction" placeholder="輸入反思二要求"></textarea>
+        </div>
+
+        <div id="generation-optimize-2-content" class="tab-content">
+          <select id="generationOptimize_2_Model" class="model-select">
+            <option value="gemini-2.0-flash-exp">Gemini 2.0 Flash</option>
+            <option value="gpt-4o-mini">GPT-4o mini</option>
+            <option value="gpt-4">GPT-4</option>
+          </select>
+          <textarea id="generationOptimize_2_Instruction" placeholder="輸入生成優化二要求"></textarea>
         </div>
 
         <div id="background-content" class="tab-content">

@@ -9,7 +9,9 @@ const DefaultSettings = {
   optimizeModel: 'gemini-2.0-flash-exp',       // 優化模型
   generateModel: 'gemini-2.0-flash-exp',       // 初始生成模型
   reflect1Model: 'gemini-2.0-flash-exp',       // 反思一模型
-  finalOptimizeModel: 'gemini-2.0-flash-exp',  // 最終優化模型
+  generationOptimize_1_Model: 'gemini-2.0-flash-exp',  // 生成優化一模型
+  reflect2Model: 'gemini-2.0-flash-exp',       // 反思二模型
+  generationOptimize_2_Model: 'gemini-2.0-flash-exp',  // 生成優化二模型
 
   // 勾選框預設狀態
   confirmModel: false,      // 確認模型：預設不勾選
@@ -199,7 +201,9 @@ Auras=雙鴻
   // 生成功能預設設定
   generateInstruction: '',      // 初始生成指令
   reflect1Instruction: '',      // 反思一指令
-  finalOptimizeInstruction: '', // 最終優化指令
+  generationOptimize_1_Instruction: '', // 生成優化一指令
+  reflect2Instruction: '',      // 反思二指令
+  generationOptimize_2_Instruction: '', // 生成優化二指令
   backgroundKnowledge: ''       // 背景知識
 };
 

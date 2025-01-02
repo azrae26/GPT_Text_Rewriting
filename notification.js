@@ -33,28 +33,44 @@ const Notification = {
     const totalBatches = batchMatch ? batchMatch[2] : null;
 
     // 判斷是否為取消翻譯的通知
-    const isCancelTranslation = message === '已取消翻譯';
+    const isCancelTranslation = message === TranslateConfig.STAGES.CANCELLED;
     // 判斷是否為取消生成的通知
-    const isCancelGeneration = message === '已取消生成';
+    const isCancelGeneration = message === GenerationConfig.STAGES.CANCELLED;
+    
+    // 判斷是否為生成相關的通知（優先判斷，因為更具體）
+    const isGeneration = message.includes(GenerationConfig.STAGES.INITIAL) || 
+                        message.includes(GenerationConfig.STAGES.REFLECT_1) || 
+                        message.includes(GenerationConfig.STAGES.OPTIMIZE_1) || 
+                        message.includes(GenerationConfig.STAGES.REFLECT_2) || 
+                        message.includes(GenerationConfig.STAGES.OPTIMIZE_2) || 
+                        isCancelGeneration;
+    
     // 判斷是否為翻譯相關的通知
-    const isTranslation = message.includes('翻譯') || message.includes('反思階段') || message.includes('優化階段') || isCancelTranslation;
-    // 判斷是否為生成相關的通知
-    const isGeneration = message.includes('生成') || message.includes('反思一') || message.includes('最終優化') || isCancelGeneration;
+    const isTranslation = !isGeneration && (
+      message.includes(TranslateConfig.STAGES.INITIAL) || 
+      message.includes(TranslateConfig.STAGES.REFLECT) || 
+      message.includes(TranslateConfig.STAGES.OPTIMIZE) || 
+      isCancelTranslation
+    );
 
     // 判斷翻譯階段
     let translationPhase = '初步翻譯中';
-    if (message.includes('反思階段')) {
+    if (message.includes(TranslateConfig.STAGES.REFLECT)) {
       translationPhase = '反思翻譯中';
-    } else if (message.includes('優化階段')) {
+    } else if (message.includes(TranslateConfig.STAGES.OPTIMIZE)) {
       translationPhase = '優化翻譯中';
     }
 
     // 判斷生成階段
     let generationPhase = '初始生成中';
-    if (message.includes('反思一')) {
+    if (message.includes(GenerationConfig.STAGES.REFLECT_1)) {
       generationPhase = '反思一中';
-    } else if (message.includes('最終優化')) {
-      generationPhase = '最終優化中';
+    } else if (message.includes(GenerationConfig.STAGES.OPTIMIZE_1)) {
+      generationPhase = '生成優化一中';
+    } else if (message.includes(GenerationConfig.STAGES.REFLECT_2)) {
+      generationPhase = '反思二中';
+    } else if (message.includes(GenerationConfig.STAGES.OPTIMIZE_2)) {
+      generationPhase = '生成優化二中';
     }
 
     if (isLoading) {
@@ -93,7 +109,8 @@ const Notification = {
           console.log('更新進度條 - 當前批次:', currentBatch, '總批次:', totalBatches);
           // 設定 data-segments 屬性
           const totalBatchesNum = parseInt(totalBatches);
-          const totalSegments = totalBatchesNum * 3;
+          const stepsPerBatch = isTranslation ? 3 : 5; // 翻譯有3個步驟，生成有5個步驟
+          const totalSegments = totalBatchesNum * stepsPerBatch;
           if (totalSegments > 60) {
             progressBar.setAttribute('data-segments', 'most');
           } else if (totalSegments > 40) {
@@ -103,8 +120,8 @@ const Notification = {
           } else {
             progressBar.removeAttribute('data-segments');
           }
-          progressBar.innerHTML = Array.from({ length: parseInt(totalBatches) * 3 }, (_, i) => {
-            const isCompleted = i < window.TranslateManager.completedStepsCount;
+          progressBar.innerHTML = Array.from({ length: totalSegments }, (_, i) => {
+            const isCompleted = i < (isTranslation ? window.TranslateManager.completedStepsCount : window.GenerationManager.completedStepsCount);
             return `<div class="progress-segment ${isCompleted ? 'completed' : ''}"></div>`;
           }).join('');
         }
@@ -130,11 +147,16 @@ const Notification = {
       ` : ''}
       ${currentBatch && totalBatches && !isCancelTranslation && !isCancelGeneration ? `
         <div class="progress-bar" ${
-          parseInt(totalBatches) * 3 > 60 ? 'data-segments="most"' :
-          parseInt(totalBatches) * 3 > 40 ? 'data-segments="more"' :
-          parseInt(totalBatches) * 3 > 25 ? 'data-segments="many"' : ''
+          (() => {
+            const stepsPerBatch = isTranslation ? 3 : 5;
+            const totalSegments = parseInt(totalBatches) * stepsPerBatch;
+            if (totalSegments > 60) return 'data-segments="most"';
+            if (totalSegments > 40) return 'data-segments="more"';
+            if (totalSegments > 25) return 'data-segments="many"';
+            return '';
+          })()
         }>
-          ${Array.from({ length: parseInt(totalBatches) * 3 }, (_, i) => {
+          ${Array.from({ length: parseInt(totalBatches) * (isTranslation ? 3 : 5) }, (_, i) => {
             const isCompleted = i < (isTranslation ? window.TranslateManager.completedStepsCount : window.GenerationManager.completedStepsCount);
             return `<div class="progress-segment ${isCompleted ? 'completed' : ''}"></div>`;
           }).join('')}

@@ -158,7 +158,7 @@ const TextProcessor = {
    * @param {string} apiKey - API 金鑰
    * @param {boolean} isGemini - 是否為 Gemini API
    * @param {boolean} isTranslation - 是否為翻譯請求
-   * @param {string} requestType - 請求類型：'translate' | 'reflect' | 'optimize' | 'generate' | 'reflect1' | 'finalOptimize'
+   * @param {string} requestType - 請求類型：'translate' | 'reflect' | 'optimize' | 'generate' | 'reflect1' | 'generationOptimize_1'
    */
   async _sendRequest(endpoint, body, apiKey, isGemini, isTranslation = false, requestType = 'translate') {
     console.log('[_sendRequest] 開始處理請求');
@@ -166,7 +166,7 @@ const TextProcessor = {
     // 根據請求類型輸出不同格式的日誌
     if (requestType === 'reflect' || requestType === 'reflect1') {
       console.log('反思階段請求體:', JSON.stringify(body, null, 2));
-    } else if (requestType === 'optimize' || requestType === 'finalOptimize') {
+    } else if (requestType === 'optimize' || requestType === 'generationOptimize_1') {
       console.log('優化階段請求體:', JSON.stringify(body, null, 2));
     } else if (requestType === 'generate') {
       console.log('生成階段請求體:', JSON.stringify(body, null, 2));
