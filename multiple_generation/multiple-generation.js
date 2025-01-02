@@ -37,6 +37,17 @@ window.GenerationConfig = {
         BATCH: 1200          // 批次最大字數
       },
       MAX_PREVIOUS_BLOCKS: 3  // 最大前文區塊數
+    },
+    
+    // 階段標識符
+    STAGES: {
+      INITIAL: 'GEN_INITIAL',
+      REFLECT_1: 'GEN_REFLECT_1',
+      OPTIMIZE_1: 'GEN_OPTIMIZE_1',
+      REFLECT_2: 'GEN_REFLECT_2',
+      OPTIMIZE_2: 'GEN_OPTIMIZE_2',
+      COMPLETED: 'GEN_COMPLETED',
+      CANCELLED: 'GEN_CANCELLED'
     }
   };
   
@@ -213,9 +224,11 @@ window.GenerationConfig = {
       this.completedGenerations.clear();
       this.completedStepsCount = 0;
       // 清除所有階段的生成結果
-      this.generationResults.initial.clear();
-      this.generationResults.reflection.clear();
-      this.generationResults.optimize.clear();
+      this.generationResults = {
+        initial: new Map(),    // 初始生成結果
+        reflection: new Map(),  // 反思結果
+        optimize: new Map()     // 優化結果
+      };
       this.isLastBatchProcessed = false;
       this.batchInterval = 5000;
       this.selectionStart = null;
@@ -403,24 +416,29 @@ window.GenerationConfig = {
      * @param {string} reflectionResult - 反思結果（僅在優化階段使用）
      * @param {number} blockIndex - 區塊索引
      * @param {string} stage - 處理階段 ('reflect' 或 'optimize')
+     * @param {number} step - 步驟編號（1 或 2）
      */
-    async processStage(generatedText, sourceText, reflectionResult, blockIndex, stage) {
+    async processStage(generatedText, sourceText, reflectionResult, blockIndex, stage, step) {
       try {
         const settings = await window.GlobalSettings.loadSettings();
         const isReflectStage = stage === 'reflect';
         
-        // 根據階段選擇對應的模型和指令
+        // 根據階段和步驟選擇對應的模型和指令
         const model = isReflectStage ? 
-          (settings.reflect1Model || settings.model) : 
-          (settings.optimizeModel || settings.model);
+          (step === 1 ? settings.reflect1Model : settings.reflect2Model) || settings.model : 
+          (step === 1 ? settings.generationOptimize_1_Model : settings.generationOptimize_2_Model) || settings.model;
         const isGemini = model.startsWith('gemini');
         const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
 
         // 顯示階段通知
+        const stage_id = isReflectStage ? 
+          (step === 1 ? GenerationConfig.STAGES.REFLECT_1 : GenerationConfig.STAGES.REFLECT_2) :
+          (step === 1 ? GenerationConfig.STAGES.OPTIMIZE_1 : GenerationConfig.STAGES.OPTIMIZE_2);
+        
         await window.Notification.showNotification(`
           模型: ${window.GlobalSettings.API.models[model] || model}<br>
           API KEY: ${apiKey.substring(0, 5)}...<br>
-          ${isReflectStage ? '反思' : '優化'}階段<br>
+          ${stage_id}<br>
           批次進度: ${blockIndex + 1}/${this.totalBatches}
         `, true);
 
@@ -462,16 +480,38 @@ window.GenerationConfig = {
           )
         ].join('\n');
 
+        // 可用的替換符:
+        // {tagged_text} - 包含完整上下文標記的文本(前文、當前文本、後文,XML格式)
+        // {chunk_to_generate} - 當前需要處理的原始文本區塊
+        // {generation_1_chunk} - 初始生成的結果
+        // {generate_reflection_1_chunk} - 反思一的結果(在優化一階段和優化二階段可用)
+        // {generation_optimize_1_chunk} - 生成優化一的結果(在反思二階段和優化二階段可用)
+        // {generate_reflection_2_chunk} - 反思二的結果(在優化二階段可用)
+
+        
         // 準備替換用的參數
         const replaceParams = {
           tagged_text: taggedText,      // 包含了完整的上下文標記文本，包括前文、當前文本和後文，使用XML標記格式
           chunk_to_generate: sourceText, // 當前需要處理的原始文本區塊
-          generation_1_chunk: generatedText  // 初始生成的結果
+          generation_1_chunk: generatedText  // 初始生成的結果，替換符：{generation_1_chunk}
         };
 
-        // 在優化階段添加反思結果
-        if (!isReflectStage && reflectionResult) {
-          replaceParams.generate_reflection_chunk = reflectionResult; // 反思階段產生的結果，用於優化階段參考
+        // 在反思二階段添加生成優化一的結果
+        if (isReflectStage && step === 2) {
+          const optimize1Result = this.generationResults.optimize.get(blockIndex);
+          replaceParams.generation_optimize_1_chunk = optimize1Result; // 生成優化一的結果，替換符：{generation_optimize_1_chunk}
+          replaceParams.generation_1_chunk = optimize1Result; // 在反思二階段，用優化一的結果替換 generation_1_chunk
+        }
+        
+        // 在優化二階段添加反思一、生成優化一和反思二的結果
+        if (!isReflectStage && step === 2) {
+          replaceParams.generate_reflection_1_chunk = this.generationResults.reflection.get(blockIndex); // 反思一的結果，替換符：{generate_reflection_1_chunk}
+          replaceParams.generation_optimize_1_chunk = this.generationResults.optimize.get(blockIndex); // 生成優化一的結果，替換符：{generation_optimize_1_chunk}
+          replaceParams.generate_reflection_2_chunk = reflectionResult; // 反思二的結果，替換符：{generate_reflection_2_chunk}
+        }
+        // 在優化一階段添加反思一的結果
+        else if (!isReflectStage && step === 1) {
+          replaceParams.generate_reflection_1_chunk = reflectionResult; // 反思一的結果，替換符：{generate_reflection_1_chunk}
         }
 
         // 獲取背景知識上下文
@@ -480,7 +520,9 @@ window.GenerationConfig = {
         const { endpoint, body } = TextProcessor._prepareApiConfig(
           model,
           replaceParams,
-          isReflectStage ? settings.reflect1Instruction : settings.generationOptimize_1_Instruction,
+          isReflectStage ? 
+            (step === 1 ? settings.reflect1Instruction : settings.reflect2Instruction) : 
+            (step === 1 ? settings.generationOptimize_1_Instruction : settings.generationOptimize_2_Instruction),
           context
         );
 
@@ -513,15 +555,15 @@ window.GenerationConfig = {
     /**
      * 處理反思階段
      */
-    async processReflection(generatedText, sourceText, blockIndex) {
-      return this.processStage(generatedText, sourceText, null, blockIndex, 'reflect');
+    async processReflection(generatedText, sourceText, blockIndex, step) {
+      return this.processStage(generatedText, sourceText, null, blockIndex, 'reflect', step);
     },
   
     /**
      * 處理優化階段
      */
-    async processOptimization(generatedText, sourceText, reflectionResult, blockIndex) {
-      return this.processStage(generatedText, sourceText, reflectionResult, blockIndex, 'optimize');
+    async processOptimization(generatedText, sourceText, reflectionResult, blockIndex, step) {
+      return this.processStage(generatedText, sourceText, reflectionResult, blockIndex, 'optimize', step);
     },
   
     /**
@@ -583,7 +625,7 @@ window.GenerationConfig = {
             await window.Notification.showNotification(`
               模型: ${window.GlobalSettings.API.models[model] || model}<br>
               API KEY: ${apiKey.substring(0, 5)}...<br>
-              初步生成階段<br>
+              ${GenerationConfig.STAGES.INITIAL}<br>
               批次進度: ${this.completedGenerations.size}/${this.totalBatches}<br>
               發送間隔: ${this.batchInterval/1000}秒
             `, true);
@@ -828,8 +870,8 @@ window.GenerationConfig = {
         const generatedBlock = this.getGeneratedTextForBlock(i);
   
         try {
-          // 反思階段...
-          const reflectionResult = await this.processReflection(generatedBlock, originalBlock, i);
+          // 反思一階段...
+          const reflection1Result = await this.processReflection(generatedBlock, originalBlock, i, 1);
           
           // 根據總區塊數決定等待時間
           let waitTime;
@@ -842,14 +884,25 @@ window.GenerationConfig = {
           }
           await new Promise(resolve => setTimeout(resolve, waitTime));
   
-          // 優化階段...
-          const optimizedResult = await this.processOptimization(generatedBlock, originalBlock, reflectionResult, i);
+          // 優化一階段...
+          const optimize1Result = await this.processOptimization(generatedBlock, originalBlock, reflection1Result, i, 1);
           
-          // 使用統一入口更新優化結果
-          await this.updateText(optimizedResult, 'optimize');
+          // 等待一段時間後進行反思二
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          
+          // 反思二階段...
+          const reflection2Result = await this.processReflection(optimize1Result, originalBlock, i, 2);
+          
+          await new Promise(resolve => setTimeout(resolve, waitTime));
+          
+          // 優化二階段...
+          const optimize2Result = await this.processOptimization(optimize1Result, originalBlock, reflection2Result, i, 2);
+          
+          // 使用統一入口更新最終優化結果
+          await this.updateText(optimize2Result, 'optimize');
           
           // 使用 Map 存儲結果，key 為原始索引
-          resultsMap.set(i, optimizedResult);
+          resultsMap.set(i, optimize2Result);
   
           if (i < this.generationQueue.length - 1) {
             await new Promise(resolve => setTimeout(resolve, waitTime));

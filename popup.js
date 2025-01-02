@@ -34,6 +34,10 @@ document.addEventListener('DOMContentLoaded', async function() {
   const reflect1InstructionInput = document.getElementById('reflect1Instruction');
   const generationOptimize_1_ModelSelect = document.getElementById('generationOptimize_1_Model');
   const generationOptimize_1_InstructionInput = document.getElementById('generationOptimize_1_Instruction');
+  const reflect2ModelSelect = document.getElementById('reflect2Model');
+  const reflect2InstructionInput = document.getElementById('reflect2Instruction');
+  const generationOptimize_2_ModelSelect = document.getElementById('generationOptimize_2_Model');
+  const generationOptimize_2_InstructionInput = document.getElementById('generationOptimize_2_Instruction');
   const backgroundKnowledgeInput = document.getElementById('backgroundKnowledge');
   
   // 關鍵要點相關
@@ -93,6 +97,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     reflect1InstructionInput.value = settings.reflect1Instruction || '';
     generationOptimize_1_ModelSelect.value = settings.generationOptimize_1_Model || 'gemini-2.0-flash-exp';
     generationOptimize_1_InstructionInput.value = settings.generationOptimize_1_Instruction || '';
+    reflect2ModelSelect.value = settings.reflect2Model || 'gemini-2.0-flash-exp';
+    reflect2InstructionInput.value = settings.reflect2Instruction || '';
+    generationOptimize_2_ModelSelect.value = settings.generationOptimize_2_Model || 'gemini-2.0-flash-exp';
+    generationOptimize_2_InstructionInput.value = settings.generationOptimize_2_Instruction || '';
     backgroundKnowledgeInput.value = settings.backgroundKnowledge || '';
     
     // 反思相關
@@ -208,7 +216,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   apiKeyInput.addEventListener('input', async function() {
     apiKeys[modelSelect.value] = this.value;
     await GlobalSettings.saveSingleSetting('apiKeys', apiKeys);
-    updateContentScript();
+    throttledUpdateContentScript();
   });
 
   // API 模型選擇
@@ -229,6 +237,8 @@ document.addEventListener('DOMContentLoaded', async function() {
       'generateInstruction': { type: 'input', element: generateInstructionInput },
       'reflect1Instruction': { type: 'input', element: reflect1InstructionInput },
       'generationOptimize_1_Instruction': { type: 'input', element: generationOptimize_1_InstructionInput },
+      'reflect2Instruction': { type: 'input', element: reflect2InstructionInput },
+      'generationOptimize_2_Instruction': { type: 'input', element: generationOptimize_2_InstructionInput },
       'backgroundKnowledge': { type: 'input', element: backgroundKnowledgeInput },
       'summaryInstruction': { type: 'input', element: summaryInstructionInput },
       'zhEnMapping': { type: 'input', element: zhEnMappingInput },
@@ -245,6 +255,8 @@ document.addEventListener('DOMContentLoaded', async function() {
       'generateModel': { type: 'model', element: generateModelSelect },
       'reflect1Model': { type: 'model', element: reflect1ModelSelect },
       'generationOptimize_1_Model': { type: 'model', element: generationOptimize_1_ModelSelect },
+      'reflect2Model': { type: 'model', element: reflect2ModelSelect },
+      'generationOptimize_2_Model': { type: 'model', element: generationOptimize_2_ModelSelect },
       'summaryModel': { type: 'model', element: summaryModelSelect },
       'reflectModel': { type: 'model', element: reflectModelSelect },
       'optimizeModel': { type: 'model', element: optimizeModelSelect }
@@ -279,7 +291,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (config.callback) {
           config.callback();
         }
-        updateContentScript();
+        throttledUpdateContentScript();
       });
     });
 
@@ -292,7 +304,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       
       config.element.addEventListener('change', async function() {
         await GlobalSettings.saveModelSelection(key, this.value);
-        updateContentScript();
+        throttledUpdateContentScript();
       });
     });
 
@@ -308,7 +320,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (config.logMessage) {
           console.log(config.logMessage, this.checked);
         }
-        updateContentScript();
+        throttledUpdateContentScript();
       });
     });
   }
@@ -483,6 +495,18 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
   }
 
+  // 添加節流函數
+  const throttle = (func, limit) => {
+    let inThrottle;
+    return function(...args) {
+      if (!inThrottle) {
+        func.apply(this, args);
+        inThrottle = true;
+        setTimeout(() => inThrottle = false, limit);
+      }
+    }
+  }
+
   // 更新 content.js 設置
   async function updateContentScript(settings) {
     try {
@@ -492,9 +516,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         return;
       }
 
-      // 保存設置到 storage，確保設置不會丟失
-      await chrome.storage.sync.set({ settings });
-      console.log('設置已保存到 storage');
+      // 使用 local storage 而不是 sync storage 來減少配額使用
+      await chrome.storage.local.set({ tempSettings: settings });
+      console.log('設置已暫存到 local storage');
 
       try {
         // 嘗試發送消息到 content script
@@ -503,10 +527,15 @@ document.addEventListener('DOMContentLoaded', async function() {
           settings: settings
         });
         console.log('設置已成功發送到 content script');
+
+        // 成功發送後，再將設置保存到 sync storage
+        await chrome.storage.sync.set({ settings });
+        console.log('設置已保存到 sync storage');
       } catch (error) {
-        // 忽略連接錯誤，因為設置已經保存到 storage
         if (error.message.includes('Receiving end does not exist')) {
           console.log('content script 未載入，設置將在下次載入時應用');
+          // 如果 content script 未載入，仍然保存到 sync storage
+          await chrome.storage.sync.set({ settings });
         } else {
           console.warn('更新 content script 時發生錯誤:', error);
         }
@@ -515,6 +544,9 @@ document.addEventListener('DOMContentLoaded', async function() {
       console.warn('updateContentScript 發生錯誤:', error);
     }
   }
+
+  // 使用節流包裝 updateContentScript
+  const throttledUpdateContentScript = throttle(updateContentScript, 1000);
 
   // 修改消息發送函數
   function sendMessageToTab(message, callback) {

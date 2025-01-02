@@ -37,6 +37,15 @@ window.TranslateConfig = {
       BATCH: 1200          // 批次最大字數
     },
     MAX_PREVIOUS_BLOCKS: 3  // 最大前文區塊數
+  },
+  
+  // 階段標識符
+  STAGES: {
+    INITIAL: 'TRANS_INITIAL',
+    REFLECT: 'TRANS_REFLECT',
+    OPTIMIZE: 'TRANS_OPTIMIZE',
+    COMPLETED: 'TRANS_COMPLETED',
+    CANCELLED: 'TRANS_CANCELLED'
   }
 };
 
@@ -450,7 +459,7 @@ window.TranslateManager = {
       await window.Notification.showNotification(`
         模型: ${window.GlobalSettings.API.models[model] || model}<br>
         API KEY: ${apiKey.substring(0, 5)}...<br>
-        反思階段<br>
+        ${TranslateConfig.STAGES.REFLECT}<br>
         批次進度: ${blockIndex + 1}/${this.totalBatches}
       `, true);
 
@@ -535,7 +544,7 @@ window.TranslateManager = {
       await window.Notification.showNotification(`
         模型: ${window.GlobalSettings.API.models[model] || model}<br>
         API KEY: ${apiKey.substring(0, 5)}...<br>
-        優化階段<br>
+        ${TranslateConfig.STAGES.OPTIMIZE}<br>
         批次進度: ${blockIndex + 1}/${this.totalBatches}
       `, true);
 
@@ -654,7 +663,7 @@ window.TranslateManager = {
 
           try {
             const finalText = await this.processAllBlocks();
-            await window.Notification.showNotification('翻譯優化完成', false);
+            await window.Notification.showNotification(TranslateConfig.STAGES.COMPLETED, false);
           } catch (error) {
             console.error('反思優化處理失敗:', error);
             await window.Notification.showNotification('反思優化處理失敗: ' + error.message, false);
@@ -666,7 +675,7 @@ window.TranslateManager = {
           await window.Notification.showNotification(`
             模型: ${window.GlobalSettings.API.models[model] || model}<br>
             API KEY: ${apiKey.substring(0, 5)}...<br>
-            初步翻譯階段<br>
+            ${TranslateConfig.STAGES.INITIAL}<br>
             批次進度: ${this.completedTranslations.size}/${this.totalBatches}<br>
             發送間隔: ${this.batchInterval/1000}秒
           `, true);
@@ -958,11 +967,12 @@ window.TranslateManager = {
       
     // 使用統一入口更新最終文本
     await this.updateText(finalText, 'final');
+    await window.Notification.showNotification(TranslateConfig.STAGES.COMPLETED, false);
     return finalText;
   },
 
   // 取消翻譯
-  cancelTranslation() {
+  async cancelTranslation() {
     console.log('[cancelTranslation] 開始取消翻譯流程');
     console.log('[cancelTranslation] 當前狀態:', {
       isTranslating: this.isTranslating,
@@ -999,6 +1009,7 @@ window.TranslateManager = {
     // 重置所有翻譯相關的狀態
     console.log('[cancelTranslation] 開始重置翻譯狀態');
     this.resetTranslation();
+    await window.Notification.showNotification(TranslateConfig.STAGES.CANCELLED, false);
     console.log('[cancelTranslation] 翻譯取消流程完成');
   },
 
