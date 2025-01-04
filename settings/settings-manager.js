@@ -110,6 +110,23 @@ class StorageManager {
       version: '1.0'
     };
 
+    // 定義需要使用 local storage 的大型文字設定
+    this.LOCAL_STORAGE_KEYS = [
+      'translateInstruction',
+      'summaryInstruction',
+      'zhEnMapping',
+      'reflectInstruction',
+      'optimizeInstruction',
+      'generateInstruction',
+      'reflect1Instruction',
+      'generationOptimize_1_Instruction',
+      'reflect2Instruction',
+      'generationOptimize_2_Instruction',
+      'reflect3Instruction',
+      'generationOptimize_3_Instruction',
+      'backgroundKnowledge'
+    ];
+
     // 定義所有需要匯出的設定鍵值
     this.settingKeys = {
       // API 和模型相關
@@ -180,6 +197,35 @@ class StorageManager {
     };
   }
 
+  // 檢查是否為需要使用 local storage 的設定
+  isLocalStorageKey(key) {
+    return this.LOCAL_STORAGE_KEYS.includes(key) || key.startsWith('generation_settings_');
+  }
+
+  // 分類設定到不同的儲存類型
+  #categorizeSettings(settings) {
+    const syncSettings = {};
+    const localSettings = {};
+    const replaceSettings = {};
+
+    Object.entries(settings).forEach(([key, value]) => {
+      // 檢查是否為替換規則
+      if (key.startsWith('replace_') || key === 'autoReplaceRules' || key === 'manualReplaceRules') {
+        replaceSettings[key.startsWith('replace_') ? key : `replace_${key}`] = value;
+      }
+      // 檢查是否為需要使用 local storage 的大型文字
+      else if (this.isLocalStorageKey(key)) {
+        localSettings[key] = value;
+      }
+      // 其他設定使用 sync storage
+      else {
+        syncSettings[key] = value;
+      }
+    });
+
+    return { replaceSettings, localSettings, syncSettings };
+  }
+
   // 讀取所有設定
   async getAllSettings() {
     try {
@@ -232,6 +278,8 @@ class StorageManager {
   // 儲存設定
   async saveSettings(importedData) {
     try {
+      console.group('儲存匯入的設定');
+      
       // 驗證設定檔識別標記
       if (!this.validateSettingsFile(importedData)) {
         throw new Error('無效的設定檔：不是本插件的設定檔');
@@ -242,18 +290,40 @@ class StorageManager {
         throw new Error('無效的設定資料');
       }
 
+      // 分類設定
       const { replaceSettings, localSettings, syncSettings } = this.#categorizeSettings(settings);
       
-      await chrome.storage.local.remove(Object.keys(replaceSettings));
+      console.log('分類後的設定：');
+      console.log('- sync 設定:', Object.keys(syncSettings));
+      console.log('- local 設定:', Object.keys(localSettings));
+      console.log('- 替換規則:', Object.keys(replaceSettings));
+
+      // 檢查 sync settings 的大小
+      const syncSettingsSize = new TextEncoder().encode(JSON.stringify(syncSettings)).length;
+      console.log('sync settings 大小:', syncSettingsSize, 'bytes');
+      if (syncSettingsSize > 100000) {
+        throw new Error('同步設定總大小超過限制 (100KB)');
+      }
+
+      // 移除舊的替換規則
+      if (Object.keys(replaceSettings).length > 0) {
+        console.log('移除舊的替換規則...');
+        await chrome.storage.local.remove(Object.keys(replaceSettings));
+      }
+
+      // 儲存設定
+      console.log('開始儲存設定...');
       await Promise.all([
-        this.setChromeStorage(syncSettings, 'sync'),
-        this.setChromeStorage(localSettings, 'local'),
-        this.setChromeStorage(replaceSettings, 'local', 'replace_')
+        Object.keys(syncSettings).length > 0 ? this.setChromeStorage(syncSettings, 'sync') : Promise.resolve(),
+        Object.keys(localSettings).length > 0 ? this.setChromeStorage(localSettings, 'local') : Promise.resolve(),
+        Object.keys(replaceSettings).length > 0 ? this.setChromeStorage(replaceSettings, 'local') : Promise.resolve()
       ]);
-      
-      sendLog('success', '設定儲存完成');
+
+      console.log('設定儲存完成');
+      console.groupEnd();
     } catch (error) {
-      sendLog('error', '儲存設定失敗', error);
+      console.error('儲存設定時出錯:', error);
+      console.groupEnd();
       throw error;
     }
   }
@@ -265,45 +335,6 @@ class StorageManager {
       importedData.appName === this.SETTINGS_IDENTIFIER.appName &&
       importedData.version === this.SETTINGS_IDENTIFIER.version
     );
-  }
-
-  // 新增私有方法來分類設定
-  #categorizeSettings(settings) {
-    const replaceSettings = {
-      autoReplaceRules: settings.autoReplaceRules || [],
-      manualReplaceRules: settings.manualReplaceRules || [],
-      replacePatterns: settings.replacePatterns,
-      replaceContent: settings.replaceContent,
-      replaceGroups: settings.replaceGroups,
-      manualGroups: settings.manualGroups,
-      extraManualGroups: settings.extraManualGroups,
-      manualReplaceValues_0: settings.manualReplaceValues_0,
-      manualReplaceValues_1: settings.manualReplaceValues_1,
-      manualReplaceValues_2: settings.manualReplaceValues_2
-    };
-
-    Object.keys(replaceSettings).forEach(key => {
-      if (!replaceSettings[key]) delete replaceSettings[key];
-    });
-
-    const localSettings = {
-      translateInstruction: settings.translateInstruction,
-      summaryInstruction: settings.summaryInstruction,
-      reflectInstruction: settings.reflectInstruction,
-      optimizeInstruction: settings.optimizeInstruction,
-      generateInstruction: settings.generateInstruction,
-      reflect1Instruction: settings.reflect1Instruction,
-      generationOptimize_1_Instruction: settings.generationOptimize_1_Instruction,
-      backgroundKnowledge: settings.backgroundKnowledge,
-      highlightPatterns: settings.highlightPatterns,
-      zhEnMapping: settings.zhEnMapping
-    };
-
-    const syncSettings = { ...settings };
-    [...Object.keys(localSettings), ...Object.keys(replaceSettings)]
-      .forEach(key => delete syncSettings[key]);
-
-    return { replaceSettings, localSettings, syncSettings };
   }
 
   // Chrome storage 操作的包裝方法，處理 Promise 化

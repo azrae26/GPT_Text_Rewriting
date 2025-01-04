@@ -16,8 +16,8 @@ window.GenerationConfig = {
       INTERVAL: {
         WAIT: {
           NONE: 0,           // 無等待
-          SHORT: 0,       // 短等待（0秒）// 改為0秒
-          LONG: 0         // 長等待（0秒）// 改為0秒
+          SHORT: 2000,       // 短等待（2秒）
+          LONG: 2000         // 長等待（2秒）
         }
       }
     },
@@ -430,6 +430,7 @@ window.GenerationConfig = {
      */
     async processStage(generatedText, sourceText, reflectionResult, blockIndex, stage, step) {
       try {
+        console.log(`=== 開始處理 ${stage} 階段 ${step} ===`);
         const settings = await window.GlobalSettings.loadSettings();
         const isReflectStage = stage === 'reflect';
          
@@ -441,6 +442,48 @@ window.GenerationConfig = {
           (step === 1 ? settings.generationOptimize_1_Model : 
            step === 2 ? settings.generationOptimize_2_Model : 
            settings.generationOptimize_3_Model) || settings.model;
+
+        console.log(`選擇的模型: ${model}`);
+
+        // 獲取對應的指令
+        const instruction = isReflectStage ? 
+          (step === 1 ? settings.reflect1Instruction : 
+           step === 2 ? settings.reflect2Instruction : 
+           settings.reflect3Instruction) : 
+          (step === 1 ? settings.generationOptimize_1_Instruction : 
+           step === 2 ? settings.generationOptimize_2_Instruction : 
+           settings.generationOptimize_3_Instruction);
+
+        console.log(`獲取到的指令: ${instruction ? '有指令' : '無指令'}`);
+
+        // 檢查指令是否為空
+        if (!instruction || !instruction.trim()) {
+          console.log(`[重要] ${stage} 階段 ${step} 的指令為空，即將停止處理`);
+          // 如果是反思階段，返回 null 表示不需要進行後續優化
+          // 如果是優化階段，返回上一階段的結果
+          if (isReflectStage) {
+            console.log(`[重要] ${stage} 階段 ${step} 返回 null`);
+            return { shouldStop: true, result: null };
+          } else {
+            let result;
+            // 根據步驟返回對應的上一階段結果
+            if (step === 1) {
+              result = this.generationResults.initial.get(blockIndex)?.generated;
+              console.log(`[重要] ${stage} 階段 ${step} 返回初始生成結果`);
+            } else if (step === 2) {
+              result = this.generationResults.optimize.get(blockIndex);
+              console.log(`[重要] ${stage} 階段 ${step} 返回優化一結果`);
+            } else {
+              result = this.generationResults.optimize2.get(blockIndex);
+              console.log(`[重要] ${stage} 階段 ${step} 返回優化二結果`);
+            }
+            console.log(`返回結果是否存在: ${result ? '是' : '否'}`);
+            return { shouldStop: true, result };
+          }
+        }
+
+        console.log(`開始準備 API 請求配置`);
+
         const isGemini = model.startsWith('gemini');
         const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
 
@@ -512,77 +555,52 @@ window.GenerationConfig = {
         // 準備替換用的參數
         const replaceParams = {
           tagged_text: taggedText,      // 包含了完整的上下文標記文本，包括前文、當前文本和後文，使用XML標記格式
-          chunk_to_generate: sourceText, // 當前需要處理的原始文本區塊，替換符：{chunk_to_generate}
-          generation_1_chunk: generatedText  // 初始生成的結果，替換符：{generation_1_chunk}
+          chunk_to_generate: sourceText, // 當前需要處理的原始文本區塊
+          generation_1_chunk: generatedText  // 初始生成的結果
         };
 
+        // 添加所有可用的結果
+        const results = {
+          reflection: this.generationResults.reflection.get(blockIndex),
+          optimize: this.generationResults.optimize.get(blockIndex),
+          reflection2: this.generationResults.reflection2.get(blockIndex),
+          optimize2: this.generationResults.optimize2.get(blockIndex),
+          reflection3: this.generationResults.reflection3.get(blockIndex)
+        };
 
-        // 在反思二階段添加生成優化一的結果
-        if (isReflectStage && step === 2) {
-          const optimize1Result = this.generationResults.optimize.get(blockIndex);
-          replaceParams.generation_optimize_1_chunk = optimize1Result; // 生成優化一的結果，替換符：{generation_optimize_1_chunk}
-          replaceParams.generation_1_chunk = optimize1Result; // 在反思二階段，用優化一的結果替換 generation_1_chunk
-          console.log('反思二階段替換參數：', {
-            chunk_to_generate: sourceText,
-            generation_1_chunk: optimize1Result,
-            generation_optimize_1_chunk: optimize1Result
-          });
+        // 根據當前步驟更新 generation_1_chunk
+        if (isReflectStage) {
+          if (step === 2 && results.optimize) {
+            replaceParams.generation_1_chunk = results.optimize;
+          } else if (step === 3 && results.optimize2) {
+            replaceParams.generation_1_chunk = results.optimize2;
+          }
         }
-        
-        // 在反思三階段添加生成優化一和二的結果
-        if (isReflectStage && step === 3) {
-          const optimize1Result = this.generationResults.optimize.get(blockIndex);
-          const optimize2Result = this.generationResults.optimize2.get(blockIndex);
-          replaceParams.generation_optimize_1_chunk = optimize1Result; // 生成優化一的結果，替換符：{generation_optimize_1_chunk}
-          replaceParams.generation_optimize_2_chunk = optimize2Result; // 生成優化二的結果，替換符：{generation_optimize_2_chunk}
-          replaceParams.generation_1_chunk = optimize2Result; // 在反思三階段，用優化二的結果替換 generation_1_chunk
-          console.log('反思三階段替換參數：', {
-            chunk_to_generate: sourceText,
-            generation_1_chunk: optimize2Result,
-            generation_optimize_1_chunk: optimize1Result,
-            generation_optimize_2_chunk: optimize2Result
-          });
+
+        // 添加所有已有的結果
+        if (results.reflection) {
+          replaceParams.generate_reflection_1_chunk = results.reflection;
         }
-        
-        // 在優化二階段添加反思一、生成優化一和反思二的結果
-        if (!isReflectStage && step === 2) {
-          replaceParams.generate_reflection_1_chunk = this.generationResults.reflection.get(blockIndex); // 反思一的結果，替換符：{generate_reflection_1_chunk}
-          replaceParams.generation_optimize_1_chunk = this.generationResults.optimize.get(blockIndex); // 生成優化一的結果，替換符：{generation_optimize_1_chunk}
-          replaceParams.generate_reflection_2_chunk = reflectionResult; // 反思二的結果，替換符：{generate_reflection_2_chunk}
-          console.log('優化二階段替換參數：', {
-            chunk_to_generate: sourceText,
-            generation_1_chunk: generatedText,
-            generate_reflection_1_chunk: this.generationResults.reflection.get(blockIndex),
-            generation_optimize_1_chunk: this.generationResults.optimize.get(blockIndex),
-            generate_reflection_2_chunk: reflectionResult
-          });
+        if (results.optimize) {
+          replaceParams.generation_optimize_1_chunk = results.optimize;
         }
-        // 在優化三階段添加所有前面階段的結果
-        else if (!isReflectStage && step === 3) {
-          replaceParams.generate_reflection_1_chunk = this.generationResults.reflection.get(blockIndex); // 反思一的結果，替換符：{generate_reflection_1_chunk}
-          replaceParams.generation_optimize_1_chunk = this.generationResults.optimize.get(blockIndex); // 生成優化一的結果，替換符：{generation_optimize_1_chunk}
-          replaceParams.generate_reflection_2_chunk = this.generationResults.reflection2.get(blockIndex); // 反思二的結果，替換符：{generate_reflection_2_chunk}
-          replaceParams.generation_optimize_2_chunk = this.generationResults.optimize2.get(blockIndex); // 生成優化二的結果，替換符：{generation_optimize_2_chunk}
-          replaceParams.generate_reflection_3_chunk = reflectionResult; // 反思三的結果，替換符：{generate_reflection_3_chunk}
-          console.log('優化三階段替換參數：', {
-            chunk_to_generate: sourceText,
-            generation_1_chunk: generatedText,
-            generate_reflection_1_chunk: this.generationResults.reflection.get(blockIndex),
-            generation_optimize_1_chunk: this.generationResults.optimize.get(blockIndex),
-            generate_reflection_2_chunk: this.generationResults.reflection2.get(blockIndex),
-            generation_optimize_2_chunk: this.generationResults.optimize2.get(blockIndex),
-            generate_reflection_3_chunk: reflectionResult
-          });
+        if (results.reflection2) {
+          replaceParams.generate_reflection_2_chunk = results.reflection2;
         }
-        // 在優化一階段添加反思一的結果
-        else if (!isReflectStage && step === 1) {
-          replaceParams.generate_reflection_1_chunk = reflectionResult; // 反思一的結果，替換符：{generate_reflection_1_chunk}
-          console.log('優化一階段替換參數：', {
-            chunk_to_generate: sourceText,
-            generation_1_chunk: generatedText,
-            generate_reflection_1_chunk: reflectionResult
-          });
+        if (results.optimize2) {
+          replaceParams.generation_optimize_2_chunk = results.optimize2;
         }
+        if (results.reflection3) {
+          replaceParams.generate_reflection_3_chunk = results.reflection3;
+        }
+
+        // 如果是優化階段，添加當前的反思結果
+        if (!isReflectStage && reflectionResult) {
+          const reflectionKey = `generate_reflection_${step}_chunk`;
+          replaceParams[reflectionKey] = reflectionResult;
+        }
+
+        console.log(`${stage} ${step} 階段替換參數：`, replaceParams);
 
         // 獲取背景知識上下文
         const context = await this.getGenerationContext();
@@ -609,7 +627,17 @@ window.GenerationConfig = {
           stage
         );
         
-        // 根據階段保存結果
+        try {
+          // 根據階段保存結果到 local storage
+          const storageKey = `generation_${stage}_${step}_${blockIndex}`;
+          await chrome.storage.local.set({ [storageKey]: result });
+          console.log(`成功保存結果到 local storage: ${storageKey}`);
+        } catch (error) {
+          console.error('保存結果到 local storage 失敗:', error);
+          // 儲存失敗不影響後續處理，僅記錄錯誤
+        }
+        
+        // 同時更新內存中的結果
         if (isReflectStage) {
           if (step === 1) {
             this.generationResults.reflection.set(blockIndex, result);
@@ -631,10 +659,10 @@ window.GenerationConfig = {
         // 增加完成步驟計數
         this.completedStepsCount++;
         
-        return result;
+        return { shouldStop: false, result: result };
       } catch (error) {
         console.error(`${stage}階段處理失敗:`, error);
-        return null;
+        return { shouldStop: false, result: null };
       }
     },
   
@@ -948,15 +976,18 @@ window.GenerationConfig = {
      * 處理所有區塊的反思和優化
      */
     async processAllBlocks() {
-      console.log('開始處理所有區塊');
+      console.log('=== 開始處理所有區塊 ===');
       const resultsMap = new Map();
       
       try {
         // 按順序處理每個區塊
         for (let i = 0; i < this.generationQueue.length; i++) {
-          console.log(`處理第 ${i + 1} 個區塊`);
+          console.log(`\n=== 處理第 ${i + 1} 個區塊 ===`);
           const sourceText = this.generationQueue[i];
-          const generatedText = this.generationResults.initial.get(i)?.generated;
+          
+          // 從 local storage 讀取初始生成結果
+          const initialKey = `generation_initial_${i}`;
+          const { [initialKey]: generatedText } = await chrome.storage.local.get(initialKey);
           
           if (!generatedText) {
             console.warn(`找不到第 ${i + 1} 個區塊的生成結果`);
@@ -964,113 +995,92 @@ window.GenerationConfig = {
           }
           
           try {
-            // 反思一
-            const reflectionResult1 = await this.processStage(
-              generatedText, 
-              sourceText, 
-              null, 
-              i, 
-              'reflect', 
-              1
-            );
+            let lastResult = generatedText; // 追蹤上一步的結果
             
-            if (!reflectionResult1) {
-              throw new Error('反思一失敗');
-            }
-            
-            // 優化一
-            const optimizedText1 = await this.processStage(
-              generatedText, 
-              sourceText, 
-              reflectionResult1, 
-              i, 
-              'optimize', 
-              1
-            );
-            
-            if (!optimizedText1) {
-              throw new Error('優化一失敗');
-            }
-            
-            // 反思二
-            const reflectionResult2 = await this.processStage(
-              optimizedText1, 
-              sourceText, 
-              null, 
-              i, 
-              'reflect', 
-              2
-            );
-            
-            if (!reflectionResult2) {
-              throw new Error('反思二失敗');
-            }
-            
-            // 優化二
-            const optimizedText2 = await this.processStage(
-              optimizedText1, 
-              sourceText, 
-              reflectionResult2, 
-              i, 
-              'optimize', 
-              2
-            );
-            
-            if (!optimizedText2) {
-              throw new Error('優化二失敗');
-            }
+            // 定義處理步驟
+            const steps = [
+              { type: 'reflect', step: 1, input: generatedText, prevResult: null },
+              { type: 'optimize', step: 1, prevResult: 'reflection' },
+              { type: 'reflect', step: 2, prevResult: 'optimize' },
+              { type: 'optimize', step: 2, prevResult: 'reflection2' },
+              { type: 'reflect', step: 3, prevResult: 'optimize2' },
+              { type: 'optimize', step: 3, prevResult: 'reflection3' }
+            ];
 
-            // 反思三
-            const reflectionResult3 = await this.processStage(
-              optimizedText2,
-              sourceText,
-              null,
-              i,
-              'reflect',
-              3
-            );
+            // 依序處理每個步驟
+            for (const { type, step, input, prevResult } of steps) {
+              const stageName = `${type}${step}`;
+              console.log(`\n--- 開始${type === 'reflect' ? '反思' : '優化'}${step} ---`);
+              
+              // 從 local storage 讀取上一步結果
+              const prevKey = prevResult ? `generation_${prevResult}_${i}` : null;
+              const prevStageResult = prevKey ? 
+                (await chrome.storage.local.get(prevKey))[prevKey] : 
+                input;
+              
+              // 處理當前階段
+              const { shouldStop, result } = await this.processStage(
+                type === 'optimize' ? lastResult : generatedText,
+                sourceText,
+                prevStageResult,
+                i,
+                type,
+                step
+              );
 
-            if (!reflectionResult3) {
-              throw new Error('反思三失敗');
-            }
+              // 如果需要停止
+              if (shouldStop) {
+                console.log(`[重要] ${stageName}返回停止信號，停止所有後續處理`);
+                // 優化階段使用對應的反思結果，反思階段使用上一步結果
+                if (type === 'optimize') {
+                  console.log(`保存${prevResult}結果到結果集`);
+                  resultsMap.set(i, prevStageResult || lastResult);
+                } else {
+                  console.log(`保存上一步結果到結果集`);
+                  resultsMap.set(i, lastResult);
+                }
+                return await this.finishProcessing(resultsMap);
+              }
 
-            // 優化三
-            const optimizedText3 = await this.processStage(
-              optimizedText2,
-              sourceText,
-              reflectionResult3,
-              i,
-              'optimize',
-              3
-            );
-
-            if (!optimizedText3) {
-              throw new Error('優化三失敗');
+              // 更新最後的結果
+              if (type === 'optimize' && result) {
+                lastResult = result;
+              }
             }
             
-            // 保存最終結果
-            resultsMap.set(i, optimizedText3);
+            console.log('\n--- 保存最終結果 ---');
+            resultsMap.set(i, lastResult);
             
           } catch (error) {
             console.error(`處理第 ${i + 1} 個區塊時發生錯誤:`, error);
-            // 如果處理失敗，使用上一個成功的結果
-            const fallbackText = this.getGeneratedTextForBlock(i);
+            // 從 local storage 讀取備用文本
+            const fallbackKey = `generation_initial_${i}`;
+            const { [fallbackKey]: fallbackText } = await chrome.storage.local.get(fallbackKey);
             if (fallbackText) {
+              console.log('使用備用文本作為結果');
               resultsMap.set(i, fallbackText);
             }
+            console.log('[重要] 發生錯誤，停止後續處理');
+            break;
           }
         }
       } catch (error) {
         console.error('處理區塊時發生錯誤:', error);
-        // 如果整體處理失敗，嘗試使用已有的結果
+        // 如果整體處理失敗，嘗試從 local storage 讀取已有的結果
         for (let i = 0; i < this.generationQueue.length; i++) {
-          const fallbackText = this.getGeneratedTextForBlock(i);
+          const fallbackKey = `generation_initial_${i}`;
+          const { [fallbackKey]: fallbackText } = await chrome.storage.local.get(fallbackKey);
           if (fallbackText) {
             resultsMap.set(i, fallbackText);
           }
         }
       }
-  
+
+      return await this.finishProcessing(resultsMap);
+    },
+
+    // 新增一個輔助方法來處理最終結果
+    async finishProcessing(resultsMap) {
       // 按照原始順序組合結果
       const finalText = Array.from(resultsMap.entries())
         .sort(([a], [b]) => a - b)  // 確保按照索引順序排序
@@ -1078,6 +1088,7 @@ window.GenerationConfig = {
         .join('\n');
         
       // 使用統一入口更新最終文本
+      console.log('[重要] 更新最終文本到輸入框');
       await this.updateText(finalText, 'final');
       return finalText;
     },
@@ -1125,6 +1136,18 @@ window.GenerationConfig = {
   
     // 更新文本的統一入口
     async updateText(text, type) {
+      const storageKey = `generation_${type}_${this.currentBatchIndex}`;
+      
+      try {
+        // 儲存到 local storage
+        await chrome.storage.local.set({ [storageKey]: text });
+        console.log(`成功保存文本到 local storage: ${storageKey}`);
+      } catch (error) {
+        console.error('保存文本到 local storage 失敗:', error);
+        // 儲存失敗不影響後續處理，僅記錄錯誤
+      }
+      
+      // 同時更新內存中的結果
       switch(type) {
         case 'initial':
           this.generationResults.initial.set(this.currentBatchIndex, text);
