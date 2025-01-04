@@ -1,0 +1,54 @@
+{
+  "rules": {
+    "storage_management": {
+      "description": "Chrome Extension Storage Management Guidelines",
+      "enabled": true,
+      "rules": [
+        {
+          "description": "Storage Type Selection",
+          "guidelines": [
+            "使用 chrome.storage.sync 儲存小型設定（如模型選擇、開關狀態等）",
+            "使用 chrome.storage.local 儲存大型文本內容（如指令、背景知識等）",
+            "當資料大小超過 8KB 時，考慮使用分塊儲存機制"
+          ]
+        },
+        {
+          "description": "Settings Group Management",
+          "guidelines": [
+            "為每個設定組合建立獨立儲存空間",
+            "使用明確的命名規則（如 instructions_${groupName}）",
+            "避免設定之間互相干擾"
+          ]
+        }
+      ]
+    },
+    "error_handling": {
+      "description": "錯誤處理和資料驗證",
+      "enabled": true,
+      "rules": [
+        {
+          "description": "Core Principles",
+          "steps": [
+            "檢查儲存操作的結果",
+            "處理 chrome.runtime.lastError",
+            "保持資料一致性"
+          ]
+        }
+      ]
+    },
+    "code_organization": {
+      "description": "程式碼組織原則",
+      "enabled": true,
+      "rules": [
+        {
+          "description": "Key Practices",
+          "guidelines": [
+            "保持方法的單一職責",
+            "統一管理設定狀態",
+            "避免重複或衝突的狀態更新"
+          ]
+        }
+      ]
+    }
+  }
+} 
