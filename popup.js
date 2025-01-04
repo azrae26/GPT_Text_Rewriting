@@ -38,6 +38,10 @@ document.addEventListener('DOMContentLoaded', async function() {
   const reflect2InstructionInput = document.getElementById('reflect2Instruction');
   const generationOptimize_2_ModelSelect = document.getElementById('generationOptimize_2_Model');
   const generationOptimize_2_InstructionInput = document.getElementById('generationOptimize_2_Instruction');
+  const reflect3ModelSelect = document.getElementById('reflect3Model');
+  const reflect3InstructionInput = document.getElementById('reflect3Instruction');
+  const generationOptimize_3_ModelSelect = document.getElementById('generationOptimize_3_Model');
+  const generationOptimize_3_InstructionInput = document.getElementById('generationOptimize_3_Instruction');
   const backgroundKnowledgeInput = document.getElementById('backgroundKnowledge');
   
   // 關鍵要點相關
@@ -101,6 +105,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     reflect2InstructionInput.value = settings.reflect2Instruction || '';
     generationOptimize_2_ModelSelect.value = settings.generationOptimize_2_Model || 'gemini-2.0-flash-exp';
     generationOptimize_2_InstructionInput.value = settings.generationOptimize_2_Instruction || '';
+    reflect3ModelSelect.value = settings.reflect3Model || 'gemini-2.0-flash-exp';
+    reflect3InstructionInput.value = settings.reflect3Instruction || '';
+    generationOptimize_3_ModelSelect.value = settings.generationOptimize_3_Model || 'gemini-2.0-flash-exp';
+    generationOptimize_3_InstructionInput.value = settings.generationOptimize_3_Instruction || '';
     backgroundKnowledgeInput.value = settings.backgroundKnowledge || '';
     
     // 反思相關
@@ -239,6 +247,8 @@ document.addEventListener('DOMContentLoaded', async function() {
       'generationOptimize_1_Instruction': { type: 'input', element: generationOptimize_1_InstructionInput },
       'reflect2Instruction': { type: 'input', element: reflect2InstructionInput },
       'generationOptimize_2_Instruction': { type: 'input', element: generationOptimize_2_InstructionInput },
+      'reflect3Instruction': { type: 'input', element: reflect3InstructionInput },
+      'generationOptimize_3_Instruction': { type: 'input', element: generationOptimize_3_InstructionInput },
       'backgroundKnowledge': { type: 'input', element: backgroundKnowledgeInput },
       'summaryInstruction': { type: 'input', element: summaryInstructionInput },
       'zhEnMapping': { type: 'input', element: zhEnMappingInput },
@@ -257,6 +267,8 @@ document.addEventListener('DOMContentLoaded', async function() {
       'generationOptimize_1_Model': { type: 'model', element: generationOptimize_1_ModelSelect },
       'reflect2Model': { type: 'model', element: reflect2ModelSelect },
       'generationOptimize_2_Model': { type: 'model', element: generationOptimize_2_ModelSelect },
+      'reflect3Model': { type: 'model', element: reflect3ModelSelect },
+      'generationOptimize_3_Model': { type: 'model', element: generationOptimize_3_ModelSelect },
       'summaryModel': { type: 'model', element: summaryModelSelect },
       'reflectModel': { type: 'model', element: reflectModelSelect },
       'optimizeModel': { type: 'model', element: optimizeModelSelect }

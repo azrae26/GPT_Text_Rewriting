@@ -79,8 +79,12 @@ class SettingsManager {
   async saveSingleSetting(key, value) {
     try {
       // 檢查是否為需要使用 local storage 的大型文本
-      if (['translateInstruction', 'summaryInstruction', 'zhEnMapping', 'reflectInstruction', 'optimizeInstruction',
-           'generateInstruction', 'reflect1Instruction', 'generationOptimize_1_Instruction', 'backgroundKnowledge'].includes(key)) {
+      if (['translateInstruction', 'summaryInstruction', 'zhEnMapping', 
+           'reflectInstruction', 'optimizeInstruction',
+           'generateInstruction', 'reflect1Instruction', 'generationOptimize_1_Instruction', 
+           'reflect2Instruction', 'generationOptimize_2_Instruction', 
+           'reflect3Instruction', 'generationOptimize_3_Instruction',
+           'backgroundKnowledge'].includes(key)) {
         await new Promise((resolve) => {
           chrome.storage.local.set({ [key]: value }, resolve);
         });
@@ -143,6 +147,14 @@ class StorageManager {
       'reflect1Instruction': '反思一指令',
       'generationOptimize_1_Model': '生成優化一模型',
       'generationOptimize_1_Instruction': '生成優化一指令',
+      'reflect2Model': '反思二模型',
+      'reflect2Instruction': '反思二指令',
+      'generationOptimize_2_Model': '生成優化二模型',
+      'generationOptimize_2_Instruction': '生成優化二指令',
+      'reflect3Model': '反思三模型',
+      'reflect3Instruction': '反思三指令',
+      'generationOptimize_3_Model': '生成優化三模型',
+      'generationOptimize_3_Instruction': '生成優化三指令',
       'backgroundKnowledge': '背景知識',
       
       // 關鍵要點相關

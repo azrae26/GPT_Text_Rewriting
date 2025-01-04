@@ -71,6 +71,14 @@ const GlobalSettings = {
   generationOptimize_2_Model: '',
   /** 生成優化二指令。 */
   generationOptimize_2_Instruction: '',
+  /** 反思三模型名稱。 */
+  reflect3Model: '',
+  /** 反思三指令。 */
+  reflect3Instruction: '',
+  /** 生成優化三模型名稱。 */
+  generationOptimize_3_Model: '',
+  /** 生成優化三指令。 */
+  generationOptimize_3_Instruction: '',
   /** 背景知識。 */
   backgroundKnowledge: '',
   /** 摘要模型名稱。 */
@@ -132,6 +140,8 @@ const GlobalSettings = {
       this.generationOptimize_1_Model = syncResult.generationOptimize_1_Model || this.model;
       this.reflect2Model = syncResult.reflect2Model || this.model;
       this.generationOptimize_2_Model = syncResult.generationOptimize_2_Model || this.model;
+      this.reflect3Model = syncResult.reflect3Model || this.model;
+      this.generationOptimize_3_Model = syncResult.generationOptimize_3_Model || this.model;
       this.translateInstruction = localResult.translateInstruction || 
                                 syncResult.translateInstruction || 
                                 (window.DefaultSettings?.translateInstruction || '');
@@ -156,6 +166,12 @@ const GlobalSettings = {
       this.generationOptimize_2_Instruction = localResult.generationOptimize_2_Instruction || 
                                      syncResult.generationOptimize_2_Instruction || 
                                      (window.DefaultSettings?.generationOptimize_2_Instruction || '');
+      this.reflect3Instruction = localResult.reflect3Instruction || 
+                                syncResult.reflect3Instruction || 
+                                (window.DefaultSettings?.reflect3Instruction || '');
+      this.generationOptimize_3_Instruction = localResult.generationOptimize_3_Instruction || 
+                                     syncResult.generationOptimize_3_Instruction || 
+                                     (window.DefaultSettings?.generationOptimize_3_Instruction || '');
       this.backgroundKnowledge = localResult.backgroundKnowledge || 
                                 syncResult.backgroundKnowledge || 
                                 (window.DefaultSettings?.backgroundKnowledge || '');
@@ -245,6 +261,8 @@ const GlobalSettings = {
             generationOptimize_1_Model: this.generationOptimize_1_Model,
             reflect2Model: this.reflect2Model,
             generationOptimize_2_Model: this.generationOptimize_2_Model,
+            reflect3Model: this.reflect3Model,
+            generationOptimize_3_Model: this.generationOptimize_3_Model,
             confirmModel: this.confirmModel,
             confirmContent: this.confirmContent,
             removeHash: this.removeHash,
@@ -267,6 +285,8 @@ const GlobalSettings = {
             generationOptimize_1_Instruction: this.generationOptimize_1_Instruction,
             reflect2Instruction: this.reflect2Instruction,
             generationOptimize_2_Instruction: this.generationOptimize_2_Instruction,
+            reflect3Instruction: this.reflect3Instruction,
+            generationOptimize_3_Instruction: this.generationOptimize_3_Instruction,
             backgroundKnowledge: this.backgroundKnowledge
           }, resolve);
         })

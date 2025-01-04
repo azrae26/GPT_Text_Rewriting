@@ -16,8 +16,8 @@ window.TranslateConfig = {
     INTERVAL: {
       WAIT: {
         NONE: 0,           // 無等待
-        SHORT: 4000,       // 短等待（4秒）
-        LONG: 6000         // 長等待（6秒）
+        SHORT: 0,       // 短等待（0秒）// 改為0秒
+        LONG: 0         // 長等待（0秒）// 改為0秒
       }
     }
   },

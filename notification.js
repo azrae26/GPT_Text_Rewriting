@@ -43,7 +43,9 @@ const Notification = {
                         message.includes(GenerationConfig.STAGES.OPTIMIZE_1) || 
                         message.includes(GenerationConfig.STAGES.REFLECT_2) || 
                         message.includes(GenerationConfig.STAGES.OPTIMIZE_2) || 
-                        isCancelGeneration;
+                        message.includes(GenerationConfig.STAGES.REFLECT_3) || 
+                        message.includes(GenerationConfig.STAGES.OPTIMIZE_3) || 
+                        message === GenerationConfig.STAGES.COMPLETED;
     
     // 判斷是否為翻譯相關的通知
     const isTranslation = !isGeneration && (
@@ -71,6 +73,10 @@ const Notification = {
       generationPhase = '反思二中';
     } else if (message.includes(GenerationConfig.STAGES.OPTIMIZE_2)) {
       generationPhase = '生成優化二中';
+    } else if (message.includes(GenerationConfig.STAGES.REFLECT_3)) {
+      generationPhase = '反思三中';
+    } else if (message.includes(GenerationConfig.STAGES.OPTIMIZE_3)) {
+      generationPhase = '生成優化三中';
     }
 
     if (isLoading) {
@@ -109,7 +115,7 @@ const Notification = {
           console.log('更新進度條 - 當前批次:', currentBatch, '總批次:', totalBatches);
           // 設定 data-segments 屬性
           const totalBatchesNum = parseInt(totalBatches);
-          const stepsPerBatch = isTranslation ? 3 : 5; // 翻譯有3個步驟，生成有5個步驟
+          const stepsPerBatch = isTranslation ? 3 : 7; // 翻譯有3個步驟，生成有7個步驟
           const totalSegments = totalBatchesNum * stepsPerBatch;
           if (totalSegments > 60) {
             progressBar.setAttribute('data-segments', 'most');
@@ -148,7 +154,7 @@ const Notification = {
       ${currentBatch && totalBatches && !isCancelTranslation && !isCancelGeneration ? `
         <div class="progress-bar" ${
           (() => {
-            const stepsPerBatch = isTranslation ? 3 : 5;
+            const stepsPerBatch = isTranslation ? 3 : 7;
             const totalSegments = parseInt(totalBatches) * stepsPerBatch;
             if (totalSegments > 60) return 'data-segments="most"';
             if (totalSegments > 40) return 'data-segments="more"';
@@ -156,7 +162,7 @@ const Notification = {
             return '';
           })()
         }>
-          ${Array.from({ length: parseInt(totalBatches) * (isTranslation ? 3 : 5) }, (_, i) => {
+          ${Array.from({ length: parseInt(totalBatches) * (isTranslation ? 3 : 7) }, (_, i) => {
             const isCompleted = i < (isTranslation ? window.TranslateManager.completedStepsCount : window.GenerationManager.completedStepsCount);
             return `<div class="progress-segment ${isCompleted ? 'completed' : ''}"></div>`;
           }).join('')}
