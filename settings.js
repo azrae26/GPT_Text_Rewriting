@@ -86,6 +86,11 @@ const GlobalSettings = {
   /** 中英對照表。 */
   zhEnMapping: '',
 
+  /** 生成設定組合 */
+  generationSettingsGroups: {},
+  /** 當前選中的生成設定組合名稱 */
+  currentGenerationSettings: '',
+
   /**
    * 從 Chrome 儲存空間載入設定。
    * @returns {Promise<object>} - 一個 Promise 物件，resolve 後返回載入的設定物件。
@@ -200,6 +205,10 @@ const GlobalSettings = {
         chrome.storage.sync.set({ firstRun: false });
       }
 
+      // 載入生成設定組合
+      this.generationSettingsGroups = syncResult.generationSettingsGroups || {};
+      this.currentGenerationSettings = syncResult.currentGenerationSettings || '';
+
       return this;
     } catch (error) {
       console.error('載入設置時出錯:', error);
@@ -267,7 +276,9 @@ const GlobalSettings = {
             confirmContent: this.confirmContent,
             removeHash: this.removeHash,
             removeStar: this.removeStar,
-            summaryModel: this.summaryModel
+            summaryModel: this.summaryModel,
+            generationSettingsGroups: this.generationSettingsGroups,
+            currentGenerationSettings: this.currentGenerationSettings
           };
           // 移除 translateInstruction，因為它會存在 local storage
           chrome.storage.sync.set(syncSettings, resolve);
@@ -297,29 +308,59 @@ const GlobalSettings = {
   },
 
   /**
-   *儲存單一設定
+   * 儲存單一設定
    * @param {string} key - 設定的鍵
    * @param {any} value - 設定的值
    * @returns {Promise<void>}
    */
   async saveSingleSetting(key, value) {
     try {
+      console.group('儲存單一設定');
+      console.log('設定鍵:', key);
+      // 如果是指令相關的設定，只顯示前 100 個字元
+      if (key.toLowerCase().includes('instruction') || key === 'backgroundKnowledge') {
+        console.log('設定值:', value?.substring(0, 100) + (value?.length > 100 ? '...' : ''));
+      } else {
+        console.log('設定值:', value);
+      }
+      
       // 檢查是否為需要使用 local storage 的大型文本
-      if (['translateInstruction', 'summaryInstruction', 'zhEnMapping', 'reflectInstruction', 
-        'optimizeInstruction', 'generateInstruction', 'reflect1Instruction', 'generationOptimize_1_Instruction', 
-        'backgroundKnowledge'].includes(key)) {
+      const isLocalStorageKey = [
+        'translateInstruction', 'summaryInstruction', 'zhEnMapping', 
+        'reflectInstruction', 'optimizeInstruction', 'generateInstruction', 
+        'reflect1Instruction', 'generationOptimize_1_Instruction', 
+        'reflect2Instruction', 'generationOptimize_2_Instruction',
+        'reflect3Instruction', 'generationOptimize_3_Instruction',
+        'backgroundKnowledge'
+      ].includes(key);
+      
+      console.log('是否使用 local storage:', isLocalStorageKey);
+
+      if (isLocalStorageKey) {
         await new Promise((resolve) => {
-          chrome.storage.local.set({ [key]: value }, resolve);
+          chrome.storage.local.set({ [key]: value }, () => {
+            console.log('已儲存到 local storage');
+            resolve();
+          });
         });
       } else {
         await new Promise((resolve) => {
-          chrome.storage.sync.set({ [key]: value }, resolve);
+          chrome.storage.sync.set({ [key]: value }, () => {
+            console.log('已儲存到 sync storage');
+            resolve();
+          });
         });
       }
+      
       // 同時更新本地值
       this[key] = value;
+      console.log('本地值已更新');
+      
+      console.groupEnd();
     } catch (error) {
-      console.warn('儲存單一設定時出錯:', error);
+      console.error('儲存單一設定時出錯:', error);
+      console.groupEnd();
+      throw error;
     }
   },
 
@@ -340,6 +381,189 @@ const GlobalSettings = {
     const isGemini = model.startsWith('gemini');
     const key = this.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
     return Boolean(key && key.trim());
+  },
+
+  /**
+   * 保存生成設定組合
+   * @param {string} name - 設定組合名稱
+   * @param {object} settings - 設定內容
+   */
+  async saveGenerationSettingsGroup(name, settings) {
+    try {
+      // 分離大型文本內容和一般設定
+      const localSettings = {
+        generateInstruction: settings.generateInstruction,
+        reflect1Instruction: settings.reflect1Instruction,
+        generationOptimize_1_Instruction: settings.generationOptimize_1_Instruction,
+        reflect2Instruction: settings.reflect2Instruction,
+        generationOptimize_2_Instruction: settings.generationOptimize_2_Instruction,
+        reflect3Instruction: settings.reflect3Instruction,
+        generationOptimize_3_Instruction: settings.generationOptimize_3_Instruction,
+        backgroundKnowledge: settings.backgroundKnowledge
+      };
+
+      const syncSettings = {
+        generateModel: settings.generateModel,
+        reflect1Model: settings.reflect1Model,
+        generationOptimize_1_Model: settings.generationOptimize_1_Model,
+        reflect2Model: settings.reflect2Model,
+        generationOptimize_2_Model: settings.generationOptimize_2_Model,
+        reflect3Model: settings.reflect3Model,
+        generationOptimize_3_Model: settings.generationOptimize_3_Model
+      };
+
+      // 更新本地儲存的設定組合
+      const localStorageKey = `generation_settings_${name}`;
+      await new Promise((resolve) => {
+        chrome.storage.local.set({ [localStorageKey]: localSettings }, resolve);
+      });
+
+      // 更新同步儲存的設定組合
+      this.generationSettingsGroups[name] = syncSettings;
+      await this.saveSingleSetting('generationSettingsGroups', this.generationSettingsGroups);
+      await this.saveSingleSetting('currentGenerationSettings', name);
+    } catch (error) {
+      console.error('保存生成設定組合時出錯:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * 載入生成設定組合
+   * @param {string} name - 設定組合名稱
+   */
+  async loadGenerationSettingsGroup(name) {
+    try {
+      console.group('載入生成設定組合');
+      console.log('要載入的設定組合名稱:', name);
+      
+      const syncSettings = this.generationSettingsGroups[name];
+      console.log('從 sync storage 讀取的設定:', syncSettings);
+      
+      if (!syncSettings) {
+        throw new Error(`找不到設定組合: ${name}`);
+      }
+
+      // 從本地儲存載入大型文本內容
+      const localStorageKey = `generation_settings_${name}`;
+      console.log('準備從 local storage 讀取，鍵名:', localStorageKey);
+      
+      const localSettings = await new Promise((resolve) => {
+        chrome.storage.local.get([localStorageKey], (result) => {
+          console.log('從 local storage 讀取的結果:', result);
+          resolve(result[localStorageKey] || {});
+        });
+      });
+
+      // 只顯示指令的前 100 個字元
+      const truncatedLocalSettings = {};
+      Object.entries(localSettings).forEach(([key, value]) => {
+        truncatedLocalSettings[key] = value?.substring(0, 100) + (value?.length > 100 ? '...' : '');
+      });
+      console.log('從 local storage 讀取的設定:', truncatedLocalSettings);
+
+      // 更新所有相關設定
+      console.log('開始更新所有設定...');
+      
+      // 更新本地變數
+      this.generateModel = syncSettings.generateModel;
+      this.reflect1Model = syncSettings.reflect1Model;
+      this.generationOptimize_1_Model = syncSettings.generationOptimize_1_Model;
+      this.reflect2Model = syncSettings.reflect2Model;
+      this.generationOptimize_2_Model = syncSettings.generationOptimize_2_Model;
+      this.reflect3Model = syncSettings.reflect3Model;
+      this.generationOptimize_3_Model = syncSettings.generationOptimize_3_Model;
+      
+      this.generateInstruction = localSettings.generateInstruction;
+      this.reflect1Instruction = localSettings.reflect1Instruction;
+      this.generationOptimize_1_Instruction = localSettings.generationOptimize_1_Instruction;
+      this.reflect2Instruction = localSettings.reflect2Instruction;
+      this.generationOptimize_2_Instruction = localSettings.generationOptimize_2_Instruction;
+      this.reflect3Instruction = localSettings.reflect3Instruction;
+      this.generationOptimize_3_Instruction = localSettings.generationOptimize_3_Instruction;
+      this.backgroundKnowledge = localSettings.backgroundKnowledge;
+      
+      console.log('本地變數已更新');
+
+      // 更新儲存
+      await Promise.all([
+        // 同步儲存的設定
+        this.saveSingleSetting('generateModel', syncSettings.generateModel),
+        this.saveSingleSetting('reflect1Model', syncSettings.reflect1Model),
+        this.saveSingleSetting('generationOptimize_1_Model', syncSettings.generationOptimize_1_Model),
+        this.saveSingleSetting('reflect2Model', syncSettings.reflect2Model),
+        this.saveSingleSetting('generationOptimize_2_Model', syncSettings.generationOptimize_2_Model),
+        this.saveSingleSetting('reflect3Model', syncSettings.reflect3Model),
+        this.saveSingleSetting('generationOptimize_3_Model', syncSettings.generationOptimize_3_Model),
+
+        // 本地儲存的設定
+        this.saveSingleSetting('generateInstruction', localSettings.generateInstruction),
+        this.saveSingleSetting('reflect1Instruction', localSettings.reflect1Instruction),
+        this.saveSingleSetting('generationOptimize_1_Instruction', localSettings.generationOptimize_1_Instruction),
+        this.saveSingleSetting('reflect2Instruction', localSettings.reflect2Instruction),
+        this.saveSingleSetting('generationOptimize_2_Instruction', localSettings.generationOptimize_2_Instruction),
+        this.saveSingleSetting('reflect3Instruction', localSettings.reflect3Instruction),
+        this.saveSingleSetting('generationOptimize_3_Instruction', localSettings.generationOptimize_3_Instruction),
+        this.saveSingleSetting('backgroundKnowledge', localSettings.backgroundKnowledge),
+
+        this.saveSingleSetting('currentGenerationSettings', name)
+      ]);
+      
+      console.log('所有設定已儲存');
+      console.groupEnd();
+    } catch (error) {
+      console.error('載入生成設定組合時出錯:', error);
+      console.groupEnd();
+      throw error;
+    }
+  },
+
+  /**
+   * 刪除生成設定組合
+   * @param {string} name - 設定組合名稱
+   */
+  async deleteGenerationSettingsGroup(name) {
+    try {
+      // 刪除本地儲存的設定
+      const localStorageKey = `generation_settings_${name}`;
+      await new Promise((resolve) => {
+        chrome.storage.local.remove([localStorageKey], resolve);
+      });
+
+      // 刪除同步儲存的設定
+      delete this.generationSettingsGroups[name];
+      await this.saveSingleSetting('generationSettingsGroups', this.generationSettingsGroups);
+      if (this.currentGenerationSettings === name) {
+        await this.saveSingleSetting('currentGenerationSettings', '');
+      }
+    } catch (error) {
+      console.error('刪除生成設定組合時出錯:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * 獲取當前所有設定值
+   * @returns {object} 當前設定值
+   */
+  getCurrentGenerationSettings() {
+    return {
+      generateModel: this.generateModel,
+      generateInstruction: this.generateInstruction,
+      reflect1Model: this.reflect1Model,
+      reflect1Instruction: this.reflect1Instruction,
+      generationOptimize_1_Model: this.generationOptimize_1_Model,
+      generationOptimize_1_Instruction: this.generationOptimize_1_Instruction,
+      reflect2Model: this.reflect2Model,
+      reflect2Instruction: this.reflect2Instruction,
+      generationOptimize_2_Model: this.generationOptimize_2_Model,
+      generationOptimize_2_Instruction: this.generationOptimize_2_Instruction,
+      reflect3Model: this.reflect3Model,
+      reflect3Instruction: this.reflect3Instruction,
+      generationOptimize_3_Model: this.generationOptimize_3_Model,
+      generationOptimize_3_Instruction: this.generationOptimize_3_Instruction,
+      backgroundKnowledge: this.backgroundKnowledge
+    };
   }
 };
 

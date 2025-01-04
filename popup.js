@@ -60,6 +60,12 @@ document.addEventListener('DOMContentLoaded', async function() {
   const reflectInstructionInput = document.getElementById('reflectInstruction');
   const optimizeInstructionInput = document.getElementById('optimizeInstruction');
 
+  // 獲取生成設定相關元素
+  const generationSettingsSelect = document.getElementById('generation-settings-select');
+  const addGenerationSettingsBtn = document.getElementById('add-generation-settings');
+  const editGenerationSettingsBtn = document.getElementById('edit-generation-settings');
+  const deleteGenerationSettingsBtn = document.getElementById('delete-generation-settings');
+
   // 2. 初始化設定
   let apiKeys = {
     'openai': '',
@@ -299,7 +305,24 @@ document.addEventListener('DOMContentLoaded', async function() {
       }
       
       config.element.addEventListener('input', async function() {
+        // 先保存到全局設定
         await GlobalSettings.saveSingleSetting(key, this.value);
+        
+        // 如果當前有選擇的設定組合，也保存到該組合中
+        const selectedName = generationSettingsSelect.value;
+        if (selectedName) {
+          try {
+            const currentSettings = settings.generationSettingsGroups[selectedName] || {};
+            currentSettings[key] = this.value;
+            
+            // 保存到設定組合
+            await window.GlobalSettings.saveGenerationSettingsGroup(selectedName, currentSettings);
+            console.log(`已更新設定組合 "${selectedName}" 的 ${key}`);
+          } catch (error) {
+            console.error(`更新設定組合失敗:`, error);
+          }
+        }
+        
         if (config.callback) {
           config.callback();
         }
@@ -315,7 +338,24 @@ document.addEventListener('DOMContentLoaded', async function() {
       }
       
       config.element.addEventListener('change', async function() {
+        // 先保存到全局設定
         await GlobalSettings.saveModelSelection(key, this.value);
+        
+        // 如果當前有選擇的設定組合，也保存到該組合中
+        const selectedName = generationSettingsSelect.value;
+        if (selectedName) {
+          try {
+            const currentSettings = settings.generationSettingsGroups[selectedName] || {};
+            currentSettings[key] = this.value;
+            
+            // 保存到設定組合
+            await window.GlobalSettings.saveGenerationSettingsGroup(selectedName, currentSettings);
+            console.log(`已更新設定組合 "${selectedName}" 的 ${key}`);
+          } catch (error) {
+            console.error(`更新設定組合失敗:`, error);
+          }
+        }
+        
         throttledUpdateContentScript();
       });
     });
@@ -328,7 +368,24 @@ document.addEventListener('DOMContentLoaded', async function() {
       }
       
       config.element.addEventListener('change', async function() {
+        // 先保存到全局設定
         await GlobalSettings.saveSingleSetting(key, this.checked);
+        
+        // 如果當前有選擇的設定組合，也保存到該組合中
+        const selectedName = generationSettingsSelect.value;
+        if (selectedName) {
+          try {
+            const currentSettings = settings.generationSettingsGroups[selectedName] || {};
+            currentSettings[key] = this.checked;
+            
+            // 保存到設定組合
+            await window.GlobalSettings.saveGenerationSettingsGroup(selectedName, currentSettings);
+            console.log(`已更新設定組合 "${selectedName}" 的 ${key}`);
+          } catch (error) {
+            console.error(`更新設定組合失敗:`, error);
+          }
+        }
+        
         if (config.logMessage) {
           console.log(config.logMessage, this.checked);
         }
@@ -528,26 +585,15 @@ document.addEventListener('DOMContentLoaded', async function() {
         return;
       }
 
-      // 使用 local storage 而不是 sync storage 來減少配額使用
-      await chrome.storage.local.set({ tempSettings: settings });
-      console.log('設置已暫存到 local storage');
-
       try {
-        // 嘗試發送消息到 content script
+        // 只發送消息到 content script，不進行額外的儲存
         await chrome.tabs.sendMessage(tabs[0].id, {
           action: "updateSettings",
           settings: settings
         });
-        console.log('設置已成功發送到 content script');
-
-        // 成功發送後，再將設置保存到 sync storage
-        await chrome.storage.sync.set({ settings });
-        console.log('設置已保存到 sync storage');
       } catch (error) {
         if (error.message.includes('Receiving end does not exist')) {
           console.log('content script 未載入，設置將在下次載入時應用');
-          // 如果 content script 未載入，仍然保存到 sync storage
-          await chrome.storage.sync.set({ settings });
         } else {
           console.warn('更新 content script 時發生錯誤:', error);
         }
@@ -790,4 +836,207 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 直接使用已載入的 AutoReplaceManager
     AutoReplaceManager.initializeAutoReplaceGroups(autoReplaceContainer, document.createElement('textarea'));
   }
+
+  // 更新設定組合下拉選單
+  function updateGenerationSettingsSelect() {
+    generationSettingsSelect.innerHTML = '<option value="">選擇設定組合</option>';
+    Object.keys(settings.generationSettingsGroups).forEach(name => {
+      const option = document.createElement('option');
+      option.value = name;
+      option.textContent = name;
+      if (name === settings.currentGenerationSettings) {
+        option.selected = true;
+      }
+      generationSettingsSelect.appendChild(option);
+    });
+  }
+
+  // 初始化設定組合下拉選單
+  updateGenerationSettingsSelect();
+
+  // 處理設定組合選擇變更
+  generationSettingsSelect.addEventListener('change', async function() {
+    const selectedName = this.value;
+    if (selectedName) {
+      try {
+        console.group('切換設定組合');
+        console.log('選擇的設定組合:', selectedName);
+        
+        await window.GlobalSettings.loadGenerationSettingsGroup(selectedName);
+        console.log('載入設定組合成功');
+        
+        // 直接更新所有輸入框的值
+        console.groupCollapsed('更新輸入框值');
+        
+        // 更新模型選擇
+        generateModelSelect.value = window.GlobalSettings.generateModel;
+        console.log('初始生成模型:', window.GlobalSettings.generateModel);
+        
+        reflect1ModelSelect.value = window.GlobalSettings.reflect1Model;
+        console.log('反思一模型:', window.GlobalSettings.reflect1Model);
+        
+        generationOptimize_1_ModelSelect.value = window.GlobalSettings.generationOptimize_1_Model;
+        console.log('生成優化一模型:', window.GlobalSettings.generationOptimize_1_Model);
+        
+        reflect2ModelSelect.value = window.GlobalSettings.reflect2Model;
+        console.log('反思二模型:', window.GlobalSettings.reflect2Model);
+        
+        generationOptimize_2_ModelSelect.value = window.GlobalSettings.generationOptimize_2_Model;
+        console.log('生成優化二模型:', window.GlobalSettings.generationOptimize_2_Model);
+        
+        reflect3ModelSelect.value = window.GlobalSettings.reflect3Model;
+        console.log('反思三模型:', window.GlobalSettings.reflect3Model);
+        
+        generationOptimize_3_ModelSelect.value = window.GlobalSettings.generationOptimize_3_Model;
+        console.log('生成優化三模型:', window.GlobalSettings.generationOptimize_3_Model);
+
+        // 更新指令輸入框，並只顯示前 100 個字元的日誌
+        generateInstructionInput.value = window.GlobalSettings.generateInstruction;
+        console.log('初始生成指令:', window.GlobalSettings.generateInstruction?.substring(0, 100) + (window.GlobalSettings.generateInstruction?.length > 100 ? '...' : ''));
+        
+        reflect1InstructionInput.value = window.GlobalSettings.reflect1Instruction;
+        console.log('反思一指令:', window.GlobalSettings.reflect1Instruction?.substring(0, 100) + (window.GlobalSettings.reflect1Instruction?.length > 100 ? '...' : ''));
+        
+        generationOptimize_1_InstructionInput.value = window.GlobalSettings.generationOptimize_1_Instruction;
+        console.log('生成優化一指令:', window.GlobalSettings.generationOptimize_1_Instruction?.substring(0, 100) + (window.GlobalSettings.generationOptimize_1_Instruction?.length > 100 ? '...' : ''));
+        
+        reflect2InstructionInput.value = window.GlobalSettings.reflect2Instruction;
+        console.log('反思二指令:', window.GlobalSettings.reflect2Instruction?.substring(0, 100) + (window.GlobalSettings.reflect2Instruction?.length > 100 ? '...' : ''));
+        
+        generationOptimize_2_InstructionInput.value = window.GlobalSettings.generationOptimize_2_Instruction;
+        console.log('生成優化二指令:', window.GlobalSettings.generationOptimize_2_Instruction?.substring(0, 100) + (window.GlobalSettings.generationOptimize_2_Instruction?.length > 100 ? '...' : ''));
+        
+        reflect3InstructionInput.value = window.GlobalSettings.reflect3Instruction;
+        console.log('反思三指令:', window.GlobalSettings.reflect3Instruction?.substring(0, 100) + (window.GlobalSettings.reflect3Instruction?.length > 100 ? '...' : ''));
+        
+        generationOptimize_3_InstructionInput.value = window.GlobalSettings.generationOptimize_3_Instruction;
+        console.log('生成優化三指令:', window.GlobalSettings.generationOptimize_3_Instruction?.substring(0, 100) + (window.GlobalSettings.generationOptimize_3_Instruction?.length > 100 ? '...' : ''));
+        
+        backgroundKnowledgeInput.value = window.GlobalSettings.backgroundKnowledge;
+        console.log('背景知識:', window.GlobalSettings.backgroundKnowledge?.substring(0, 100) + (window.GlobalSettings.backgroundKnowledge?.length > 100 ? '...' : ''));
+        
+        console.groupEnd(); // 結束更新輸入框值群組
+        console.log('所有設定已更新完成');
+        console.groupEnd(); // 結束切換設定組合群組
+      } catch (error) {
+        console.error('載入設定組合失敗:', error);
+        alert('載入設定組合失敗: ' + error.message);
+      }
+    }
+  });
+
+  // 處理新增設定組合
+  addGenerationSettingsBtn.addEventListener('click', async function() {
+    const name = prompt('請輸入新設定組合的名稱:');
+    if (name) {
+      if (settings.generationSettingsGroups[name]) {
+        alert('設定組合名稱已存在');
+        return;
+      }
+      try {
+        const currentSettings = window.GlobalSettings.getCurrentGenerationSettings();
+        await window.GlobalSettings.saveGenerationSettingsGroup(name, currentSettings);
+        updateGenerationSettingsSelect();
+      } catch (error) {
+        console.error('新增設定組合失敗:', error);
+        alert('新增設定組合失敗: ' + error.message);
+      }
+    }
+  });
+
+  // 處理修改設定組合名稱
+  editGenerationSettingsBtn.addEventListener('click', async function() {
+    const selectedName = generationSettingsSelect.value;
+    if (!selectedName) {
+      alert('請先選擇要重命名的設定組合');
+      return;
+    }
+    const newName = prompt('請輸入新的設定組合名稱:', selectedName);
+    if (newName && newName !== selectedName) {
+      if (settings.generationSettingsGroups[newName]) {
+        alert('設定組合名稱已存在');
+        return;
+      }
+      try {
+        // 獲取當前設定
+        const currentSettings = settings.generationSettingsGroups[selectedName];
+        // 從本地儲存獲取設定
+        const localStorageKey = `generation_settings_${selectedName}`;
+        const localSettings = await new Promise((resolve) => {
+          chrome.storage.local.get([localStorageKey], (result) => resolve(result[localStorageKey] || {}));
+        });
+        
+        // 儲存到新名稱
+        await window.GlobalSettings.saveGenerationSettingsGroup(newName, {
+          ...currentSettings,
+          ...localSettings
+        });
+        
+        // 刪除舊名稱的設定
+        await window.GlobalSettings.deleteGenerationSettingsGroup(selectedName);
+        
+        // 更新下拉選單
+        updateGenerationSettingsSelect();
+      } catch (error) {
+        console.error('重命名設定組合失敗:', error);
+        alert('重命名設定組合失敗: ' + error.message);
+      }
+    }
+  });
+
+  // 處理刪除設定組合
+  deleteGenerationSettingsBtn.addEventListener('click', async function() {
+    const selectedName = generationSettingsSelect.value;
+    if (!selectedName) {
+      alert('請先選擇要刪除的設定組合');
+      return;
+    }
+    if (confirm(`確定要刪除設定組合 "${selectedName}" 嗎？`)) {
+      try {
+        await window.GlobalSettings.deleteGenerationSettingsGroup(selectedName);
+        updateGenerationSettingsSelect();
+      } catch (error) {
+        console.error('刪除設定組合失敗:', error);
+        alert('刪除設定組合失敗: ' + error.message);
+      }
+    }
+  });
+
+  // 處理複製設定組合
+  document.getElementById('copy-generation-settings').addEventListener('click', async function() {
+    const selectedName = generationSettingsSelect.value;
+    if (!selectedName) {
+      alert('請先選擇要複製的設定組合');
+      return;
+    }
+    
+    const newName = prompt('請輸入新設定組合的名稱:');
+    if (newName) {
+      if (settings.generationSettingsGroups[newName]) {
+        alert('設定組合名稱已存在');
+        return;
+      }
+      try {
+        // 獲取同步儲存的設定
+        const syncSettings = settings.generationSettingsGroups[selectedName];
+        
+        // 從本地儲存獲取設定
+        const localStorageKey = `generation_settings_${selectedName}`;
+        const localSettings = await new Promise((resolve) => {
+          chrome.storage.local.get([localStorageKey], (result) => resolve(result[localStorageKey] || {}));
+        });
+        
+        // 合併設定並儲存
+        await window.GlobalSettings.saveGenerationSettingsGroup(newName, {
+          ...syncSettings,
+          ...localSettings
+        });
+        
+        updateGenerationSettingsSelect();
+      } catch (error) {
+        console.error('複製設定組合失敗:', error);
+        alert('複製設定組合失敗: ' + error.message);
+      }
+    }
+  });
 });

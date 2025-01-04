@@ -633,4 +633,56 @@ input[type="checkbox"] {
 .settings-button:hover {
   background-color: #2980b9;  /* 使用與改寫按鈕相同的懸停顏色 */
 }
+
+/* 多重生成設定選擇器樣式 */
+#multiple-generation-tab .input-group {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 15px;
+  align-items: center;
+}
+
+#multiple-generation-tab .input-group select {
+  flex: 1;
+}
+
+/* 方形按鈕樣式 */
+.square-button {
+  width: 36px !important;
+  min-width: 36px !important;
+  margin-top: 0px !important;
+  padding: 0 !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px !important;
+}
+
+/* 圖示樣式 */
+.square-button .icon {
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 特定圖示調整 */
+#add-generation-settings .icon {
+  font-size: 26px;
+}
+
+#edit-generation-settings .icon {
+  font-size: 21px;
+  margin-top: -1px;
+}
+
+#copy-generation-settings .icon {
+  font-size: 18px;
+  margin-top: 4px;
+}
+
+#delete-generation-settings .icon {
+  font-size: 28px;
+  margin-top: 1px;
+}
   
