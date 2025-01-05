@@ -6,11 +6,18 @@ window.GenerationConfig = {
     API: {
       RETRY: {
         MAX_RETRIES: 3,      // 最大重試次數
-        DELAY: 8000,        // 重試延遲時間（毫秒）
+        DELAY: 10000,        // 重試延遲時間（毫秒）
         TIMEOUT: {
-          GENERATE: 20000,  // 生成超時時間（毫秒）
-          REFLECT: 40000,    // 反思超時時間（毫秒）
-          OPTIMIZE: 20000    // 優化超時時間（毫秒）
+          GEMINI: {
+            GENERATE: 20000,  // 生成超時時間（毫秒）
+            REFLECT: 40000,   // 反思超時時間（毫秒）
+            OPTIMIZE: 20000   // 優化超時時間（毫秒）
+          },
+          OPENAI: {
+            GENERATE: 45000,  // 生成超時時間（毫秒）
+            REFLECT: 55000,   // 反思超時時間（毫秒）
+            OPTIMIZE: 45000   // 優化超時時間（毫秒）
+          }
         }
       },
       INTERVAL: {
@@ -849,7 +856,8 @@ window.GenerationConfig = {
     async sendRequestWithRetry(endpoint, body, apiKey, isGemini, showProgress, requestType = 'generate') {
       let retryCount = 0;
       const { MAX_RETRIES, DELAY, TIMEOUT } = GenerationConfig.API.RETRY;
-      const timeoutDuration = TIMEOUT[requestType.toUpperCase()];
+      const timeoutDuration = TIMEOUT[isGemini ? 'GEMINI' : 'OPENAI'][requestType.toUpperCase()];
+      let retryTimeoutId = null;
   
       while (retryCount < MAX_RETRIES) {
         try {
@@ -876,12 +884,22 @@ window.GenerationConfig = {
             console.log(`收到回應但已超時 (${requestType})，忽略此回應`);
             continue;
           }
+
+          // 清除重試計時器（如果存在）
+          if (retryTimeoutId) {
+            clearTimeout(retryTimeoutId);
+            retryTimeoutId = null;
+          }
   
           return response;
         } catch (error) {
           // 如果是取消錯誤，直接拋出不重試
           if (error.message === '生成請求已取消' || error.name === 'AbortError') {
             console.log('檢測到取消請求，停止重試');
+            if (retryTimeoutId) {
+              clearTimeout(retryTimeoutId);
+              retryTimeoutId = null;
+            }
             throw error;
           }
 
@@ -891,7 +909,9 @@ window.GenerationConfig = {
             if (waitTimeMatch) {
               const waitTime = Math.ceil(parseFloat(waitTimeMatch[1]) * 1000);
               console.log(`檢測到 rate limit，等待 ${waitTime/1000} 秒後重試...`);
-              await new Promise(resolve => setTimeout(resolve, waitTime + 1000)); // 多等1秒以確保安全
+              await new Promise(resolve => {
+                retryTimeoutId = setTimeout(resolve, waitTime + 1000);
+              }); // 多等1秒以確保安全
               continue;
             }
           }
@@ -901,8 +921,14 @@ window.GenerationConfig = {
             retryCount++;
             const errorMessage = error.status ? `狀態碼 ${error.status}` : error.message;
             console.log(`收到錯誤 (${errorMessage})，等待 ${DELAY/1000} 秒後進行第 ${retryCount} 次重試...`);
-            await new Promise(resolve => setTimeout(resolve, DELAY));
+            await new Promise(resolve => {
+              retryTimeoutId = setTimeout(resolve, DELAY);
+            });
             continue;
+          }
+          if (retryTimeoutId) {
+            clearTimeout(retryTimeoutId);
+            retryTimeoutId = null;
           }
           throw error;
         }
