@@ -884,6 +884,17 @@ window.GenerationConfig = {
             console.log('檢測到取消請求，停止重試');
             throw error;
           }
+
+          // 檢查是否為 rate limit 錯誤
+          if (error.message.includes('Rate limit reached')) {
+            const waitTimeMatch = error.message.match(/try again in (\d+\.?\d*)s/);
+            if (waitTimeMatch) {
+              const waitTime = Math.ceil(parseFloat(waitTimeMatch[1]) * 1000);
+              console.log(`檢測到 rate limit，等待 ${waitTime/1000} 秒後重試...`);
+              await new Promise(resolve => setTimeout(resolve, waitTime + 1000)); // 多等1秒以確保安全
+              continue;
+            }
+          }
   
           // 其他錯誤進行重試
           if (retryCount < MAX_RETRIES - 1) {
@@ -985,14 +996,15 @@ window.GenerationConfig = {
           console.log(`\n=== 處理第 ${i + 1} 個區塊 ===`);
           const sourceText = this.generationQueue[i];
           
-          // 從 local storage 讀取初始生成結果
-          const initialKey = `generation_initial_${i}`;
-          const { [initialKey]: generatedText } = await chrome.storage.local.get(initialKey);
+          // 從 generationResults 中獲取初始生成結果
+          const initialResult = this.generationResults.initial.get(i);
           
-          if (!generatedText) {
+          if (!initialResult) {
             console.warn(`找不到第 ${i + 1} 個區塊的生成結果`);
             continue;
           }
+
+          const generatedText = initialResult.generated;
           
           try {
             let lastResult = generatedText; // 追蹤上一步的結果
@@ -1012,11 +1024,11 @@ window.GenerationConfig = {
               const stageName = `${type}${step}`;
               console.log(`\n--- 開始${type === 'reflect' ? '反思' : '優化'}${step} ---`);
               
-              // 從 local storage 讀取上一步結果
-              const prevKey = prevResult ? `generation_${prevResult}_${i}` : null;
-              const prevStageResult = prevKey ? 
-                (await chrome.storage.local.get(prevKey))[prevKey] : 
-                input;
+              // 從 generationResults 中獲取上一步結果
+              let prevStageResult = null;
+              if (prevResult) {
+                prevStageResult = this.generationResults[prevResult].get(i);
+              }
               
               // 處理當前階段
               const { shouldStop, result } = await this.processStage(
@@ -1053,25 +1065,20 @@ window.GenerationConfig = {
             
           } catch (error) {
             console.error(`處理第 ${i + 1} 個區塊時發生錯誤:`, error);
-            // 從 local storage 讀取備用文本
-            const fallbackKey = `generation_initial_${i}`;
-            const { [fallbackKey]: fallbackText } = await chrome.storage.local.get(fallbackKey);
-            if (fallbackText) {
-              console.log('使用備用文本作為結果');
-              resultsMap.set(i, fallbackText);
-            }
+            // 使用初始生成結果作為備用
+            console.log('使用初始生成結果作為備用');
+            resultsMap.set(i, generatedText);
             console.log('[重要] 發生錯誤，停止後續處理');
             break;
           }
         }
       } catch (error) {
         console.error('處理區塊時發生錯誤:', error);
-        // 如果整體處理失敗，嘗試從 local storage 讀取已有的結果
+        // 如果整體處理失敗，使用所有可用的初始生成結果
         for (let i = 0; i < this.generationQueue.length; i++) {
-          const fallbackKey = `generation_initial_${i}`;
-          const { [fallbackKey]: fallbackText } = await chrome.storage.local.get(fallbackKey);
-          if (fallbackText) {
-            resultsMap.set(i, fallbackText);
+          const initialResult = this.generationResults.initial.get(i);
+          if (initialResult) {
+            resultsMap.set(i, initialResult.generated);
           }
         }
       }

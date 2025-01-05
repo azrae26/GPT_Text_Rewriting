@@ -136,8 +136,8 @@ const GlobalSettings = {
 
       // 一般設定使用 sync
       this.model = syncResult.model || 'gemini-2.0-flash-exp';
-      this.instruction = syncResult.instruction || (window.DefaultSettings?.fullRewriteInstruction || '');
-      this.shortInstruction = syncResult.shortInstruction || (window.DefaultSettings?.shortRewriteInstruction || '');
+      this.instruction = syncResult.instruction || '';
+      this.shortInstruction = syncResult.shortInstruction || '';
       this.fullRewriteModel = syncResult.fullRewriteModel || this.model;
       this.shortRewriteModel = syncResult.shortRewriteModel || this.model;
       this.autoRewriteModel = syncResult.autoRewriteModel || this.model;
@@ -151,43 +151,19 @@ const GlobalSettings = {
       this.generationOptimize_2_Model = syncResult.generationOptimize_2_Model || this.model;
       this.reflect3Model = syncResult.reflect3Model || this.model;
       this.generationOptimize_3_Model = syncResult.generationOptimize_3_Model || this.model;
-      this.translateInstruction = localResult.translateInstruction || 
-                                syncResult.translateInstruction || 
-                                (window.DefaultSettings?.translateInstruction || '');
-      this.reflectInstruction = localResult.reflectInstruction || 
-                               syncResult.reflectInstruction || 
-                               (window.DefaultSettings?.reflectInstruction || '');
-      this.optimizeInstruction = localResult.optimizeInstruction || 
-                                syncResult.optimizeInstruction || 
-                                (window.DefaultSettings?.optimizeInstruction || '');
-      this.generateInstruction = localResult.generateInstruction || 
-                                syncResult.generateInstruction || 
-                                (window.DefaultSettings?.generateInstruction || '');
-      this.reflect1Instruction = localResult.reflect1Instruction || 
-                                syncResult.reflect1Instruction || 
-                                (window.DefaultSettings?.reflect1Instruction || '');
-      this.generationOptimize_1_Instruction = localResult.generationOptimize_1_Instruction || 
-                                     syncResult.generationOptimize_1_Instruction || 
-                                     (window.DefaultSettings?.generationOptimize_1_Instruction || '');
-      this.reflect2Instruction = localResult.reflect2Instruction || 
-                                syncResult.reflect2Instruction || 
-                                (window.DefaultSettings?.reflect2Instruction || '');
-      this.generationOptimize_2_Instruction = localResult.generationOptimize_2_Instruction || 
-                                     syncResult.generationOptimize_2_Instruction || 
-                                     (window.DefaultSettings?.generationOptimize_2_Instruction || '');
-      this.reflect3Instruction = localResult.reflect3Instruction || 
-                                syncResult.reflect3Instruction || 
-                                (window.DefaultSettings?.reflect3Instruction || '');
-      this.generationOptimize_3_Instruction = localResult.generationOptimize_3_Instruction || 
-                                     syncResult.generationOptimize_3_Instruction || 
-                                     (window.DefaultSettings?.generationOptimize_3_Instruction || '');
-      this.backgroundKnowledge = localResult.backgroundKnowledge || 
-                                syncResult.backgroundKnowledge || 
-                                (window.DefaultSettings?.backgroundKnowledge || '');
+      this.translateInstruction = localResult.translateInstruction || '';
+      this.reflectInstruction = localResult.reflectInstruction || '';
+      this.optimizeInstruction = localResult.optimizeInstruction || '';
+      this.generateInstruction = localResult.generateInstruction || '';
+      this.reflect1Instruction = localResult.reflect1Instruction || '';
+      this.generationOptimize_1_Instruction = localResult.generationOptimize_1_Instruction || '';
+      this.reflect2Instruction = localResult.reflect2Instruction || '';
+      this.generationOptimize_2_Instruction = localResult.generationOptimize_2_Instruction || '';
+      this.reflect3Instruction = localResult.reflect3Instruction || '';
+      this.generationOptimize_3_Instruction = localResult.generationOptimize_3_Instruction || '';
+      this.backgroundKnowledge = localResult.backgroundKnowledge || '';
       this.summaryModel = syncResult.summaryModel || this.model;
-      this.summaryInstruction = localResult.summaryInstruction || 
-                               syncResult.summaryInstruction || 
-                               (window.DefaultSettings?.summaryInstruction || '');
+      this.summaryInstruction = localResult.summaryInstruction || '';
       this.zhEnMapping = localResult.zhEnMapping || ''; // 載入中英對照表
       
       // 使用 DefaultSettings 中的預設值
