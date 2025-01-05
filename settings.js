@@ -13,6 +13,7 @@ const GlobalSettings = {
     models: {
       'gpt-4o': 'gpt-4o',
       'gpt-4o-mini': 'gpt-4o-mini',
+      'gemini-1.5-flash': 'Gemini 1.5 Flash',
       'gemini-2.0-flash-exp': 'Gemini 2.0 Flash'
     },
     safetySettings: [
