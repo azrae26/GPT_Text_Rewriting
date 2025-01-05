@@ -33,7 +33,7 @@ AI 文章改寫助手是一個 Chrome 擴展，專為提升文章寫作效率而
 
 5. **多模型支持與自定義**
    - 支持 Gemini Pro
-   - 支持 OpenAI GPT-4
+   - 支持 OpenAI GPT-4o
    - 可自定義 API 參數
    - 自定義改寫/總結指令模板
 
@@ -47,7 +47,7 @@ AI 文章改寫助手是一個 Chrome 擴展，專為提升文章寫作效率而
 
 - Chrome 瀏覽器 88.0 或更高版本
 - 穩定的網絡連接
-- 有效的 API 金鑰（Gemini 或 GPT-4）
+- 有效的 API 金鑰（Gemini 或 GPT-4o）
 
 ## 安裝步驟
 

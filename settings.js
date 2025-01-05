@@ -11,8 +11,8 @@ const GlobalSettings = {
       openai: 'https://api.openai.com/v1/chat/completions'
     },
     models: {
-      'gpt-4': 'GPT-4',
-      'gpt-4o-mini': 'GPT-4o mini',
+      'gpt-4o': 'gpt-4o',
+      'gpt-4o-mini': 'gpt-4o-mini',
       'gemini-2.0-flash-exp': 'Gemini 2.0 Flash'
     },
     safetySettings: [
