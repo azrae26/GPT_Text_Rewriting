@@ -24,6 +24,12 @@ const GlobalSettings = {
     ]
   },
 
+  // 設定檔識別標記
+  SETTINGS_IDENTIFIER: {
+    appName: 'GPT_Text_Rewriting',
+    version: '1.0'
+  },
+
   /** API 金鑰物件，儲存不同模型的 API 金鑰。 */
   apiKeys: {},
   /** 模型名稱。 */
@@ -442,13 +448,13 @@ const GlobalSettings = {
       const settingsToSave = {
         // 模型設定直接存在 sync storage
         models: {
-          generateModel: settings.generateModel || this.generateModel,
-          reflect1Model: settings.reflect1Model || this.reflect1Model,
-          generationOptimize_1_Model: settings.generationOptimize_1_Model || this.generationOptimize_1_Model,
-          reflect2Model: settings.reflect2Model || this.reflect2Model,
-          generationOptimize_2_Model: settings.generationOptimize_2_Model || this.generationOptimize_2_Model,
-          reflect3Model: settings.reflect3Model || this.reflect3Model,
-          generationOptimize_3_Model: settings.generationOptimize_3_Model || this.generationOptimize_3_Model
+          generateModel: settings.generateModel !== undefined ? settings.generateModel : this.generateModel,
+          reflect1Model: settings.reflect1Model !== undefined ? settings.reflect1Model : this.reflect1Model,
+          generationOptimize_1_Model: settings.generationOptimize_1_Model !== undefined ? settings.generationOptimize_1_Model : this.generationOptimize_1_Model,
+          reflect2Model: settings.reflect2Model !== undefined ? settings.reflect2Model : this.reflect2Model,
+          generationOptimize_2_Model: settings.generationOptimize_2_Model !== undefined ? settings.generationOptimize_2_Model : this.generationOptimize_2_Model,
+          reflect3Model: settings.reflect3Model !== undefined ? settings.reflect3Model : this.reflect3Model,
+          generationOptimize_3_Model: settings.generationOptimize_3_Model !== undefined ? settings.generationOptimize_3_Model : this.generationOptimize_3_Model
         }
       };
 
@@ -467,14 +473,14 @@ const GlobalSettings = {
 
       // 儲存指令設定到 local storage
       const instructionSettings = {
-        generateInstruction: settings.generateInstruction || this.generateInstruction,
-        reflect1Instruction: settings.reflect1Instruction || this.reflect1Instruction,
-        generationOptimize_1_Instruction: settings.generationOptimize_1_Instruction || this.generationOptimize_1_Instruction,
-        reflect2Instruction: settings.reflect2Instruction || this.reflect2Instruction,
-        generationOptimize_2_Instruction: settings.generationOptimize_2_Instruction || this.generationOptimize_2_Instruction,
-        reflect3Instruction: settings.reflect3Instruction || this.reflect3Instruction,
-        generationOptimize_3_Instruction: settings.generationOptimize_3_Instruction || this.generationOptimize_3_Instruction,
-        backgroundKnowledge: settings.backgroundKnowledge || this.backgroundKnowledge
+        generateInstruction: settings.generateInstruction !== undefined ? settings.generateInstruction : this.generateInstruction,
+        reflect1Instruction: settings.reflect1Instruction !== undefined ? settings.reflect1Instruction : this.reflect1Instruction,
+        generationOptimize_1_Instruction: settings.generationOptimize_1_Instruction !== undefined ? settings.generationOptimize_1_Instruction : this.generationOptimize_1_Instruction,
+        reflect2Instruction: settings.reflect2Instruction !== undefined ? settings.reflect2Instruction : this.reflect2Instruction,
+        generationOptimize_2_Instruction: settings.generationOptimize_2_Instruction !== undefined ? settings.generationOptimize_2_Instruction : this.generationOptimize_2_Instruction,
+        reflect3Instruction: settings.reflect3Instruction !== undefined ? settings.reflect3Instruction : this.reflect3Instruction,
+        generationOptimize_3_Instruction: settings.generationOptimize_3_Instruction !== undefined ? settings.generationOptimize_3_Instruction : this.generationOptimize_3_Instruction,
+        backgroundKnowledge: settings.backgroundKnowledge !== undefined ? settings.backgroundKnowledge : this.backgroundKnowledge
       };
 
       // 使用設定組合名稱作為 key 儲存所有指令設定
@@ -523,13 +529,15 @@ const GlobalSettings = {
       // 更新模型設定
       if (syncSettings.models) {
         Object.entries(syncSettings.models).forEach(([key, value]) => {
-          if (value) this[key] = value;
+          // 只在值不是 undefined 時更新
+          if (value !== undefined) this[key] = value;
         });
       }
 
       // 更新指令設定
       Object.entries(instructionSettings).forEach(([key, value]) => {
-        if (value) this[key] = value;
+        // 只在值不是 undefined 時更新，允許空字串
+        if (value !== undefined) this[key] = value;
       });
 
       // 更新當前設定組合名稱
@@ -603,6 +611,207 @@ const GlobalSettings = {
       generationOptimize_3_Instruction: this.generationOptimize_3_Instruction,
       backgroundKnowledge: this.backgroundKnowledge
     };
+  },
+
+  // 定義需要使用 local storage 的大型文字設定
+  LOCAL_STORAGE_KEYS: [
+    'translateInstruction',
+    'summaryInstruction',
+    'zhEnMapping',
+    'reflectInstruction',
+    'optimizeInstruction',
+    'generateInstruction',
+    'reflect1Instruction',
+    'generationOptimize_1_Instruction',
+    'reflect2Instruction',
+    'generationOptimize_2_Instruction',
+    'reflect3Instruction',
+    'generationOptimize_3_Instruction',
+    'backgroundKnowledge'
+  ],
+
+  // 檢查是否為需要使用 local storage 的設定
+  isLocalStorageKey(key) {
+    // 檢查是否為已知的大型文本鍵名
+    if (this.LOCAL_STORAGE_KEYS.includes(key)) {
+      return true;
+    }
+    
+    // 檢查各種需要使用 local storage 的前綴
+    const localStoragePrefixes = [
+      'generation_settings_',  // 生成設定
+      'generation_',          // 生成相關
+      'instructions_',        // 指令相關
+    ];
+    
+    if (localStoragePrefixes.some(prefix => key.startsWith(prefix))) {
+      return true;
+    }
+    
+    // 檢查是否為分塊儲存的鍵名
+    const chunkPatterns = [
+      '_chunk_',      // 一般分塊模式
+      '_chunks',      // 分塊資訊
+    ];
+    
+    // 檢查鍵名是否包含分塊模式，且其基礎名稱在 LOCAL_STORAGE_KEYS 中
+    if (chunkPatterns.some(pattern => key.includes(pattern))) {
+      // 從分塊鍵名中提取基礎名稱
+      const baseName = key.split('_chunk')[0];
+      return this.LOCAL_STORAGE_KEYS.includes(baseName);
+    }
+    
+    return false;
+  },
+
+  // 分類設定到不同的儲存類型
+  _categorizeSettings(settings) {
+    const syncSettings = {};
+    const localSettings = {};
+    const replaceSettings = {};
+
+    Object.entries(settings).forEach(([key, value]) => {
+      // 檢查是否為替換規則
+      if (key.startsWith('replace_') || key === 'autoReplaceRules' || key === 'manualReplaceRules') {
+        replaceSettings[key.startsWith('replace_') ? key : `replace_${key}`] = value;
+      }
+      // 檢查是否為需要使用 local storage 的大型文字
+      else if (this.isLocalStorageKey(key)) {
+        localSettings[key] = value;
+      }
+      // 其他設定使用 sync storage
+      else {
+        syncSettings[key] = value;
+      }
+    });
+
+    return { replaceSettings, localSettings, syncSettings };
+  },
+
+  // 過濾有效的設定
+  _filterValidSettings(result) {
+    return Object.fromEntries(
+      Object.entries(result).filter(([_, value]) => 
+        value !== undefined && value !== null && value !== ''
+      )
+    );
+  },
+
+  // 取得所有設定
+  async getAllSettings() {
+    try {
+      const [syncData, localData] = await Promise.all([
+        this._getChromeStorage('sync'),
+        this._getChromeStorage('local')
+      ]);
+      
+      // 特別處理替換規則，移除前綴
+      const replaceSettings = {};
+      Object.entries(localData).forEach(([key, value]) => {
+        if (key.startsWith('replace_')) {
+          replaceSettings[key.replace('replace_', '')] = value;
+          delete localData[key];
+        }
+      });
+      
+      const allData = { 
+        ...syncData, 
+        ...localData,
+        ...replaceSettings  // 加入處理過的替換規則
+      };
+      
+      return this._filterValidSettings(allData);
+    } catch (error) {
+      console.error('讀取設定失敗:', error);
+      throw error;
+    }
+  },
+
+  // 套用設定
+  async applySettings(settings) {
+    try {
+      console.group('儲存匯入的設定');
+      
+      if (!settings || Object.keys(settings).length === 0) {
+        throw new Error('無效的設定資料');
+      }
+
+      // 分類設定
+      const { replaceSettings, localSettings, syncSettings } = this._categorizeSettings(settings);
+      
+      console.log('分類後的設定：');
+      console.log('- sync 設定:', Object.keys(syncSettings));
+      console.log('- local 設定:', Object.keys(localSettings));
+      console.log('- 替換規則:', Object.keys(replaceSettings));
+
+      // 檢查 sync settings 的大小
+      const syncSettingsSize = new TextEncoder().encode(JSON.stringify(syncSettings)).length;
+      console.log('sync settings 大小:', syncSettingsSize, 'bytes');
+      if (syncSettingsSize > 100000) {
+        throw new Error('同步設定總大小超過限制 (100KB)');
+      }
+
+      // 移除舊的替換規則
+      if (Object.keys(replaceSettings).length > 0) {
+        console.log('移除舊的替換規則...');
+        await chrome.storage.local.remove(Object.keys(replaceSettings));
+      }
+
+      // 儲存設定
+      console.log('開始儲存設定...');
+      await Promise.all([
+        Object.keys(syncSettings).length > 0 ? this._setChromeStorage(syncSettings, 'sync') : Promise.resolve(),
+        Object.keys(localSettings).length > 0 ? this._setChromeStorage(localSettings, 'local') : Promise.resolve(),
+        Object.keys(replaceSettings).length > 0 ? this._setChromeStorage(replaceSettings, 'local') : Promise.resolve()
+      ]);
+
+      console.log('設定儲存完成');
+      console.groupEnd();
+    } catch (error) {
+      console.error('儲存設定時出錯:', error);
+      console.groupEnd();
+      throw error;
+    }
+  },
+
+  // Chrome storage 操作的包裝方法，處理 Promise 化
+  _getChromeStorage(type = 'sync') {
+    return new Promise((resolve, reject) => {
+      try {
+        chrome.storage[type].get(null, (result) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(result);
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
+  },
+
+  // 儲存資料到 Chrome storage，支援前綴功能
+  _setChromeStorage(data, type = 'sync', prefix = '') {
+    return new Promise((resolve, reject) => {
+      try {
+        // 如果有指定前綴，則為所有 key 加上前綴
+        const storageData = prefix ? 
+          Object.fromEntries(
+            Object.entries(data).map(([key, value]) => [prefix + key, value])
+          ) : data;
+
+        chrome.storage[type].set(storageData, () => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve();
+          }
+        });
+      } catch (error) {
+        reject(error);
+      }
+    });
   }
 };
 
