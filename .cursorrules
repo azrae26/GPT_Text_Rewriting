@@ -22,6 +22,35 @@
         }
       ]
     },
+    "settings_management": {
+      "description": "設定管理架構指南",
+      "enabled": true,
+      "rules": [
+        {
+          "description": "檔案職責分離",
+          "guidelines": [
+            "核心設定邏輯統一在 settings.js 管理",
+            "檔案操作相關邏輯在 settings-manager.js 處理",
+            "UI 互動邏輯與核心邏輯分離"
+          ]
+        },
+        {
+          "description": "設定檔案格式",
+          "guidelines": [
+            "統一使用 SETTINGS_IDENTIFIER 進行檔案識別",
+            "匯出檔案包含版本和應用程式識別",
+            "設定分類存放並保持結構一致性"
+          ]
+        },
+        {
+          "description": "設計模式應用",
+          "guidelines": [
+            "使用單例模式管理全局設定",
+            "使用策略模式處理不同類型設定"
+          ]
+        }
+      ]
+    },
     "error_handling": {
       "description": "錯誤處理和資料驗證",
       "enabled": true,
@@ -30,8 +59,7 @@
           "description": "Core Principles",
           "steps": [
             "檢查儲存操作的結果",
-            "處理 chrome.runtime.lastError",
-            "保持資料一致性"
+            "處理 chrome.runtime.lastError"
           ]
         }
       ]
@@ -44,12 +72,11 @@
           "description": "Key Practices",
           "guidelines": [
             "保持方法的單一職責",
-            "統一管理設定狀態",
-            "避免重複或衝突的狀態更新"
+            "使用私有方法封裝內部邏輯"
           ]
         }
       ]
-    }
+    },
     "git_practices": {
       "description": "Git 推送最佳實踐",
       "enabled": true,
@@ -59,8 +86,7 @@
           "guidelines": [
             "使用簡短的標題（20字以內）描述主要變更",
             "使用 [類型] 前綴標示變更類型",
-            "詳細說明使用編號列表，每點不超過5字",
-            "避免在訊息中使用特殊字符"
+            "詳細說明使用編號列表，每點不超過5字"
           ]
         },
         {
