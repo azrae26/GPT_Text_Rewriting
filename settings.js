@@ -302,113 +302,52 @@ const GlobalSettings = {
    */
   async saveSingleSetting(key, value) {
     try {
-      // 如果是指令相關的設定，檢查是否需要分塊儲存
-      if (key.toLowerCase().includes('instruction') || key === 'backgroundKnowledge') {
-        const settingSize = new TextEncoder().encode(JSON.stringify(value)).length;
-        
-        if (settingSize > 8000) {
-          // 將文本分成多個塊，每塊不超過 7000 bytes
-          const chunks = [];
-          let currentChunk = '';
-          let currentSize = 0;
-          const lines = value.split('\n');
-          
-          for (const line of lines) {
-            const lineSize = new TextEncoder().encode(JSON.stringify(line)).length;
-            if (currentSize + lineSize > 7000) {
-              chunks.push(currentChunk);
-              currentChunk = line;
-              currentSize = lineSize;
-            } else {
-              currentChunk += (currentChunk ? '\n' : '') + line;
-              currentSize += lineSize;
-            }
-          }
-          if (currentChunk) {
-            chunks.push(currentChunk);
-          }
-          
-          // 儲存分塊信息
-          const chunkKeys = chunks.map((_, index) => `${key}_chunk_${index}`);
-          await Promise.all([
-            new Promise((resolve) => {
-              chrome.storage.local.set({ 
-                [`${key}_chunks`]: chunkKeys.length,
-                ...Object.fromEntries(chunks.map((chunk, index) => [chunkKeys[index], chunk]))
-              }, resolve);
-            })
-          ]);
-          
-          console.log(`已將 ${key} 分成 ${chunks.length} 個塊儲存`);
-          this[key] = value;
-          return;
-        }
-      }
+      console.group('儲存設定:', key);
+      console.log('設定值大小:', new TextEncoder().encode(JSON.stringify(value)).length, 'bytes');
       
-      // 檢查是否為需要使用 local storage 的大型文本
-      const isLocalStorageKey = [
-        'translateInstruction', 'summaryInstruction', 'zhEnMapping', 
-        'reflectInstruction', 'optimizeInstruction', 'generateInstruction', 
-        'reflect1Instruction', 'generationOptimize_1_Instruction', 
-        'reflect2Instruction', 'generationOptimize_2_Instruction',
-        'reflect3Instruction', 'generationOptimize_3_Instruction',
-        'backgroundKnowledge'
-      ].includes(key);
+      const isLocal = this.isLocalStorageKey(key);
+      console.log('是否使用 local storage:', isLocal);
 
-      if (isLocalStorageKey) {
-        await new Promise((resolve, reject) => {
-          chrome.storage.local.set({ [key]: value }, () => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(`儲存到 local storage 失敗: ${chrome.runtime.lastError.message}`));
-            }
+      const storageType = isLocal ? chrome.storage.local : chrome.storage.sync;
+      console.log(`使用 ${isLocal ? 'local' : 'sync'} storage 儲存`);
+
+      await new Promise((resolve, reject) => {
+        storageType.set({ [key]: value }, () => {
+          if (chrome.runtime.lastError) {
+            console.error(`儲存到 ${isLocal ? 'local' : 'sync'} storage 失敗:`, chrome.runtime.lastError);
+            reject(new Error(`儲存到 ${isLocal ? 'local' : 'sync'} storage 失敗: ${chrome.runtime.lastError.message}`));
+          } else {
+            console.log(`成功儲存到 ${isLocal ? 'local' : 'sync'} storage`);
             resolve();
-          });
+          }
         });
-      } else {
-        await new Promise((resolve, reject) => {
-          chrome.storage.sync.set({ [key]: value }, () => {
-            if (chrome.runtime.lastError) {
-              reject(new Error(`儲存到 sync storage 失敗: ${chrome.runtime.lastError.message}`));
-            }
-            resolve();
-          });
-        });
-      }
+      });
       
       this[key] = value;
+      console.log('設定值已更新到實例');
+      console.groupEnd();
     } catch (error) {
       console.error(`儲存設定 ${key} 失敗:`, error);
+      console.groupEnd();
       throw error;
     }
   },
 
   /**
-   * 從儲存空間讀取設定值，支援分塊讀取
+   * 從儲存空間讀取設定值
    * @param {string} key - 設定鍵值
    * @returns {Promise<string>} - 完整的設定值
    */
   async loadSettingValue(key) {
+    const storageType = this.isLocalStorageKey(key) ? chrome.storage.local : chrome.storage.sync;
+    
     const result = await new Promise((resolve) => {
-      chrome.storage.local.get([`${key}_chunks`, key], (items) => {
-        resolve(items);
+      storageType.get([key], (items) => {
+        resolve(items[key]);
       });
     });
 
-    // 檢查是否有分塊
-    if (result[`${key}_chunks`]) {
-      const numChunks = result[`${key}_chunks`];
-      const chunkKeys = Array.from({length: numChunks}, (_, i) => `${key}_chunk_${i}`);
-      
-      const chunks = await new Promise((resolve) => {
-        chrome.storage.local.get(chunkKeys, (items) => {
-          resolve(chunkKeys.map(k => items[k]));
-        });
-      });
-      
-      return chunks.join('');
-    }
-
-    return result[key];
+    return result;
   },
 
   async saveModelSelection(modelType, value) {
@@ -644,24 +583,7 @@ const GlobalSettings = {
       'instructions_',        // 指令相關
     ];
     
-    if (localStoragePrefixes.some(prefix => key.startsWith(prefix))) {
-      return true;
-    }
-    
-    // 檢查是否為分塊儲存的鍵名
-    const chunkPatterns = [
-      '_chunk_',      // 一般分塊模式
-      '_chunks',      // 分塊資訊
-    ];
-    
-    // 檢查鍵名是否包含分塊模式，且其基礎名稱在 LOCAL_STORAGE_KEYS 中
-    if (chunkPatterns.some(pattern => key.includes(pattern))) {
-      // 從分塊鍵名中提取基礎名稱
-      const baseName = key.split('_chunk')[0];
-      return this.LOCAL_STORAGE_KEYS.includes(baseName);
-    }
-    
-    return false;
+    return localStoragePrefixes.some(prefix => key.startsWith(prefix));
   },
 
   // 分類設定到不同的儲存類型
@@ -671,6 +593,12 @@ const GlobalSettings = {
     const replaceSettings = {};
 
     Object.entries(settings).forEach(([key, value]) => {
+      // 跳過分塊資料
+      if (key.includes('_chunk_') || key.includes('_chunks')) {
+        console.log('跳過分塊資料:', key);
+        return;
+      }
+      
       // 檢查是否為替換規則
       if (key.startsWith('replace_') || key === 'autoReplaceRules' || key === 'manualReplaceRules') {
         replaceSettings[key.startsWith('replace_') ? key : `replace_${key}`] = value;
@@ -735,6 +663,14 @@ const GlobalSettings = {
       if (!settings || Object.keys(settings).length === 0) {
         throw new Error('無效的設定資料');
       }
+
+      // 先清空所有儲存空間
+      console.log('清空所有儲存空間...');
+      await Promise.all([
+        new Promise((resolve) => chrome.storage.sync.clear(resolve)),
+        new Promise((resolve) => chrome.storage.local.clear(resolve))
+      ]);
+      console.log('儲存空間已清空');
 
       // 分類設定
       const { replaceSettings, localSettings, syncSettings } = this._categorizeSettings(settings);
