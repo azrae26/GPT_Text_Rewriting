@@ -216,9 +216,29 @@ window.TranslateManager = {
 
     // 處理長行
     const processLongLine = (line) => {
+      const maxLength = TranslateConfig.BATCH.TEXT_LIMIT.LINE;  // 1700
       const segments = line.match(/[^.。]+[.。]/g) || [];
-      segments.forEach(segment => addToParagraphs(segment));
-      return line.replace(/.*[.。]/, ''); // 返回剩餘文本
+      let currentBatch = '';
+      
+      for (const segment of segments) {
+        if ((currentBatch + segment).length <= maxLength) {
+          currentBatch += segment;
+        } else {
+          // 當前批次已經接近限制，加入段落
+          if (currentBatch) {
+            addToParagraphs(currentBatch);
+          }
+          currentBatch = segment;
+        }
+      }
+      
+      // 處理最後一個批次
+      if (currentBatch) {
+        addToParagraphs(currentBatch);
+      }
+      
+      // 返回最後一個句號之後的剩餘文本
+      return line.replace(/.*[.。]/, '');
     };
 
     // 按換行分割文本
