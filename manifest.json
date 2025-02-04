@@ -44,6 +44,12 @@
     },
     {
       "matches": [
+        "https://crawler-api.uanalyze.com.tw/*"
+      ],
+      "css": ["content_script_uanalyze.css"]
+    },
+    {
+      "matches": [
         "https://pro.uanalyze.com.tw/lab/*"
       ],
       "js": [

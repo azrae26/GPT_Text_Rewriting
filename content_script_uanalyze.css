@@ -25,7 +25,23 @@ div.btn-group button.MuiButtonBase-root.MuiButton-root.MuiButton-contained.MuiBu
   margin-top: 1rem !important;
 }
 
-/* 樣式修改結束 */
+/* 針對 https://data.uanalyze.twobitto.com/research-reports/ 頁面的樣式修改結束 */
+
+
+/* 針對 https://crawler-api.uanalyze.com.tw/ai_model 頁面的樣式修改 */
+div.result_input pre.json-document {
+  height: 700px !important;
+}
+
+textarea[name="user_prompt"] {
+  height: 400px !important;
+}
+
+textarea[name="system_prompt"] {
+  height: 100px !important;
+}
+
+/* 針對 https://crawler-api.uanalyze.com.tw/ai_model 頁面的樣式修改結束 */
 
 
 /* 改寫按鈕容器樣式 */
@@ -222,5 +238,7 @@ textarea[name="content"] + div {
   flex-direction: column;
   align-items: flex-end;
 }
+
+
 
 
