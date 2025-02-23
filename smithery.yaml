@@ -1,0 +1,18 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+
+startCommand:
+  type: stdio
+  configSchema:
+    # JSON Schema defining the configuration options for the MCP.
+    type: object
+    required:
+      - apiKey
+    properties:
+      apiKey:
+        type: string
+        description: The API key for either the Gemini or GPT-4 model used by the Chrome
+          extension.
+  commandFunction:
+    # A function that produces the CLI command to start the MCP on stdio.
+    |-
+    config => ({ command: 'echo', args: ['Setup Chrome Extension manually in the browser and configure with the given API Key.'], env: { 'API_KEY': config.apiKey } })
