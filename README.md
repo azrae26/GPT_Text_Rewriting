@@ -1,5 +1,7 @@
 # AI 文章改寫助手
 
+[![smithery badge](https://smithery.ai/badge/@azrae26/gpt_text_rewriting)](https://smithery.ai/application/@azrae26/gpt_text_rewriting)
+
 ## 功能概述
 
 AI 文章改寫助手是一個 Chrome 擴展，專為提升文章寫作效率而設計。它利用先進的 AI 技術，幫助用戶快速改寫和優化文本內容。
@@ -14,6 +16,16 @@ AI 文章改寫助手是一個 Chrome 擴展，專為提升文章寫作效率而
 6. **股票代碼輔助**：自動識別文章中的股票代碼，並提供快速填充功能。
 
 ## 安裝指南
+
+### Installing via Smithery
+
+To install AI 文章改寫助手 for Chrome Browser automatically via [Smithery](https://smithery.ai/application/@azrae26/gpt_text_rewriting):
+
+```bash
+npx -y @smithery/cli install @azrae26/gpt_text_rewriting --client chrome
+```
+
+### 手動安裝
 
 1. 下載擴展文件。
 2. 打開 Chrome 瀏覽器，進入擴展管理頁面（chrome://extensions/）。
