@@ -138,7 +138,7 @@ const KeyPointsSummaryManager = {
     // 尋找小助理標籤
     const assistantTab = Array.from(document.querySelectorAll('.ua-tab-item')).find(tab => {
       const titleDiv = tab.querySelector('.ua-tab-title');
-      return titleDiv && titleDiv.textContent.includes('小助理');
+      return titleDiv && (titleDiv.textContent.includes('小助理') || titleDiv.textContent.includes('個股概覽'));
     });
 
     // 檢查是否在目標頁面

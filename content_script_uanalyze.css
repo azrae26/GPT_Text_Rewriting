@@ -239,6 +239,96 @@ textarea[name="content"] + div {
   align-items: flex-end;
 }
 
+/* Google 翻譯按鈕容器樣式 */
+.google-translate-container {
+  position: relative;
+  display: inline-block;
+}
+
+/* Google 翻譯按鈕樣式（帶下拉箭頭） */
+.google-translate-button-with-dropdown {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 10px;
+  background-color: #5b8cdb;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: 0.2s ease;
+}
+
+.google-translate-button-with-dropdown:hover {
+  background-color: #1a73e8;
+}
+
+.google-translate-button-with-dropdown.canceling {
+  background-color: #dc3545;
+}
+
+/* 下拉箭頭樣式 */
+.dropdown-arrow {
+  margin-left: 0px;
+  border: solid currentColor;
+  border-width: 0 2px 2px 0;
+  display: inline-block;
+  padding: 2.5px;
+  transform: rotate(45deg) translateY(-1px);
+  transition: transform 0.2s ease;
+  vertical-align: middle;
+}
+
+/* 按鈕懸停時的箭頭效果 */
+.google-translate-button-with-dropdown:hover .dropdown-arrow {
+  transform: rotate(45deg) translateX(-1px) translateY(-2px);
+}
+
+/* 下拉選單展開時的箭頭效果 */
+.google-translate-button-with-dropdown.dropdown-open .dropdown-arrow {
+  transform: rotate(-135deg) translateY(-1px);
+}
+
+/* Google 翻譯下拉選單樣式 */
+#google-translate-dropdown {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  z-index: 1001;
+  min-width: 60px;
+  display: none;
+}
+
+.dropdown-option {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #eee;
+  font-size: 14px;
+  color: #333;
+  transition: background-color 0.2s ease;
+}
+
+.dropdown-option:hover {
+  background-color: #f5f5f5;
+}
+
+.dropdown-option:last-child {
+  border-bottom: none;
+}
+
+/* 按鈕禁用狀態 */
+#gpt-rewrite-button:disabled, #gpt-translate-button:disabled, #gpt-generate-button:disabled,
+.google-translate-button-with-dropdown:disabled {
+  background-color: #cccccc !important;
+  color: #666666 !important;
+  cursor: not-allowed !important;
+}
+
 
 
 

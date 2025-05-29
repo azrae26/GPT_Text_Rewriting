@@ -95,17 +95,7 @@ window.TranslateManager = {
    */
   initialize() {
     console.log('TranslateManager 初始化...');
-    const buttonContainer = document.getElementById('gpt-button-container');
-    if (!buttonContainer || document.getElementById('gpt-translate-button')) return;
-  
-    // 創建翻譯按鈕
-    const translateButton = document.createElement('button');
-    translateButton.id = 'gpt-translate-button';
-    translateButton.textContent = '翻譯';
-    translateButton.addEventListener('click', () => this.handleTranslateClick(translateButton));
-    buttonContainer.appendChild(translateButton);
-
-    // 初始化 checkbox 元素
+    // 按鈕由 UIManager 統一創建，這裡只初始化 checkbox 元素
     this.checkboxManager.init();
   },
 
@@ -185,7 +175,7 @@ window.TranslateManager = {
     const button = document.getElementById('gpt-translate-button'); 
     if (button) { 
       console.log('[resetTranslation] 重置按鈕狀態');
-      button.textContent = '翻譯'; 
+      button.textContent = 'GPT翻譯'; 
       button.classList.remove('canceling'); 
       button.disabled = false;
     }
@@ -217,7 +207,7 @@ window.TranslateManager = {
     // 處理長行
     const processLongLine = (line) => {
       const maxLength = TranslateConfig.BATCH.TEXT_LIMIT.LINE;  // 1700
-      const segments = line.match(/[^.。]+[.。]/g) || [];
+      const segments = line.match(/[^.。]+[.。]/g) || []; // 使用正則表達式匹配句號
       let currentBatch = '';
       
       for (const segment of segments) {
@@ -251,10 +241,20 @@ window.TranslateManager = {
 
       // 組合新批次
       const newBatch = currentBatch ? `${currentBatch}\n${line}` : line;
-      const hasPeriod = /[.。]$/.test(line.trim());
 
-      // 如果新批次包含句號，且長度超過限制，則添加到段落
-      if (hasPeriod && newBatch.length > TranslateConfig.BATCH.TEXT_LIMIT.BATCH) {
+      // 檢查標點符號，按優先順序
+      const hasPeriodAtEnd = /[.。]$/.test(line.trim());
+      const hasCommaSpace = /[,，][ \t]/.test(line);
+      const hasPeriodSpace = /[.。][ \t]/.test(line);
+      const hasDashSpace = /-[ \t]/.test(line);
+      const hasClosingParenthesis = /\)/.test(line);
+      const hasSpace = / /.test(line);
+
+      // 標點符號檢查結果
+      const hasPunctuation = hasPeriodAtEnd || hasCommaSpace || hasPeriodSpace || hasDashSpace || hasClosingParenthesis || hasSpace;
+
+      // 如果有標點符號，且長度超過限制，則添加到段落
+      if (hasPunctuation && newBatch.length > TranslateConfig.BATCH.TEXT_LIMIT.BATCH) {
         addToParagraphs(newBatch);
         currentBatch = '';
       } else {
@@ -683,12 +683,19 @@ window.TranslateManager = {
 
           try {
             const finalText = await this.processAllBlocks();
+            
+            // 立即重置按鈕狀態，不等通知
+            this.resetTranslation();
+            
+            // 最後顯示完成通知
             await window.Notification.showNotification(TranslateConfig.STAGES.COMPLETED, false);
           } catch (error) {
             console.error('反思優化處理失敗:', error);
-            await window.Notification.showNotification('反思優化處理失敗: ' + error.message, false);
-          } finally {
+            
+            // 即使出錯也要重置按鈕狀態
             this.resetTranslation();
+            
+            await window.Notification.showNotification('反思優化處理失敗: ' + error.message, false);
           }
         } else {
           // 如果還有未完成的批次，更新進度通知
@@ -987,7 +994,6 @@ window.TranslateManager = {
       
     // 使用統一入口更新最終文本
     await this.updateText(finalText, 'final');
-    await window.Notification.showNotification(TranslateConfig.STAGES.COMPLETED, false);
     return finalText;
   },
 

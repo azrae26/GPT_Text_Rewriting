@@ -842,7 +842,7 @@ const ManualReplaceManager = {
 
   /** 開始定期檢查高亮 */
   startHighlightCheck() {
-    console.log('[高亮檢查] 開始定期檢查');
+    console.log('[高亮檢查] 開始定期檢查.');
     // 在前幾秒多檢查
     const checkTimes = [100, 500, 1000, 2000];
     checkTimes.forEach(delay => {

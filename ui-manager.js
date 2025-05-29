@@ -29,6 +29,12 @@ const UIManager = {
     rewriteButton.textContent = '改寫';
     rewriteButton.addEventListener('click', async function() {
       try {
+        const textArea = document.querySelector('textarea[name="content"]');
+        if (!textArea || !textArea.value.trim()) {
+          alert('請先輸入要改寫的內容');
+          return;
+        }
+
         const settings = await window.GlobalSettings.loadSettings();
         if (!settings.apiKeys['gemini-2.0-flash-exp'] && !settings.apiKeys['openai']) {
           alert('請先設置 API 金');
@@ -51,6 +57,181 @@ const UIManager = {
     });
 
     buttonContainer.appendChild(rewriteButton);
+
+    // 創建翻譯按鈕
+    if (window.TranslateManager) {
+      const translateButton = document.createElement('button');
+      translateButton.id = 'gpt-translate-button';
+      translateButton.textContent = 'GPT翻譯';
+      translateButton.addEventListener('click', () => {
+        console.log('GPT翻譯按鈕被點擊');
+        
+        const textArea = document.querySelector('textarea[name="content"]');
+        if (!textArea || !textArea.value.trim()) {
+          alert('請先輸入要翻譯的內容');
+          return;
+        }
+
+        if (window.TranslateManager && window.TranslateManager.handleTranslateClick) {
+          window.TranslateManager.handleTranslateClick(translateButton);
+        } else {
+          console.error('TranslateManager 不存在或 handleTranslateClick 方法未定義');
+          alert('翻譯功能未正確載入，請重新整理頁面');
+        }
+      });
+      buttonContainer.appendChild(translateButton);
+    } else {
+      console.warn('TranslateManager 未定義，跳過創建GPT翻譯按鈕');
+    }
+
+    // 創建 Google 翻譯按鈕容器
+    if (window.GoogleTranslateManager) {
+      const googleTranslateContainer = document.createElement('div');
+      googleTranslateContainer.className = 'google-translate-container';
+      
+      const googleTranslateButton = document.createElement('button');
+      googleTranslateButton.id = 'google-translate-button';
+      googleTranslateButton.className = 'google-translate-button-with-dropdown';
+      googleTranslateButton.innerHTML = `
+        <span>Google翻譯(繁中)</span>
+        <span class="dropdown-arrow"></span>
+      `;
+      
+      // 創建語言選擇下拉選單
+      const languageDropdown = document.createElement('div');
+      languageDropdown.id = 'google-translate-dropdown';
+      languageDropdown.className = 'google-translate-dropdown';
+      
+      const languages = [
+        { code: 'zh-TW', name: '繁中' },
+        { code: 'zh-CN', name: '簡中' },
+        { code: 'en', name: '英文' },
+        { code: 'ja', name: '日文' }
+      ];
+      
+      languages.forEach(lang => {
+        const option = document.createElement('div');
+        option.className = 'dropdown-option';
+        option.textContent = lang.name;
+        option.addEventListener('click', (e) => {
+          e.stopPropagation();
+          
+          const textArea = document.querySelector('textarea[name="content"]');
+          if (!textArea || !textArea.value.trim()) {
+            alert('請先輸入要翻譯的內容');
+            // 隱藏下拉選單
+            languageDropdown.style.display = 'none';
+            googleTranslateButton.classList.remove('dropdown-open');
+            return;
+          }
+
+          // 設置選中的語言
+          window.GoogleTranslateManager.setTargetLanguage(lang.code);
+          
+          // 使用簡寫的語言名稱更新按鈕文字
+          const shortNames = {
+            'zh-TW': '繁中',
+            'zh-CN': '簡中', 
+            'en': '英文',
+            'ja': '日文'
+          };
+          const shortName = shortNames[lang.code] || lang.name;
+          googleTranslateButton.querySelector('span').textContent = `Google翻譯(${shortName})`;
+          
+          // 隱藏下拉選單
+          languageDropdown.style.display = 'none';
+          googleTranslateButton.classList.remove('dropdown-open');
+          
+          // 開始翻譯
+          window.GoogleTranslateManager.handleGoogleTranslateClick(googleTranslateButton);
+        });
+        languageDropdown.appendChild(option);
+      });
+      
+      // 點擊按鈕主體開始翻譯（如果已選擇語言）
+      googleTranslateButton.addEventListener('click', (e) => {
+        console.log('Google翻譯按鈕被點擊');
+        
+        // 檢查 GoogleTranslateManager 是否存在
+        if (!window.GoogleTranslateManager) {
+          console.error('GoogleTranslateManager 不存在');
+          alert('Google翻譯功能未正確載入，請重新整理頁面');
+          return;
+        }
+        
+        // 如果點擊的是箭頭區域，顯示/隱藏下拉選單
+        const rect = googleTranslateButton.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const isArrowClick = clickX > rect.width - 30; // 箭頭區域寬度約30px
+        
+        console.log('點擊位置分析:', {
+          clickX: clickX,
+          buttonWidth: rect.width,
+          isArrowClick: isArrowClick,
+          targetLanguage: window.GoogleTranslateManager.targetLanguage
+        });
+        
+        if (isArrowClick) {
+          console.log('箭頭區域被點擊，切換下拉選單');
+          e.stopPropagation();
+          const isVisible = languageDropdown.style.display === 'block';
+          languageDropdown.style.display = isVisible ? 'none' : 'block';
+          
+          // 切換箭頭動畫狀態
+          if (isVisible) {
+            googleTranslateButton.classList.remove('dropdown-open');
+          } else {
+            googleTranslateButton.classList.add('dropdown-open');
+          }
+        } else {
+          console.log('按鈕主體被點擊');
+          
+          const textArea = document.querySelector('textarea[name="content"]');
+          if (!textArea || !textArea.value.trim()) {
+            alert('請先輸入要翻譯的內容');
+            return;
+          }
+
+          // 如果已設置目標語言，直接開始翻譯
+          if (window.GoogleTranslateManager.targetLanguage) {
+            console.log('開始翻譯，目標語言:', window.GoogleTranslateManager.targetLanguage);
+            window.GoogleTranslateManager.handleGoogleTranslateClick(googleTranslateButton);
+          } else {
+            // 未設置語言時顯示下拉選單並提示用戶
+            console.log('未設置目標語言，顯示下拉選單');
+            languageDropdown.style.display = 'block';
+            googleTranslateButton.classList.add('dropdown-open');
+          }
+        }
+      });
+      
+      // 點擊其他地方時隱藏下拉選單
+      document.addEventListener('click', () => {
+        languageDropdown.style.display = 'none';
+        googleTranslateButton.classList.remove('dropdown-open');
+      });
+      
+      googleTranslateContainer.appendChild(googleTranslateButton);
+      googleTranslateContainer.appendChild(languageDropdown);
+      buttonContainer.appendChild(googleTranslateContainer);
+    }
+
+    // 創建生成按鈕
+    if (window.GenerationManager) {
+      const generateButton = document.createElement('button');
+      generateButton.id = 'gpt-generate-button';
+      generateButton.textContent = '生成';
+      generateButton.addEventListener('click', () => {
+        const textArea = document.querySelector('textarea[name="content"]');
+        if (!textArea || !textArea.value.trim()) {
+          alert('請先輸入要生成的內容');
+          return;
+        }
+        window.GenerationManager.handleGenerateClick(generateButton);
+      });
+      buttonContainer.appendChild(generateButton);
+    }
+
     this._setupTextArea(textArea, buttonContainer);
     window.console.log('改寫按鈕添加成功');
   },
@@ -62,6 +243,14 @@ const UIManager = {
 
     window.UndoManager.initInputHistory(textArea);
     textArea.addEventListener('dblclick', (e) => this._handleDoubleClick(e, textArea));
+
+    // 監聽文本變化以更新按鈕狀態
+    textArea.addEventListener('input', () => {
+      this.updateButtonStates();
+    });
+
+    // 初始化按鈕狀態
+    this.updateButtonStates();
 
     // 監聽URL變化
     let lastUrl = location.href;
@@ -463,6 +652,19 @@ const UIManager = {
     this.addRewriteButton();
     this.initializeStockCodeFeature();
     window.ReplaceManager.initializeReplaceUI();
+    
+    // 初始化各 Manager 的非按鈕元素
+    if (window.TranslateManager) {
+      window.TranslateManager.initialize();
+    }
+    if (window.GoogleTranslateManager) {
+      window.GoogleTranslateManager.initialize();
+    }
+
+    // 確保按鈕狀態正確
+    setTimeout(() => {
+      this.updateButtonStates();
+    }, 100);
   },
 
   /** 移除所有UI元素 */
@@ -471,6 +673,35 @@ const UIManager = {
     this.removeRewriteButton();
     this.removeStockCodeFeature();
     window.ReplaceManager.removeReplaceUI();
+  },
+
+  /** 檢查文本內容並更新按鈕狀態 */
+  updateButtonStates() {
+    const textArea = document.querySelector('textarea[name="content"]');
+    if (!textArea) return;
+
+    const hasContent = textArea.value.trim().length > 0;
+    
+    // 更新所有功能按鈕的狀態
+    const buttons = [
+      'gpt-rewrite-button',
+      'gpt-translate-button', 
+      'google-translate-button',
+      'gpt-generate-button'
+    ];
+
+    buttons.forEach(buttonId => {
+      const button = document.getElementById(buttonId);
+      if (button) {
+        button.disabled = !hasContent;
+        // 設置游標樣式
+        if (hasContent) {
+          button.style.cursor = 'pointer';
+        } else {
+          button.style.cursor = 'not-allowed';
+        }
+      }
+    });
   }
 };
 

@@ -734,12 +734,19 @@ window.GenerationConfig = {
   
             try {
               const finalText = await this.processAllBlocks();
+              
+              // 立即重置按鈕狀態，不等通知
+              this.resetGeneration();
+              
+              // 最後顯示完成通知
               await window.Notification.showNotification('生成優化完成', false);
             } catch (error) {
               console.error('反思優化處理失敗:', error);
-              await window.Notification.showNotification('反思優化處理失敗: ' + error.message, false);
-            } finally {
+              
+              // 即使出錯也要重置按鈕狀態
               this.resetGeneration();
+              
+              await window.Notification.showNotification('反思優化處理失敗: ' + error.message, false);
             }
           } else {
             // 如果還有未完成的批次，更新進度通知

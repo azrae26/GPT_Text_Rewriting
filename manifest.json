@@ -34,6 +34,8 @@
         "text-processor.js",
         "translate.js",
         "multiple_generation/multiple-generation.js",
+        "google_translator/jwt-helper.js",
+        "google_translator/google-translate.js",
         "ui-manager.js",
         "stock_report_helper/quick-copy.js",
         "stock_report_helper/stock-analyzer.js",
@@ -79,6 +81,10 @@
     {
       "resources": ["images/*"],
       "matches": ["https://pro.uanalyze.com.tw/*"]
+    },
+    {
+      "resources": ["google_translator/gen-lang-client-0507957210-3b8a690087e2.json"],
+      "matches": ["https://data.uanalyze.twobitto.com/*"]
     }
   ],
   "action": {

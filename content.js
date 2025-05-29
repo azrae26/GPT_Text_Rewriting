@@ -171,8 +171,6 @@ function initializeExtension() {
     try {
       await window.GlobalSettings.loadSettings();
       window.UIManager.initializeAllUI();
-      window.TranslateManager.initialize();
-      window.GenerationManager.initialize();
       // 在這裡也初始化高亮功能
       initHighlight();
     } catch (error) {

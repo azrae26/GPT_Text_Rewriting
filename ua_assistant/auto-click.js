@@ -47,9 +47,11 @@ const AutoClickManager = {
     this.setupContentObserver();
     
     // 檢查當前頁面狀態
-    const assistantTab = document.querySelector('.ua-tab-title[data-laboratory-id="38364"]');
-    if (assistantTab && assistantTab.parentElement.classList.contains('active')) {
-      console.log('當前在小助理頁面');
+    const isInAssistantPage = this.isInAssistantPage();
+    const isInStockOverviewPage = this.isInStockOverviewPage();
+    
+    if (isInAssistantPage || isInStockOverviewPage) {
+      console.log('當前在目標頁面:', isInAssistantPage ? '小助理' : '個股概覽');
       this.isInTargetPage = true;
       
       // 觸發頁面狀態變化回調
@@ -81,6 +83,28 @@ const AutoClickManager = {
   },
 
   /**
+   * 檢查是否在小助理頁面
+   */
+  isInAssistantPage() {
+    const assistantTab = document.querySelector('.ua-tab-title[data-laboratory-id="38364"]');
+    return assistantTab && assistantTab.parentElement.classList.contains('active');
+  },
+
+  /**
+   * 檢查是否在個股概覽頁面
+   */
+  isInStockOverviewPage() {
+    const tabs = document.querySelectorAll('.ua-tab-item');
+    for (const tab of tabs) {
+      const titleDiv = tab.querySelector('.ua-tab-title');
+      if (titleDiv && titleDiv.textContent.includes('個股概覽') && tab.classList.contains('active')) {
+        return true;
+      }
+    }
+    return false;
+  },
+
+  /**
    * 設置頁面觀察器
    * 監聽頁面標籤變化
    */
@@ -90,30 +114,29 @@ const AutoClickManager = {
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
         if (mutation.type === 'attributes' || mutation.type === 'childList') {
-          // 檢查是否在小助理頁面
-          const assistantTab = document.querySelector('.ua-tab-title[data-laboratory-id="38364"]');
-          if (assistantTab) {
-            const isActive = assistantTab.parentElement.classList.contains('active');
+          // 檢查是否在目標頁面
+          const isInAssistantPage = this.isInAssistantPage();
+          const isInStockOverviewPage = this.isInStockOverviewPage();
+          const isInTarget = isInAssistantPage || isInStockOverviewPage;
+          
+          if (isInTarget && !this.isInTargetPage) {
+            console.log('進入目標頁面:', isInAssistantPage ? '小助理' : '個股概覽');
+            this.isInTargetPage = true;
+            this.hasClicked = false;
+            this.checkButtonPeriodically();
             
-            if (isActive && !this.isInTargetPage) {
-              console.log('進入小助理頁面');
-              this.isInTargetPage = true;
-              this.hasClicked = false;
-              this.checkButtonPeriodically();
-              
-              // 觸發頁面狀態變化回調
-              if (this.onPageStateChange) {
-                this.onPageStateChange(true);
-              }
-            } else if (!isActive && this.isInTargetPage) {
-              console.log('離開小助理頁面');
-              this.isInTargetPage = false;
-              this.hasClicked = false;
-              
-              // 觸發頁面狀態變化回調
-              if (this.onPageStateChange) {
-                this.onPageStateChange(false);
-              }
+            // 觸發頁面狀態變化回調
+            if (this.onPageStateChange) {
+              this.onPageStateChange(true);
+            }
+          } else if (!isInTarget && this.isInTargetPage) {
+            console.log('離開目標頁面');
+            this.isInTargetPage = false;
+            this.hasClicked = false;
+            
+            // 觸發頁面狀態變化回調
+            if (this.onPageStateChange) {
+              this.onPageStateChange(false);
             }
           }
         }
