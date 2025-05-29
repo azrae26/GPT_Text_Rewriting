@@ -162,13 +162,16 @@ window.GenerationConfig = {
         }
 
         const settings = await window.GlobalSettings.loadSettings();
-        if (!settings.apiKeys['gemini-2.0-flash-exp'] && !settings.apiKeys['openai']) {
-          alert('請先設置 API 金鑰');
-          return;
+        
+        // 檢查是否有任何可用的 API 金鑰
+        const hasAnyApiKey = Object.values(settings.apiKeys || {}).some(key => key && key.trim());
+        if (!hasAnyApiKey) {
+          throw new Error('請先設置 API 金鑰');
         }
-        if (!settings.generateInstruction.trim()) {
-          alert('請設置生成要求');
-          return;
+
+        const textArea = document.querySelector('textarea[name="content"]');
+        if (!textArea || !textArea.value.trim()) {
+          throw new Error('請先輸入要生成的內容');
         }
 
         await this.startGeneration(button);
@@ -196,13 +199,16 @@ window.GenerationConfig = {
         }
   
         const settings = await window.GlobalSettings.loadSettings();
-        if (!settings.apiKeys['gemini-2.0-flash-exp'] && !settings.apiKeys['openai']) {
-          alert('請先設置 API 金鑰');
-          return;
+        
+        // 檢查是否有任何可用的 API 金鑰
+        const hasAnyApiKey = Object.values(settings.apiKeys || {}).some(key => key && key.trim());
+        if (!hasAnyApiKey) {
+          throw new Error('請先設置 API 金鑰');
         }
-        if (!settings.generateInstruction.trim()) {
-          alert('請設置生成要求');
-          return;
+
+        const textArea = document.querySelector('textarea[name="content"]');
+        if (!textArea || !textArea.value.trim()) {
+          throw new Error('請先輸入要生成的內容');
         }
   
         await this.startGeneration(button);
@@ -357,12 +363,27 @@ window.GenerationConfig = {
       button.classList.add('canceling');
   
       const settings = await window.GlobalSettings.loadSettings();
-      const model = settings.generateModel || settings.model;
-      const apiKey = settings.apiKeys[model.startsWith('gemini') ? 'gemini-2.0-flash-exp' : 'openai'];
-  
+      const model = settings.generateModel;
+      
+      // 如果沒有選擇模型，使用預設模型
+      const finalModel = model || window.GlobalSettings.getDefaultModel();
+      if (!finalModel) {
+        throw new Error('沒有可用的生成模型，請先添加自定義模型');
+      }
+      
+      const isGemini = finalModel.startsWith('gemini');
+      
+      // 使用動態 API 金鑰獲取
+      const apiType = window.GlobalSettings.getModelApiType(finalModel);
+      const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(finalModel);
+      const apiKey = settings.apiKeys[apiKeyName];
+
+      // 獲取生成上下文
+      const context = await this.getGenerationContext();
+
       console.log(`總共分割成 ${this.totalBatches} 個批次，間隔時間：${this.batchInterval/1000}秒`);
       await window.Notification.showNotification(`
-        模型: ${window.GlobalSettings.API.models[model] || model}<br>
+        模型: ${window.GlobalSettings.getModelDisplayName(finalModel)}<br>
         API KEY: ${apiKey.substring(0, 5)}...<br>
         生成中<br>
         批次進度: 0/${this.totalBatches}<br>
@@ -452,6 +473,30 @@ window.GenerationConfig = {
 
         console.log(`選擇的模型: ${model}`);
 
+        // 如果沒有選擇模型，使用預設模型
+        const finalModel = model || window.GlobalSettings.getDefaultModel();
+        if (!finalModel) {
+          console.warn(`沒有可用的${stage}模型，跳過${stage}階段`);
+          // 如果是反思階段，返回 null 表示不需要進行後續優化
+          // 如果是優化階段，返回上一階段的結果
+          if (isReflectStage) {
+            return { shouldStop: true, result: null };
+          } else {
+            let result;
+            // 根據步驟返回對應的上一階段結果
+            if (step === 1) {
+              result = this.generationResults.initial.get(blockIndex)?.generated;
+            } else if (step === 2) {
+              result = this.generationResults.optimize.get(blockIndex);
+            } else {
+              result = this.generationResults.optimize2.get(blockIndex);
+            }
+            return { shouldStop: true, result };
+          }
+        }
+
+        console.log(`最終選擇的模型: ${finalModel}`);
+
         // 獲取對應的指令
         const instruction = isReflectStage ? 
           (step === 1 ? settings.reflect1Instruction : 
@@ -491,8 +536,12 @@ window.GenerationConfig = {
 
         console.log(`開始準備 API 請求配置`);
 
-        const isGemini = model.startsWith('gemini');
-        const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
+        const isGemini = finalModel.startsWith('gemini');
+        
+        // 使用動態 API 金鑰獲取
+        const apiType = window.GlobalSettings.getModelApiType(finalModel);
+        const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(finalModel);
+        const apiKey = settings.apiKeys[apiKeyName];
 
         // 顯示階段通知
         const stage_id = isReflectStage ? 
@@ -504,7 +553,7 @@ window.GenerationConfig = {
            GenerationConfig.STAGES.OPTIMIZE_3);
         
         await window.Notification.showNotification(`
-          模型: ${window.GlobalSettings.API.models[model] || model}<br>
+          模型: ${window.GlobalSettings.getModelDisplayName(finalModel)}<br>
           API KEY: ${apiKey.substring(0, 5)}...<br>
           ${stage_id}<br>
           批次進度: ${blockIndex + 1}/${this.totalBatches}
@@ -613,7 +662,7 @@ window.GenerationConfig = {
         const context = await this.getGenerationContext();
 
         const { endpoint, body } = TextProcessor._prepareApiConfig(
-          model,
+          finalModel,
           replaceParams,
           isReflectStage ? 
             (step === 1 ? settings.reflect1Instruction : 
@@ -708,7 +757,10 @@ window.GenerationConfig = {
         const settings = await window.GlobalSettings.loadSettings();
         const model = settings.generateModel || settings.model;
         const isGemini = model.startsWith('gemini');
-        const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
+        
+        // 使用動態 API 金鑰獲取
+        const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(model);
+        const apiKey = settings.apiKeys[apiKeyName];
         
         // 獲取生成上下文
         const context = await this.getGenerationContext();
@@ -751,7 +803,7 @@ window.GenerationConfig = {
           } else {
             // 如果還有未完成的批次，更新進度通知
             await window.Notification.showNotification(`
-              模型: ${window.GlobalSettings.API.models[model] || model}<br>
+              模型: ${window.GlobalSettings.getModelDisplayName(model)}<br>
               API KEY: ${apiKey.substring(0, 5)}...<br>
               ${GenerationConfig.STAGES.INITIAL}<br>
               批次進度: ${this.completedGenerations.size}/${this.totalBatches}<br>
@@ -866,6 +918,19 @@ window.GenerationConfig = {
       const timeoutDuration = TIMEOUT[isGemini ? 'GEMINI' : 'OPENAI'][requestType.toUpperCase()];
       let retryTimeoutId = null;
   
+      // 如果 apiKey 為空，嘗試從設定中獲取
+      if (!apiKey) {
+        const settings = await window.GlobalSettings.loadSettings();
+        const model = body.model; // 從 body 中獲取模型名稱，不使用預設值
+        
+        if (model) {
+          // 使用動態 API 金鑰獲取
+          const apiType = window.GlobalSettings.getModelApiType(model);
+          const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(model);
+          apiKey = settings.apiKeys[apiKeyName];
+        }
+      }
+
       while (retryCount < MAX_RETRIES) {
         try {
           const startTime = Date.now();  // 記錄開始時間
@@ -949,8 +1014,11 @@ window.GenerationConfig = {
       try {
         const model = settings.generateModel || settings.model;
         const isGemini = model.startsWith('gemini');
-        const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
-  
+        
+        // 使用動態 API 金鑰獲取
+        const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(model);
+        const apiKey = settings.apiKeys[apiKeyName];
+
         // 獲取完整的上下文文本
         const fullText = this.generationQueue.join('\n');
         const currentIndex = this.generationQueue.indexOf(text);
@@ -960,10 +1028,10 @@ window.GenerationConfig = {
           this.generationQueue.slice(0, currentIndex).join('\n') +
           `<IMPROVE_THIS>${text}</IMPROVE_THIS>\n` +
           this.generationQueue.slice(currentIndex + 1).join('\n');
-  
+
         // 獲取中英對照表上下文
         const context = await this.getGenerationContext();
-  
+
         // 準備 API 請求配置
         const { endpoint, body } = TextProcessor._prepareApiConfig(
           model,
@@ -971,7 +1039,7 @@ window.GenerationConfig = {
           settings.generateInstruction,
           context  // 加入中英對照表
         );
-  
+
         return await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'generate');
       } catch (error) {
         console.error('生成處理失敗:', error);

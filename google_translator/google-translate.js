@@ -140,7 +140,7 @@ window.GoogleTranslateManager = {
       // 檢查是否有 Google 翻譯金鑰配置
       const googleCredentials = await this.loadGoogleCredentials();
       if (!googleCredentials) {
-        alert('找不到 Google 翻譯 API 金鑰配置');
+        alert('找不到 Google 翻譯 API 金鑰配置\n\n請在擴充功能彈出視窗中：\n1. 選擇「Google 翻譯」\n2. 貼上您的 Google Cloud 服務帳戶 JSON 憑證');
         return;
       }
 
@@ -157,10 +157,33 @@ window.GoogleTranslateManager = {
    */
   async loadGoogleCredentials() {
     try {
-      // 從金鑰文件讀取認證資訊
-      const response = await fetch(chrome.runtime.getURL('google_translator/gen-lang-client-0507957210-3b8a690087e2.json'));
-      const credentials = await response.json();
-      return credentials;
+      // 先嘗試從 popup 設定的 API 金鑰讀取
+      const settings = await chrome.storage.sync.get(['apiKeys']);
+      const googleCredentials = settings.apiKeys?.['google-translate'];
+      
+      if (googleCredentials && googleCredentials.trim()) {
+        try {
+          // 解析 JSON 憑證
+          const credentials = JSON.parse(googleCredentials);
+          console.log('從 popup 設定載入 Google 憑證成功');
+          return credentials;
+        } catch (parseError) {
+          console.error('解析 Google 憑證 JSON 失敗:', parseError);
+          alert('Google 憑證格式錯誤，請檢查 JSON 格式是否正確');
+          return null;
+        }
+      }
+      
+      // 如果 popup 沒有設定，則嘗試從預設檔案讀取（向後兼容）
+      try {
+        const response = await fetch(chrome.runtime.getURL('google_translator/gen-lang-client-0507957210-3b8a690087e2.json'));
+        const credentials = await response.json();
+        console.log('從預設檔案載入 Google 憑證成功');
+        return credentials;
+      } catch (fileError) {
+        console.log('預設憑證檔案不存在或無法讀取');
+        return null;
+      }
     } catch (error) {
       console.error('載入 Google 認證資訊失敗:', error);
       return null;

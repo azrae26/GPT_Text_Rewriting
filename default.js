@@ -1,19 +1,20 @@
 const DefaultSettings = {
   // 模型相關預設值
-  model: 'gemini-2.0-flash-exp',
-  fullRewriteModel: 'gemini-2.0-flash-exp',
-  shortRewriteModel: 'gemini-2.0-flash-exp',
-  autoRewriteModel: 'gemini-2.0-flash-exp',
-  translateModel: 'gemini-2.0-flash-exp',      // 初始翻譯模型
-  reflectModel: 'gemini-2.0-flash-exp',        // 反思模型
-  optimizeModel: 'gemini-2.0-flash-exp',       // 優化模型
-  generateModel: 'gemini-2.0-flash-exp',       // 初始生成模型
-  reflect1Model: 'gemini-2.0-flash-exp',       // 反思一模型
-  generationOptimize_1_Model: 'gemini-2.0-flash-exp',  // 生成優化一模型
-  reflect2Model: 'gemini-2.0-flash-exp',       // 反思二模型
-  generationOptimize_2_Model: 'gemini-2.0-flash-exp',  // 生成優化二模型
-  reflect3Model: 'gemini-2.0-flash-exp',       // 反思三模型
-  generationOptimize_3_Model: 'gemini-2.0-flash-exp',  // 生成優化三模型
+  model: '',                      // 空字串，等待使用者設定
+  fullRewriteModel: '',          // 空字串，等待使用者設定
+  shortRewriteModel: '',         // 空字串，等待使用者設定
+  autoRewriteModel: '',          // 空字串，等待使用者設定
+  translateModel: '',            // 空字串，等待使用者設定
+  reflectModel: '',              // 空字串，等待使用者設定
+  optimizeModel: '',             // 空字串，等待使用者設定
+  generateModel: '',             // 空字串，等待使用者設定
+  reflect1Model: '',             // 空字串，等待使用者設定
+  generationOptimize_1_Model: '', // 空字串，等待使用者設定
+  reflect2Model: '',             // 空字串，等待使用者設定
+  generationOptimize_2_Model: '', // 空字串，等待使用者設定
+  reflect3Model: '',             // 空字串，等待使用者設定
+  generationOptimize_3_Model: '', // 空字串，等待使用者設定
+  summaryModel: '',              // 空字串，等待使用者設定
 
   // 勾選框預設狀態
   confirmModel: false,      // 確認模型：預設不勾選
@@ -197,8 +198,6 @@ Auras=雙鴻
   summaryInstruction: 
 `請將我給你的文章，從文章中取出5句話，每句都代表全篇的關鍵，每句都不超過15個字。
 請使用原句，盡量不要修改，前後不用加標點符號。`,
-
-  summaryModel: 'gemini-2.0-flash-exp',
 
   // 生成功能預設設定
   generateInstruction: '',      // 初始生成指令

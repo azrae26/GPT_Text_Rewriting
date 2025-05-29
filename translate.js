@@ -116,13 +116,16 @@ window.TranslateManager = {
       }
 
       const settings = await window.GlobalSettings.loadSettings();
-      if (!settings.apiKeys['gemini-2.0-flash-exp'] && !settings.apiKeys['openai']) {
-        alert('請先設置 API 金鑰');
-        return;
+      
+      // 檢查是否有任何可用的 API 金鑰
+      const hasAnyApiKey = Object.values(settings.apiKeys || {}).some(key => key && key.trim());
+      if (!hasAnyApiKey) {
+        throw new Error('請先設置 API 金鑰');
       }
-      if (!settings.translateInstruction.trim()) {
-        alert('請設置翻譯要求');
-        return;
+
+      const textArea = document.querySelector('textarea[name="content"]');
+      if (!textArea || !textArea.value.trim()) {
+        throw new Error('請先輸入要翻譯的內容');
       }
 
       await this.startTranslation(button);
@@ -396,12 +399,27 @@ window.TranslateManager = {
     button.classList.add('canceling');
 
     const settings = await window.GlobalSettings.loadSettings();
-    const model = settings.translateModel || settings.model;
-    const apiKey = settings.apiKeys[model.startsWith('gemini') ? 'gemini-2.0-flash-exp' : 'openai'];
+    const model = settings.translateModel;
+    
+    // 如果沒有選擇模型，使用預設模型
+    const finalModel = model || window.GlobalSettings.getDefaultModel();
+    if (!finalModel) {
+      throw new Error('沒有可用的翻譯模型，請先添加自定義模型');
+    }
+    
+    const isGemini = finalModel.startsWith('gemini');
+    
+    // 使用動態 API 金鑰獲取
+    const apiType = window.GlobalSettings.getModelApiType(finalModel);
+    const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(finalModel);
+    const apiKey = settings.apiKeys[apiKeyName];
+    if (!apiKey) {
+      throw new Error(`請先設置 ${apiType.toUpperCase()} API 金鑰`);
+    }
 
     console.log(`總共分割成 ${this.totalBatches} 個批次，間隔時間：${this.batchInterval/1000}秒`);
     await window.Notification.showNotification(`
-      模型: ${window.GlobalSettings.API.models[model] || model}<br>
+      模型: ${window.GlobalSettings.getModelDisplayName(finalModel)}<br>
       API KEY: ${apiKey.substring(0, 5)}...<br>
       翻譯中<br>
       批次進度: 0/${this.totalBatches}<br>
@@ -471,77 +489,48 @@ window.TranslateManager = {
   async processReflection(translatedText, sourceText, blockIndex) {
     try {
       const settings = await window.GlobalSettings.loadSettings();
-      const model = settings.reflectModel || settings.model;
-      const isGemini = model.startsWith('gemini');
-      const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
+      const model = settings.reflectModel;
+      
+      // 如果沒有選擇模型，使用預設模型
+      const finalModel = model || window.GlobalSettings.getDefaultModel();
+      if (!finalModel) {
+        console.warn('沒有可用的反思模型，跳過反思階段');
+        return null;
+      }
+      
+      const isGemini = finalModel.startsWith('gemini');
+      
+      // 使用動態 API 金鑰獲取
+      const apiType = window.GlobalSettings.getModelApiType(finalModel);
+      const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(finalModel);
+      const apiKey = settings.apiKeys[apiKeyName];
 
       // 顯示反思階段的通知
-      await window.Notification.showNotification(`
-        模型: ${window.GlobalSettings.API.models[model] || model}<br>
-        API KEY: ${apiKey.substring(0, 5)}...<br>
-        ${TranslateConfig.STAGES.REFLECT}<br>
-        批次進度: ${blockIndex + 1}/${this.totalBatches}
-      `, true);
+      const reflectionNotification = await window.Notification.showNotification(`正在進行翻譯反思 (段落 ${blockIndex + 1})`, true);
+      
+      const reflectionInstruction = settings.reflectInstruction || `請分析以下翻譯的品質，並指出可以改進的地方：
 
-      // 獲取前文6個區塊的原文和初始譯文
-      const prevBlocksStart = Math.max(0, blockIndex - 6);
-      const prevBlocks = this.translationQueue.slice(prevBlocksStart, blockIndex);
-      const prevTranslatedBlocks = Array.from({ length: blockIndex - prevBlocksStart }, (_, i) => {
-        const initialResult = this.translationResults.initial.get(prevBlocksStart + i);
-        return initialResult?.translated || '';
-      });
+原文：${sourceText}
 
-      // 獲取後文6個區塊的原文
-      const nextBlocksEnd = Math.min(this.translationQueue.length, blockIndex + 7);
-      const nextBlocks = this.translationQueue.slice(blockIndex + 1, nextBlocksEnd);
+譯文：${translatedText}
 
-      // 組織帶有 XML 標記的文本
-      const taggedText = [
-        // 前文原文和譯文
-        ...prevBlocks.map((text, i) => 
-          `<PREVIOUS_SOURCE>
-            ${text}
-          </PREVIOUS_SOURCE>
-          <PREVIOUS_TRANSLATION>
-            ${prevTranslatedBlocks[i]}
-          </PREVIOUS_TRANSLATION>`
-        ),
-        // 當前要翻譯的區塊
-        `<TRANSLATE_THIS>
-          ${sourceText}
-        </TRANSLATE_THIS>`,
-        // 後文原文
-        ...nextBlocks.map(text => 
-          `<NEXT_SOURCE>
-            ${text}
-          </NEXT_SOURCE>`
-        )
-      ].join('\n');
+請提供具體的改進建議。`;
 
-      // 準備替換用的參數
-      const replaceParams = {
-        tagged_text: taggedText,
-        chunk_to_translate: sourceText,
-        translation_1_chunk: translatedText
-      };
-
-      // 獲取中英對照表上下文
-      const context = await this.getTranslationContext();
-
-      const { endpoint, body } = TextProcessor._prepareApiConfig(
-        model,
-        replaceParams,  // 傳入替換參數而不是文本
-        settings.reflectInstruction,
-        context  // 加入中英對照表
+      // 修復：正確解構 _prepareApiConfig 的返回值
+      const { endpoint, body } = TextProcessor._prepareApiConfig(finalModel, {}, reflectionInstruction, []);
+      
+      const reflectionResult = await this.sendRequestWithRetry(
+        endpoint, 
+        body, 
+        apiKey, 
+        isGemini, 
+        reflectionNotification,
+        'reflect'
       );
-
-      const reflectionResult = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'reflect');
       
-      // 保存反思結果
-      this.translationResults.reflection.set(blockIndex, reflectionResult);
+      await window.Notification.removeNotification();
       
-      // 增加完成步驟計數
-      this.completedStepsCount++;
+      console.log(`段落 ${blockIndex + 1} 反思完成:`, reflectionResult?.substring(0, 100) + '...');
       
       return reflectionResult;
     } catch (error) {
@@ -556,13 +545,25 @@ window.TranslateManager = {
   async processOptimization(translatedText, sourceText, reflectionResult, blockIndex) {
     try {
       const settings = await window.GlobalSettings.loadSettings();
-      const model = settings.optimizeModel || settings.model;
-      const isGemini = model.startsWith('gemini');
-      const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
+      const model = settings.optimizeModel;
+      
+      // 如果沒有選擇模型，使用預設模型
+      const finalModel = model || window.GlobalSettings.getDefaultModel();
+      if (!finalModel) {
+        console.warn('沒有可用的優化模型，跳過優化階段');
+        return translatedText; // 返回原始翻譯文本
+      }
+      
+      const isGemini = finalModel.startsWith('gemini');
+      
+      // 使用動態 API 金鑰獲取
+      const apiType = window.GlobalSettings.getModelApiType(finalModel);
+      const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(finalModel);
+      const apiKey = settings.apiKeys[apiKeyName];
 
       // 顯示優化階段的通知
       await window.Notification.showNotification(`
-        模型: ${window.GlobalSettings.API.models[model] || model}<br>
+        模型: ${window.GlobalSettings.getModelDisplayName(finalModel)}<br>
         API KEY: ${apiKey.substring(0, 5)}...<br>
         ${TranslateConfig.STAGES.OPTIMIZE}<br>
         批次進度: ${blockIndex + 1}/${this.totalBatches}
@@ -615,7 +616,7 @@ window.TranslateManager = {
       const context = await this.getTranslationContext();
 
       const { endpoint, body } = TextProcessor._prepareApiConfig(
-        model,
+        finalModel,
         replaceParams,  // 傳入替換參數而不是文本
         settings.optimizeInstruction,
         context  // 加入中英對照表
@@ -655,15 +656,26 @@ window.TranslateManager = {
 
     try {
       const settings = await window.GlobalSettings.loadSettings();
-      const model = settings.translateModel || settings.model;
-      const isGemini = model.startsWith('gemini');
-      const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
+      const model = settings.translateModel;
+      
+      // 如果沒有選擇模型，使用預設模型
+      const finalModel = model || window.GlobalSettings.getDefaultModel();
+      if (!finalModel) {
+        throw new Error('沒有可用的翻譯模型，請先添加自定義模型');
+      }
+      
+      const isGemini = finalModel.startsWith('gemini');
+      
+      // 使用動態 API 金鑰獲取
+      const apiType = window.GlobalSettings.getModelApiType(finalModel);
+      const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(finalModel);
+      const apiKey = settings.apiKeys[apiKeyName];
 
       // 獲取翻譯上下文
       const context = await this.getTranslationContext();
 
       const { endpoint, body } = TextProcessor._prepareApiConfig(
-        model,
+        finalModel,
         originalText,
         settings.translateInstruction,
         context  // 添加上下文
@@ -700,7 +712,7 @@ window.TranslateManager = {
         } else {
           // 如果還有未完成的批次，更新進度通知
           await window.Notification.showNotification(`
-            模型: ${window.GlobalSettings.API.models[model] || model}<br>
+            模型: ${window.GlobalSettings.getModelDisplayName(finalModel)}<br>
             API KEY: ${apiKey.substring(0, 5)}...<br>
             ${TranslateConfig.STAGES.INITIAL}<br>
             批次進度: ${this.completedTranslations.size}/${this.totalBatches}<br>
@@ -810,11 +822,24 @@ window.TranslateManager = {
    * 處理 API 請求並支援重試機制
    */
   async sendRequestWithRetry(endpoint, body, apiKey, isGemini, showProgress, requestType = 'translate') {
-    let retryCount = 0;
-    const { MAX_RETRIES, DELAY, TIMEOUT } = TranslateConfig.API.RETRY;
-    const timeoutDuration = TIMEOUT[requestType.toUpperCase()];
+    const maxRetries = 3;
+    let attempt = 0;
+    let lastError;
 
-    while (retryCount < MAX_RETRIES) {
+    // 如果 apiKey 為空，嘗試從設定中獲取
+    if (!apiKey) {
+      const settings = await window.GlobalSettings.loadSettings();
+      const model = body.model; // 從 body 中獲取模型名稱，不使用預設值
+      
+      if (model) {
+        // 使用動態 API 金鑰獲取
+        const apiType = window.GlobalSettings.getModelApiType(model);
+        const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(model);
+        apiKey = settings.apiKeys[apiKeyName];
+      }
+    }
+
+    while (attempt < maxRetries) {
       try {
         const startTime = Date.now();  // 記錄開始時間
 
@@ -822,7 +847,7 @@ window.TranslateManager = {
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(() => {
             reject(new Error('請求超時'));
-          }, timeoutDuration);
+          }, TranslateConfig.API.RETRY.TIMEOUT[requestType.toUpperCase()]);
         });
 
         // 建立實際的請求 Promise
@@ -835,8 +860,9 @@ window.TranslateManager = {
         ]);
 
         // 如果請求成功但已經超時，則忽略這個回應
-        if (Date.now() - startTime > timeoutDuration) {
+        if (Date.now() - startTime > TranslateConfig.API.RETRY.TIMEOUT[requestType.toUpperCase()]) {
           console.log(`收到回應但已超時 (${requestType})，忽略此回應`);
+          attempt++;
           continue;
         }
 
@@ -849,11 +875,11 @@ window.TranslateManager = {
         }
 
         // 其他錯誤進行重試
-        if (retryCount < MAX_RETRIES - 1) {
-          retryCount++;
+        if (attempt < maxRetries - 1) {
+          attempt++;
           const errorMessage = error.status ? `狀態碼 ${error.status}` : error.message;
-          console.log(`收到錯誤 (${errorMessage})，等待 ${DELAY/1000} 秒後進行第 ${retryCount} 次重試...`);
-          await new Promise(resolve => setTimeout(resolve, DELAY));
+          console.log(`收到錯誤 (${errorMessage})，等待 ${TranslateConfig.API.RETRY.DELAY/1000} 秒後進行第 ${attempt} 次重試...`);
+          await new Promise(resolve => setTimeout(resolve, TranslateConfig.API.RETRY.DELAY));
           continue;
         }
         throw error;
@@ -868,7 +894,10 @@ window.TranslateManager = {
     try {
       const model = settings.translateModel || settings.model;
       const isGemini = model.startsWith('gemini');
-      const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
+      
+      // 使用動態 API 金鑰獲取
+      const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(model);
+      const apiKey = settings.apiKeys[apiKeyName];
 
       // 獲取完整的上下文文本
       const fullText = this.translationQueue.join('\n');

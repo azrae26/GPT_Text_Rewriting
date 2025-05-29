@@ -195,16 +195,26 @@ window.AutoComplete = {
 
       // 載入設置
       const settings = await window.GlobalSettings.loadSettings();
-      const model = settings.autoRewriteModel || 'gemini-2.0-flash-exp';
+      
+      const model = settings.autoRewriteModel;
+      if (!model) {
+        console.warn('未設置自動改寫模型');
+        return;
+      }
+      
       const isGemini = model.startsWith('gemini');
-      const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
+      
+      // 使用動態 API 金鑰獲取
+      const apiType = window.GlobalSettings.getModelApiType(model);
+      const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(model);
+      const apiKey = settings.apiKeys[apiKeyName];
+      
+      if (!apiKey) {
+        console.warn(`未設置 ${apiType.toUpperCase()} API 金鑰`);
+        return;
+      }
 
       console.log('[AutoComplete] 使用模型:', model);
-
-      if (!apiKey) {
-        console.log('[AutoComplete] 錯誤：未設置 API 金鑰');
-        throw new Error('未設置 API 金鑰');
-      }
 
       // 準備上下文信息
       const context = [
@@ -258,7 +268,7 @@ ASIC PCB的一站式商店和更多產能以滿足強勁的AI需求
 
 2024年第三季毛利率受產品組合轉佳影響，略優於市場預期2.7%：2024年第三季營收QoQ +9.2%，YoY +26.8%，符合市場預期，成長主要由伺服器、網通產品帶動；毛利率32.3%，略優於市場預期31.4%，較2024年第二季31.63%改善主因為產品組合改善。在十一長假影響下，預計2024年第四季營收QoQ -4.6%，YoY +16.8%。
  
-AI需求旺，將加快2025年800G交換器滲透率拉升速度：在AI伺服器需求熱絡下，交換器迭代速度加快。根據Dell’Oro研調資料，2024年資料中心800G交換器滲透率由低個位數，提升至2025年10-15%以上。金像電800G交換器自2024年第三季小量產，隨美系客戶訂單陸續加入生產，高階板材需求熱絡，為2025年成長動能之一。
+AI需求旺，將加快2025年800G交換器滲透率拉升速度：在AI伺服器需求熱絡下，交換器迭代速度加快。根據Dell'Oro研調資料，2024年資料中心800G交換器滲透率由低個位數，提升至2025年10-15%以上。金像電800G交換器自2024年第三季小量產，隨美系客戶訂單陸續加入生產，高階板材需求熱絡，為2025年成長動能之一。
  
 2025年AI ASIC需求佳，且伺服器板材規格持續升級：除了一般伺服器平台轉換帶來的規格升級趨勢外，AI伺服器板層數也將由2024年20層以上，2025年往30層以上靠近，規格提升下亦增加生產難度，市場對高階多層板、HDI產能需求迫切。展望2025年，儘管美系GPU大廠產品仍在認證中，但隨AI ASIC晶片tape out，我們預估金像電持續受惠於2025年AI ASIC供應拉貨影響，伺服器需求保持樂觀。
  

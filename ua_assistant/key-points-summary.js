@@ -583,12 +583,22 @@ const KeyPointsSummaryManager = {
       try {
         console.log('載入設置...');
         const settings = await window.GlobalSettings.loadSettings();
-        const model = settings.summaryModel || 'gemini-2.0-flash-exp';
+        
+        const model = settings.summaryModel;
+        if (!model) {
+          console.warn('未設置摘要模型');
+          throw new Error('請先設置摘要模型');
+        }
+        
         const isGemini = model.startsWith('gemini');
-        const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
+        
+        // 使用動態 API 金鑰獲取
+        const apiType = window.GlobalSettings.getModelApiType(model);
+        const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(model);
+        const apiKey = settings.apiKeys[apiKeyName];
         
         if (!apiKey) {
-          throw new Error(`未找到 ${isGemini ? 'Gemini' : 'OpenAI'} 的 API 金鑰`);
+          throw new Error(`請先設置 ${apiType.toUpperCase()} API 金鑰`);
         }
 
         console.log('準備 API 請求，使用模型:', model);

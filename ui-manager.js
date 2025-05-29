@@ -36,9 +36,10 @@ const UIManager = {
         }
 
         const settings = await window.GlobalSettings.loadSettings();
-        if (!settings.apiKeys['gemini-2.0-flash-exp'] && !settings.apiKeys['openai']) {
-          alert('請先設置 API 金');
-          return;
+        // 檢查是否有任何可用的 API 金鑰
+        const hasAnyApiKey = Object.values(settings.apiKeys || {}).some(key => key && key.trim());
+        if (!hasAnyApiKey) {
+          throw new Error('請先設置 API 金鑰');
         }
         if (!settings.instruction.trim()) {
           alert('請設置改寫要求');
@@ -286,7 +287,9 @@ const UIManager = {
 
     try {
       const settings = await window.GlobalSettings.loadSettings();
-      if (!settings?.apiKeys?.['gemini-2.0-flash-exp'] && !settings?.apiKeys?.['openai']) {
+      // 檢查是否有任何可用的 API 金鑰
+      const hasAnyApiKey = Object.values(settings.apiKeys || {}).some(key => key && key.trim());
+      if (!hasAnyApiKey) {
         throw new Error('請先設置 API 金鑰');
       }
 

@@ -27,7 +27,26 @@ const Notification = {
     const apiKeyMatch = message.match(/API KEY: (.*?)<br>/);
     const batchMatch = message.match(/批次進度: (\d+)\/(\d+)/);
     
-    const modelName = modelMatch ? modelMatch[1] : (isLoading ? '未知模型' : this.lastModelName);
+    // 修改：使用新的方法來獲取模型顯示名稱
+    let modelName = '未知模型';
+    if (modelMatch) {
+      const modelKey = modelMatch[1];
+      console.log('通知解析到的模型鍵值:', modelKey);
+      // 使用 GlobalSettings 的新方法獲取正確的顯示名稱
+      if (window.GlobalSettings && window.GlobalSettings.getModelDisplayName) {
+        modelName = window.GlobalSettings.getModelDisplayName(modelKey);
+        console.log('獲取到的模型顯示名稱:', modelName);
+      } else {
+        console.error('GlobalSettings 或 getModelDisplayName 方法不存在');
+        modelName = modelKey; // 至少顯示原始的模型鍵值
+      }
+    } else if (isLoading) {
+      console.log('沒有匹配到模型訊息，使用預設值');
+      modelName = '未知模型';
+    } else {
+      modelName = this.lastModelName;
+    }
+    
     const apiKeyPrefix = apiKeyMatch ? apiKeyMatch[1] : (isLoading ? '未知' : this.lastApiKeyPrefix);
     const currentBatch = batchMatch ? batchMatch[1] : null;
     const totalBatches = batchMatch ? batchMatch[2] : null;

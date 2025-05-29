@@ -353,9 +353,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "syncApiKeys") {
     if (request.source === 'gpt4') {
-      window.GlobalSettings.apiKeys['gpt-4o'] = request.apiKey;
+      // 將 gpt-4o 改為使用 openai 金鑰
+      window.GlobalSettings.apiKeys['openai'] = request.apiKey;
     } else if (request.source === 'gpt4oMini') {
-      window.GlobalSettings.apiKeys['gpt-4o'] = request.apiKey;
+      // 將 gpt-4o 改為使用 openai 金鑰
+      window.GlobalSettings.apiKeys['openai'] = request.apiKey;
     }
     // 保存更新後的 API 金鑰
     window.GlobalSettings.getChromeStorage().then(storage => {

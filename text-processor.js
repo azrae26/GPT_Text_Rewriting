@@ -327,28 +327,63 @@ const TextProcessor = {
       const instruction = useShortInstruction ? settings.shortInstruction : settings.instruction;
       if (!instruction.trim()) throw new Error(useShortInstruction ? '短文本改寫指令不能為空' : '改寫指令不能為空');
 
+      // 添加詳細的模型選擇調試日誌
+      console.log('模型選擇調試:');
+      console.log('- isAutoRewrite:', isAutoRewrite);
+      console.log('- isPartialRewrite:', isPartialRewrite);
+      console.log('- useShortInstruction:', useShortInstruction);
+      console.log('- settings.autoRewriteModel:', settings.autoRewriteModel);
+      console.log('- settings.shortRewriteModel:', settings.shortRewriteModel);
+      console.log('- settings.fullRewriteModel:', settings.fullRewriteModel);
+      console.log('- settings.model:', settings.model);
+
       const model = isAutoRewrite ? settings.autoRewriteModel :
                    isPartialRewrite && useShortInstruction ? settings.shortRewriteModel :
                    settings.fullRewriteModel || settings.model;
+      
+      console.log('- 選擇的原始模型:', model);
+
+      // 如果沒有選擇模型，使用預設模型
+      const finalModel = model || window.GlobalSettings.getDefaultModel();
+      console.log('- 最終模型:', finalModel);
+      
+      if (!finalModel) {
+        throw new Error('沒有可用的模型，請先添加自定義模型');
+      }
 
       // 檢查API金鑰
-      const isGemini = model.startsWith('gemini');
-      const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
-      if (!apiKey) throw new Error(`未找到 ${isGemini ? 'Gemini' : 'OpenAI'} 的 API 金鑰`);
+      const isGemini = finalModel.startsWith('gemini');
+      const apiType = window.GlobalSettings.getModelApiType(finalModel);
+      console.log('API 類型:', apiType);
+      
+      // 統一使用 getApiKeyNameForModel 方法獲取金鑰名稱
+      const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(finalModel);
+      console.log('API 金鑰名稱:', apiKeyName);
+      
+      if (!apiKeyName) {
+        throw new Error(`無法為模型 ${finalModel} 找到對應的 API 金鑰類型`);
+      }
+      
+      const apiKey = settings.apiKeys[apiKeyName];
+      console.log('找到的 API 金鑰:', apiKey ? `${apiKey.substring(0, 5)}...` : 'undefined');
+      
+      if (!apiKey || !apiKey.trim()) {
+        throw new Error(`未找到 ${apiType === 'gemini' ? 'Gemini' : apiType === 'openai' ? 'OpenAI' : apiType} 的 API 金鑰，請先設置對應的 API 金鑰`);
+      }
 
-      console.log('選擇的模型:', model);
+      console.log('選擇的模型:', finalModel);
       console.log('使用的 API 金鑰:', apiKey.substring(0, 5) + '...');
 
       // 顯示通知
       await window.Notification.showNotification(`
-        模型: ${window.GlobalSettings.API.models[model] || model}<br>
+        模型: ${window.GlobalSettings.getModelDisplayName(finalModel)}<br>
         API KEY: ${apiKey.substring(0, 5)}...<br>
         ${isPartialRewrite ? (useShortInstruction ? '正在改寫選中的短文本' : '正在改寫選中文本') : '正在改寫全文'}
       `, true);
 
       // 準備API請求
       const { endpoint, body } = this._prepareApiConfig(
-        model, 
+        finalModel, 
         originalTextToRewrite, 
         instruction,
         context
@@ -402,23 +437,42 @@ const TextProcessor = {
       
       // 檢查 API 金鑰
       const model = settings.summaryModel;
-      const isGemini = model.startsWith('gemini');
-      const apiKey = settings.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
       
-      if (!apiKey) {
-        throw new Error(`未找到 ${isGemini ? 'Gemini' : 'OpenAI'} 的 API 金鑰`);
+      // 如果沒有選擇模型，使用預設模型
+      const finalModel = model || window.GlobalSettings.getDefaultModel();
+      if (!finalModel) {
+        throw new Error('沒有可用的模型，請先添加自定義模型');
+      }
+      
+      const isGemini = finalModel.startsWith('gemini');
+      const apiType = window.GlobalSettings.getModelApiType(finalModel);
+      console.log('API 類型:', apiType);
+      
+      // 統一使用 getApiKeyNameForModel 方法獲取金鑰名稱
+      const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(finalModel);
+      console.log('API 金鑰名稱:', apiKeyName);
+      
+      if (!apiKeyName) {
+        throw new Error(`無法為模型 ${finalModel} 找到對應的 API 金鑰類型`);
+      }
+      
+      const apiKey = settings.apiKeys[apiKeyName];
+      console.log('找到的 API 金鑰:', apiKey ? `${apiKey.substring(0, 5)}...` : 'undefined');
+      
+      if (!apiKey || !apiKey.trim()) {
+        throw new Error(`未找到 ${apiType === 'gemini' ? 'Gemini' : 'OpenAI'} 的 API 金鑰，請先設置對應的 API 金鑰`);
       }
 
       // 顯示通知
       await window.Notification.showNotification(`
-        模型: ${window.GlobalSettings.API.models[model] || model}<br>
+        模型: ${window.GlobalSettings.getModelDisplayName(finalModel)}<br>
         API KEY: ${apiKey.substring(0, 5)}...<br>
         正在生成關鍵要點總結
       `, true);
 
       // 準備 API 請求
       const { endpoint, body } = this._prepareApiConfig(
-        model,
+        finalModel,
         text,
         settings.summaryInstruction,
         context

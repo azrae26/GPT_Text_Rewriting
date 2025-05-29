@@ -66,11 +66,17 @@ document.addEventListener('DOMContentLoaded', async function() {
   const editGenerationSettingsBtn = document.getElementById('edit-generation-settings');
   const deleteGenerationSettingsBtn = document.getElementById('delete-generation-settings');
 
+  // 自定義模型管理相關元素
+  const customModelNameInput = document.getElementById('custom-model-name');
+  const customModelDisplayInput = document.getElementById('custom-model-display');
+  const customModelTypeSelect = document.getElementById('custom-model-type');
+  const addCustomModelBtn = document.getElementById('add-custom-model');
+  const customModelsContainer = document.getElementById('custom-models-container');
+
   // 2. 初始化設定
-  let apiKeys = {
-    'openai': '',
-    'gemini-2.0-flash-exp': ''
-  };
+  let apiKeys = {};
+
+  // Initialize CustomModelManager (將在 CustomModelManager 定義後進行初始化)
 
   // 載入使用者設定，如果沒有設定，則使用預設設定
   let settings = await GlobalSettings.loadSettings();
@@ -90,43 +96,43 @@ document.addEventListener('DOMContentLoaded', async function() {
     instructionInput.value = settings.instruction || '';
     shortInstructionInput.value = settings.shortInstruction || '';
     autoRewritePatternsInput.value = settings.autoRewritePatterns || '';
-    fullRewriteModelSelect.value = settings.fullRewriteModel || 'gemini-2.0-flash-exp';
-    shortRewriteModelSelect.value = settings.shortRewriteModel || 'gemini-2.0-flash-exp';
-    autoRewriteModelSelect.value = settings.autoRewriteModel || 'gemini-2.0-flash-exp';
+    fullRewriteModelSelect.value = settings.fullRewriteModel || '';
+    shortRewriteModelSelect.value = settings.shortRewriteModel || '';
+    autoRewriteModelSelect.value = settings.autoRewriteModel || '';
     
     // 翻譯相關
-    translateModelSelect.value = settings.translateModel || 'gemini-2.0-flash-exp';
+    translateModelSelect.value = settings.translateModel || '';
     translateInstructionInput.value = settings.translateInstruction || '';
     removeHashCheckbox.checked = settings.removeHash !== undefined ? settings.removeHash : true;
     removeStarCheckbox.checked = settings.removeStar !== undefined ? settings.removeStar : true;
     
     // 生成相關
-    generateModelSelect.value = settings.generateModel || 'gemini-2.0-flash-exp';
+    generateModelSelect.value = settings.generateModel || '';
     generateInstructionInput.value = settings.generateInstruction || '';
-    reflect1ModelSelect.value = settings.reflect1Model || 'gemini-2.0-flash-exp';
+    reflect1ModelSelect.value = settings.reflect1Model || '';
     reflect1InstructionInput.value = settings.reflect1Instruction || '';
-    generationOptimize_1_ModelSelect.value = settings.generationOptimize_1_Model || 'gemini-2.0-flash-exp';
+    generationOptimize_1_ModelSelect.value = settings.generationOptimize_1_Model || '';
     generationOptimize_1_InstructionInput.value = settings.generationOptimize_1_Instruction || '';
-    reflect2ModelSelect.value = settings.reflect2Model || 'gemini-2.0-flash-exp';
+    reflect2ModelSelect.value = settings.reflect2Model || '';
     reflect2InstructionInput.value = settings.reflect2Instruction || '';
-    generationOptimize_2_ModelSelect.value = settings.generationOptimize_2_Model || 'gemini-2.0-flash-exp';
+    generationOptimize_2_ModelSelect.value = settings.generationOptimize_2_Model || '';
     generationOptimize_2_InstructionInput.value = settings.generationOptimize_2_Instruction || '';
-    reflect3ModelSelect.value = settings.reflect3Model || 'gemini-2.0-flash-exp';
+    reflect3ModelSelect.value = settings.reflect3Model || '';
     reflect3InstructionInput.value = settings.reflect3Instruction || '';
-    generationOptimize_3_ModelSelect.value = settings.generationOptimize_3_Model || 'gemini-2.0-flash-exp';
+    generationOptimize_3_ModelSelect.value = settings.generationOptimize_3_Model || '';
     generationOptimize_3_InstructionInput.value = settings.generationOptimize_3_Instruction || '';
     backgroundKnowledgeInput.value = settings.backgroundKnowledge || '';
     
     // 反思相關
-    reflectModelSelect.value = settings.reflectModel || 'gemini-2.0-flash-exp';
+    reflectModelSelect.value = settings.reflectModel || '';
     reflectInstructionInput.value = settings.reflectInstruction || '';
     
     // 優化相關
-    optimizeModelSelect.value = settings.optimizeModel || 'gemini-2.0-flash-exp';
+    optimizeModelSelect.value = settings.optimizeModel || '';
     optimizeInstructionInput.value = settings.optimizeInstruction || '';
     
     // 關鍵要點相關
-    summaryModelSelect.value = settings.summaryModel || 'gemini-2.0-flash-exp';
+    summaryModelSelect.value = settings.summaryModel || '';
     summaryInstructionInput.value = settings.summaryInstruction || '';
 
     // 載入中英對照表
@@ -224,6 +230,13 @@ document.addEventListener('DOMContentLoaded', async function() {
   // API 金鑰輸入
   function updateApiKeyInput() {
     apiKeyInput.value = apiKeys[modelSelect.value] || '';
+    
+    // 根據選擇的服務更新 placeholder 文字
+    if (modelSelect.value === 'google-translate') {
+      apiKeyInput.placeholder = '貼上 Google Cloud 服務帳戶 JSON 憑證';
+    } else {
+      apiKeyInput.placeholder = '輸入您的 API 金鑰';
+    }
   }
 
   // 當 API 金鑰輸入變更時自動保存
@@ -675,9 +688,47 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // 監聽文字變更以更新預覽
   highlightWordsInput.addEventListener('input', function() {
-    updatePreview();
-    // 保存高亮文字
-    updateHighlightWords(this.value);
+    const newText = this.value;
+    const oldText = this._previousValue || ''; // 確保 oldText 是字串
+
+    const newLines = newText.split('\n');
+    const oldLines = oldText.split('\n');
+
+    const newEffectiveWordColors = {}; // 這將成為新的全域 wordColors
+
+    for (let i = 0; i < newLines.length; i++) {
+      const newLine = newLines[i];
+
+      if (i < oldLines.length) { // 如果在相同索引處存在對應的舊行
+        const oldLineAtIndex = oldLines[i];
+        if (newLine === oldLineAtIndex) { // 行文字內容相同
+          if (wordColors[oldLineAtIndex] !== undefined) { // 且舊行有顏色
+            newEffectiveWordColors[newLine] = wordColors[oldLineAtIndex]; // 保留顏色
+          }
+        } else { // 行文字內容已改變 (newLine !== oldLineAtIndex)
+          // 優先檢查新文字本身是否對應已設定的顏色
+          if (wordColors[newLine] !== undefined) {
+            newEffectiveWordColors[newLine] = wordColors[newLine];
+          }
+          // 其次，如果舊行有顏色且新行不是空的，則繼承顏色 (用於就地編輯)
+          else if (wordColors[oldLineAtIndex] !== undefined && newLine.trim() !== "") {
+            newEffectiveWordColors[newLine] = wordColors[oldLineAtIndex];
+          }
+        }
+      } else { // 這是新增加到文件末尾的行
+        if (wordColors[newLine] !== undefined) { // 如果新行文字對應已設定的顏色
+          newEffectiveWordColors[newLine] = wordColors[newLine];
+        }
+      }
+    }
+    // 此迴圈結束後，newEffectiveWordColors 包含 newText 中所有應有顏色的行的顏色。
+    // 被刪除且其文字不再出現的行將自然地從 newEffectiveWordColors 中移除。
+
+    wordColors = newEffectiveWordColors; // 更新全域 `wordColors`
+    this._previousValue = newText;     // 為下一個輸入事件更新 _previousValue
+
+    updatePreview();                   // 使用更新後的 wordColors 渲染預覽
+    updateHighlightWords(newText);     // 將 newText 和更新後的 wordColors 保存到儲存空間
   });
 
   // 修改 updateHighlightWords 函數
@@ -725,23 +776,36 @@ document.addEventListener('DOMContentLoaded', async function() {
     const text = textarea.value;
     const lines = text.split('\n');
 
+    // 獲取 textarea 的 computed style
+    const textareaStyle = getComputedStyle(textarea);
+    const font = textareaStyle.font;
+    const lineHeight = parseFloat(textareaStyle.lineHeight); // 轉換為數字
+    const paddingLeft = parseFloat(textareaStyle.paddingLeft); // 轉換為數字
+    const paddingTop = parseFloat(textareaStyle.paddingTop);   // 轉換為數字
+    // 使用 scrollWidth 考慮到內容可能比可視區域寬
+    // 但 clientWidth 是可視區域寬度，更適合用來模擬換行
+    const innerWidth = textarea.clientWidth - paddingLeft - parseFloat(textareaStyle.paddingRight);
+
     // 創建一個隱藏的 div 來計算位置
     const div = document.createElement('div');
     div.style.cssText = `
       position: absolute;
       visibility: hidden;
-      white-space: pre-wrap;
-      width: ${textarea.clientWidth}px;
-      font: ${getComputedStyle(textarea).font};
-      line-height: ${getComputedStyle(textarea).lineHeight};
-      padding: ${getComputedStyle(textarea).padding};
+      white-space: pre-wrap; /* 保持與 textarea 一致的換行 */
+      word-wrap: break-word; /* 保持與 textarea 一致的換行 */
+      width: ${innerWidth}px; /* 使用內部可用寬度 */
+      font: ${font};
+      line-height: ${lineHeight}px; /* 確保單位一致 */
+      padding: 0; /* 隱藏 div 本身不需要 padding，我們模擬的是 textarea 內部 */
+      border: none; /* 隱藏 div 本身不需要 border */
     `;
     textarea.parentElement.appendChild(div);
 
     // 使用完整文字來計算位置
     div.textContent = text;
     const range = document.createRange();
-    const textNode = div.firstChild;
+    // 獲取隱藏 div 相對於 viewport 的位置，作為基準
+    const divRectBase = div.getBoundingClientRect(); 
 
     lines.forEach((line, index) => {
       if (!line.trim()) return;
@@ -749,42 +813,44 @@ document.addEventListener('DOMContentLoaded', async function() {
       // 找到這一行的開始位置
       let lineStart = 0;
       for (let i = 0; i < index; i++) {
-        lineStart += lines[i].length + 1;
+        lineStart += lines[i].length + 1; // +1 for the newline character
       }
 
-      // 使用 Range API 計算位置
-      range.setStart(textNode, lineStart);
-      range.setEnd(textNode, lineStart + line.length);
-      
-      // 獲取所有的 ClientRect
-      const rects = range.getClientRects();
-      const divRect = div.getBoundingClientRect();
+      if (div.firstChild && div.firstChild.nodeType === Node.TEXT_NODE) {
+        const textNode = div.firstChild;
+        // 確保 range 的範圍不超過 textNode 的長度
+        const lineEnd = Math.min(lineStart + line.length, textNode.length);
+        if (lineStart >= lineEnd) return; // 如果起始點超出或等於結束點，跳過
 
-      // 為每一個 rect 創建一個預覽元素
-      for (let i = 0; i < rects.length; i++) {
-        const rect = rects[i];
+        range.setStart(textNode, lineStart);
+        range.setEnd(textNode, lineEnd);
         
-        // 創建預覽元素
-        const preview = document.createElement('div');
-        preview.className = 'highlight-preview';
-        preview.style.top = `${rect.top - divRect.top - 1}px`; // 上邊距
-        preview.style.left = `${rect.left - divRect.left}px`; //  是左邊距
-        preview.style.width = `${rect.width}px`;
-        preview.style.height = `${rect.height + 1}px`;
-        preview.style.backgroundColor = wordColors[line] || 'rgba(50, 205, 50, 0.3)';
-        
-        // 保存原始位置
-        preview.dataset.originalTop = rect.top - divRect.top;
-        
-        // 將預覽元素添加到 overlay 中
-        overlay.appendChild(preview);
+        const rects = range.getClientRects();
+
+        for (let i = 0; i < rects.length; i++) {
+          const rect = rects[i];
+          const preview = document.createElement('div');
+          preview.className = 'highlight-preview';
+          
+          // 計算相對於 textarea 內部的 top 和 left
+          // rect.top/left 是相對於 viewport 的
+          // divRectBase.top/left 也是相對於 viewport 的
+          // textareaStyle.paddingTop/Left 是 textarea 的內邊距
+          // 加上 textarea 的 padding 使其對齊 textarea 內部文字
+          preview.style.top = `${rect.top - divRectBase.top + paddingTop}px`;
+          preview.style.left = `${rect.left - divRectBase.left + paddingLeft}px`;
+          preview.style.width = `${rect.width}px`;
+          // 使用 lineHeight 或 rect.height，嘗試 lineHeight 使其更規整
+          preview.style.height = `${lineHeight > rect.height ? lineHeight : rect.height}px`; 
+          preview.style.backgroundColor = wordColors[line] || 'rgba(50, 205, 50, 0.3)';
+          preview.dataset.originalTop = rect.top - divRectBase.top + paddingTop; // 保存 originalTop 時也加上 padding
+          overlay.appendChild(preview);
+        }
       }
     });
 
     range.detach();
     div.remove();
-    
-    // 立即更新滾動位置
     updatePreviewsPosition();
   }
 
@@ -1039,4 +1105,605 @@ document.addEventListener('DOMContentLoaded', async function() {
       }
     }
   });
+
+  // 自定義模型管理功能
+  const CustomModelManager = {
+    autoDetectDebounceTimer: null, // 防抖計時器
+    
+    init() {
+      this.bindEvents();
+      this.updateCustomModelsList();
+    },
+
+    bindEvents() {
+      console.log('開始綁定 CustomModelManager 事件');
+      
+      // 重新獲取元素以確保它們存在
+      const customModelNameInput = document.getElementById('custom-model-name');
+      const customModelDisplayInput = document.getElementById('custom-model-display');
+      const customModelTypeSelect = document.getElementById('custom-model-type');
+      const addCustomModelBtn = document.getElementById('add-custom-model');
+      
+      console.log('元素獲取結果:', {
+        customModelNameInput: !!customModelNameInput,
+        customModelDisplayInput: !!customModelDisplayInput,
+        customModelTypeSelect: !!customModelTypeSelect,
+        addCustomModelBtn: !!addCustomModelBtn
+      });
+      
+      if (addCustomModelBtn) {
+        addCustomModelBtn.addEventListener('click', () => {
+          console.log('新增模型按鈕被點擊');
+          this.addCustomModel();
+        });
+        console.log('新增模型按鈕事件已綁定');
+      } else {
+        console.error('找不到新增模型按鈕元素');
+      }
+      
+      // 添加模型名稱和顯示名稱輸入框的自動識別功能
+      if (customModelNameInput && customModelDisplayInput && customModelTypeSelect) {
+        // 模型名稱輸入框的自動識別
+        customModelNameInput.addEventListener('input', (e) => {
+          console.log('檢測到模型名稱輸入:', e.target.value.trim());
+          this.debouncedAutoDetect(e.target.value.trim(), customModelTypeSelect, 'modelName');
+        });
+        
+        customModelNameInput.addEventListener('blur', (e) => {
+          console.log('模型名稱輸入框失去焦點:', e.target.value.trim());
+          this.autoDetectApiType(e.target.value.trim(), customModelTypeSelect, 'modelName');
+        });
+
+        // 顯示名稱輸入框的自動識別
+        customModelDisplayInput.addEventListener('input', (e) => {
+          console.log('檢測到顯示名稱輸入:', e.target.value.trim());
+          this.debouncedAutoDetect(e.target.value.trim(), customModelTypeSelect, 'displayName');
+        });
+        
+        customModelDisplayInput.addEventListener('blur', (e) => {
+          console.log('顯示名稱輸入框失去焦點:', e.target.value.trim());
+          this.autoDetectApiType(e.target.value.trim(), customModelTypeSelect, 'displayName');
+        });
+        
+        console.log('✅ 模型名稱和顯示名稱輸入框自動識別事件已綁定');
+      } else {
+        console.error('❌ 找不到必要元素:', {
+          customModelNameInput: !!customModelNameInput,
+          customModelDisplayInput: !!customModelDisplayInput,
+          customModelTypeSelect: !!customModelTypeSelect
+        });
+      }
+    },
+
+    // 防抖版本的自動識別
+    debouncedAutoDetect(modelName, customModelTypeSelect, type) {
+      // 清除之前的計時器
+      if (this.autoDetectDebounceTimer) {
+        clearTimeout(this.autoDetectDebounceTimer);
+      }
+      
+      // 設置新的計時器，300毫秒後執行識別
+      this.autoDetectDebounceTimer = setTimeout(() => {
+        this.autoDetectApiType(modelName, customModelTypeSelect, type);
+      }, 300);
+    },
+
+    // 自動識別模型 API 類型
+    autoDetectApiType(inputText, customModelTypeSelect, type = 'modelName') {
+      // 如果沒有傳入元素，嘗試重新獲取
+      if (!customModelTypeSelect) {
+        customModelTypeSelect = document.getElementById('custom-model-type');
+      }
+      
+      if (!inputText || !customModelTypeSelect) {
+        console.log('自動識別終止:', {
+          inputText: !!inputText,
+          customModelTypeSelect: !!customModelTypeSelect
+        });
+        return;
+      }
+      
+      console.log(`🔍 開始自動識別${type === 'displayName' ? '顯示名稱' : '模型名稱'}:`, inputText);
+      
+      let detectedType = 'gemini'; // 預設為 gemini
+      
+      // 根據輸入類型決定處理方式
+      let textToAnalyze = inputText.toLowerCase();
+      
+      if (type === 'displayName') {
+        // 如果是顯示名稱，嘗試從中提取模型名稱
+        // 移除常見的描述詞彙，保留關鍵的模型標識
+        textToAnalyze = textToAnalyze
+          .replace(/\s*(api|模型|model|版本|version|最新|latest|pro|advanced|mini|小型|大型|智能|ai)\s*/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        console.log(`📝 從顯示名稱提取的關鍵詞: "${textToAnalyze}"`);
+      }
+      
+      // OpenAI 模型識別規則（增強版）
+      const openaiPatterns = [
+        // GPT 系列 - 更寬鬆的匹配
+        /gpt[\s\-]?4/,          // GPT-4, GPT 4, gpt4
+        /gpt[\s\-]?3\.?5?/,     // GPT-3.5, GPT 3.5, gpt35
+        /gpt[\s\-]?o/,          // GPT-4o, GPT o1
+        /\bgpt\b/,              // 包含 gpt 的模型
+        
+        // 經典 OpenAI 模型
+        /text[\s\-]?davinci/,   // text-davinci-003 等
+        /davinci/,              // davinci
+        /curie/,                // curie
+        /babbage/,              // babbage
+        /ada\b/,                // ada (避免匹配到其他詞)
+        
+        // 新模型系列
+        /o1[\s\-]?(preview|mini)?/, // o1-preview, o1-mini
+        /o3[\s\-]/,             // o3 系列
+        
+        // 代碼模型
+        /code[\s\-]?davinci/,   // code-davinci-002 等
+        /codex/,                // codex
+        
+        // 品牌相關
+        /openai/,               // 包含 openai 的模型
+        /chatgpt/,              // chatgpt 相關
+        
+        // 特殊後綴和描述
+        /turbo\b/,              // turbo 模型
+        /instruct\b/,           // instruct 模型
+        /\bmini\b.*gpt/,        // mini 版本的 GPT
+        /\bpro\b.*gpt/          // pro 版本的 GPT
+      ];
+      
+      // Gemini/Google 模型識別規則（增強版）
+      const geminiPatterns = [
+        /gemini/,               // gemini 開頭或包含
+        /palm[\s\-]?2?/,        // PaLM 模型, PaLM 2
+        /bard/,                 // Bard 模型
+        /google/,               // 包含 google
+        /claude/,               // Claude 模型
+        /lamda/,                // LaMDA 模型
+        /minerva/,              // Minerva 模型
+        /pathways/,             // Pathways 模型
+        /flash\b/,              // Gemini Flash
+        /\bpro\b.*gemini/,      // Pro 版本的 Gemini
+        /gemini.*\bpro\b/       // Gemini Pro
+      ];
+      
+      // 檢查是否匹配 OpenAI 模式
+      if (openaiPatterns.some(pattern => pattern.test(textToAnalyze))) {
+        detectedType = 'openai';
+      } 
+      // 檢查是否匹配 Gemini 模式
+      else if (geminiPatterns.some(pattern => pattern.test(textToAnalyze))) {
+        detectedType = 'gemini';
+      }
+      
+      console.log('🎯 識別結果:', {
+        輸入類型: type === 'displayName' ? '顯示名稱' : '模型名稱',
+        原始輸入: inputText,
+        分析文本: textToAnalyze,
+        識別類型: detectedType,
+        當前選擇: customModelTypeSelect.value
+      });
+      
+      // 如果當前選擇的類型與識別出的類型不同，則自動更新
+      if (customModelTypeSelect.value !== detectedType) {
+        console.log(`🎯 自動選擇 API 類型: ${detectedType} (來源: ${type === 'displayName' ? '顯示名稱' : '模型名稱'})`);
+        customModelTypeSelect.value = detectedType;
+        
+        // 添加視覺反饋：使用CSS類實現更好的動畫效果
+        customModelTypeSelect.classList.add('auto-detected', detectedType, 'auto-detect-pulse');
+        
+        // 1.2秒後移除動畫和高亮類
+        setTimeout(() => {
+          customModelTypeSelect.classList.remove('auto-detected', 'gemini', 'openai', 'auto-detect-pulse');
+        }, 1200);
+        
+        // 顯示控制台提示訊息
+        if (detectedType === 'openai') {
+          console.log(`✅ 從${type === 'displayName' ? '顯示名稱' : '模型名稱'}檢測到 OpenAI 模型，已自動選擇 OpenAI API`);
+        } else if (detectedType === 'gemini') {
+          console.log(`✅ 從${type === 'displayName' ? '顯示名稱' : '模型名稱'}檢測到 Gemini 模型，已自動選擇 Gemini API`);
+        }
+      } else {
+        console.log('⚡ 類型一致，無需更新');
+      }
+    },
+
+    // 測試自動識別功能（開發用）
+    testAutoDetection() {
+      const modelNameTests = [
+        // OpenAI 模型測試用例
+        { name: 'gpt-4', expected: 'openai' },
+        { name: 'gpt-4-1-mini', expected: 'openai' },
+        { name: 'gpt-3.5-turbo', expected: 'openai' },
+        { name: 'text-davinci-003', expected: 'openai' },
+        { name: 'o1-preview', expected: 'openai' },
+        { name: 'code-davinci-002', expected: 'openai' },
+        
+        // Gemini 模型測試用例
+        { name: 'gemini-pro', expected: 'gemini' },
+        { name: 'gemini-1.5-flash', expected: 'gemini' },
+        { name: 'palm-2', expected: 'gemini' },
+        { name: 'bard', expected: 'gemini' },
+        
+        // 邊界情況
+        { name: 'my-custom-gpt-model', expected: 'openai' },
+        { name: 'google-gemini-advanced', expected: 'gemini' }
+      ];
+
+      const displayNameTests = [
+        // OpenAI 顯示名稱測試
+        { name: 'GPT-4 智能模型', expected: 'openai' },
+        { name: 'OpenAI GPT 3.5 Turbo', expected: 'openai' },
+        { name: '最新 GPT-4o 版本', expected: 'openai' },
+        { name: 'ChatGPT 模型', expected: 'openai' },
+        { name: 'O1 Preview 模型', expected: 'openai' },
+        { name: 'GPT Mini 版本', expected: 'openai' },
+        
+        // Gemini 顯示名稱測試
+        { name: 'Gemini Pro 高級版', expected: 'gemini' },
+        { name: 'Google Gemini Flash 模型', expected: 'gemini' },
+        { name: 'Gemini 1.5 Advanced AI', expected: 'gemini' },
+        { name: 'PaLM 2 最新版本', expected: 'gemini' },
+        { name: 'Google Bard 模型', expected: 'gemini' },
+        { name: 'Gemini Flash 智能版', expected: 'gemini' },
+        
+        // 混合情況
+        { name: '企業級 GPT 解決方案', expected: 'openai' },
+        { name: 'Google AI Gemini 服務', expected: 'gemini' }
+      ];
+      
+      console.log('🧪 開始測試模型名稱自動識別功能...');
+      modelNameTests.forEach(testCase => {
+        const detected = this.getDetectedApiType(testCase.name, 'modelName');
+        const passed = detected === testCase.expected;
+        console.log(`${passed ? '✅' : '❌'} 模型名稱: ${testCase.name} → ${detected} (期望: ${testCase.expected})`);
+      });
+
+      console.log('\n🧪 開始測試顯示名稱自動識別功能...');
+      displayNameTests.forEach(testCase => {
+        const detected = this.getDetectedApiType(testCase.name, 'displayName');
+        const passed = detected === testCase.expected;
+        console.log(`${passed ? '✅' : '❌'} 顯示名稱: ${testCase.name} → ${detected} (期望: ${testCase.expected})`);
+      });
+      
+      console.log('🧪 測試完成');
+    },
+
+    // 獲取模型的 API 類型（不更新UI，僅用於測試）
+    getDetectedApiType(inputText, type = 'modelName') {
+      if (!inputText) return 'gemini';
+      
+      // 根據輸入類型決定處理方式
+      let textToAnalyze = inputText.toLowerCase();
+      
+      if (type === 'displayName') {
+        // 如果是顯示名稱，嘗試從中提取模型名稱
+        textToAnalyze = textToAnalyze
+          .replace(/\s*(api|模型|model|版本|version|最新|latest|pro|advanced|mini|小型|大型|智能|ai)\s*/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+      
+      const openaiPatterns = [
+        /gpt[\s\-]?4/, /gpt[\s\-]?3\.?5?/, /gpt[\s\-]?o/, /\bgpt\b/, 
+        /text[\s\-]?davinci/, /davinci/, /curie/, /babbage/, /ada\b/, 
+        /o1[\s\-]?(preview|mini)?/, /o3[\s\-]/, /code[\s\-]?davinci/, /codex/,
+        /openai/, /chatgpt/, /turbo\b/, /instruct\b/, /\bmini\b.*gpt/, /\bpro\b.*gpt/
+      ];
+      
+      const geminiPatterns = [
+        /gemini/, /palm[\s\-]?2?/, /bard/, /google/, /claude/, 
+        /lamda/, /minerva/, /pathways/, /flash\b/, /\bpro\b.*gemini/, /gemini.*\bpro\b/
+      ];
+      
+      if (openaiPatterns.some(pattern => pattern.test(textToAnalyze))) {
+        return 'openai';
+      } else if (geminiPatterns.some(pattern => pattern.test(textToAnalyze))) {
+        return 'gemini';
+      }
+      
+      return 'gemini'; // 預設
+    },
+
+    // 新增自定義模型
+    async addCustomModel() {
+      try {
+        // 重新獲取元素以確保它們存在
+        const customModelNameInput = document.getElementById('custom-model-name');
+        const customModelDisplayInput = document.getElementById('custom-model-display');
+        const customModelTypeSelect = document.getElementById('custom-model-type');
+        
+        if (!customModelNameInput || !customModelDisplayInput || !customModelTypeSelect) {
+          console.error('找不到必要的表單元素');
+          alert('找不到必要的表單元素，請重新載入頁面');
+          return;
+        }
+        
+        const modelName = customModelNameInput.value.trim();
+        const displayName = customModelDisplayInput.value.trim();
+        const apiType = customModelTypeSelect.value;
+
+        if (!modelName || !displayName) {
+          alert('請填寫模型名稱和顯示名稱');
+          return;
+        }
+
+        // 檢查 API 類型
+        if (!apiType) {
+          alert('請選擇 API 類型');
+          return;
+        }
+
+        // 檢查模型名稱格式
+        if (!/^[a-z0-9-_.]+$/i.test(modelName)) {
+          alert('模型名稱只能包含字母、數字、連字號、底線和點');
+          return;
+        }
+
+        await GlobalSettings.addCustomModel(modelName, displayName, apiType);
+        
+        // 清空輸入框
+        customModelNameInput.value = '';
+        customModelDisplayInput.value = '';
+        customModelTypeSelect.value = '';
+
+        // 更新模型列表顯示
+        this.updateCustomModelsList();
+        
+        // 更新所有模型選擇下拉選單
+        this.updateAllModelSelects();
+
+        alert('模型新增成功！');
+      } catch (error) {
+        console.error('新增模型錯誤:', error);
+        alert('新增模型失敗：' + error.message);
+      }
+    },
+
+    // 刪除自定義模型
+    async removeCustomModel(modelName) {
+      console.log(`開始刪除模型: ${modelName}`);
+      
+      if (!modelName) {
+        console.error('模型名稱為空');
+        alert('模型名稱無效');
+        return;
+      }
+      
+      if (confirm(`確定要刪除模型 "${modelName}" 嗎？這將同時移除相關的 API 金鑰。`)) {
+        try {
+          console.log(`用戶確認刪除模型: ${modelName}`);
+          await GlobalSettings.removeCustomModel(modelName);
+          console.log(`成功從 GlobalSettings 中刪除模型: ${modelName}`);
+          
+          // 更新模型列表顯示
+          this.updateCustomModelsList();
+          console.log('模型列表顯示已更新');
+          
+          // 更新所有模型選擇下拉選單
+          this.updateAllModelSelects();
+          console.log('所有模型選擇下拉選單已更新');
+
+          // 如果當前API金鑰選擇器選中的是被刪除的模型，切換到第一個可用模型
+          if (modelSelect.value === modelName) {
+            console.log(`當前選中的模型 ${modelName} 被刪除，切換到第一個可用模型`);
+            modelSelect.selectedIndex = 0;
+            updateApiKeyInput();
+          }
+
+          alert('模型刪除成功！');
+          console.log(`模型 ${modelName} 刪除完成`);
+        } catch (error) {
+          console.error(`刪除模型失敗:`, error);
+          alert('刪除模型失敗：' + error.message);
+        }
+      } else {
+        console.log('用戶取消刪除操作');
+      }
+    },
+
+    // 更新自定義模型列表顯示
+    updateCustomModelsList() {
+      console.log('開始更新自定義模型列表');
+      
+      // 重新獲取元素以確保它存在
+      const customModelsContainer = document.getElementById('custom-models-container');
+      
+      if (!customModelsContainer) {
+        console.error('找不到 customModelsContainer 元素');
+        return;
+      }
+
+      const customModels = GlobalSettings.getCustomModels();
+      console.log('獲取到的自定義模型:', customModels);
+      
+      if (Object.keys(customModels).length === 0) {
+        console.log('沒有自定義模型，顯示提示文字');
+        customModelsContainer.innerHTML = '<p style="color: #6c757d; font-size: 12px; margin: 0;">尚未新增任何自定義模型</p>';
+        return;
+      }
+
+      console.log(`找到 ${Object.keys(customModels).length} 個自定義模型`);
+      
+      // 清空容器
+      customModelsContainer.innerHTML = '';
+      
+      // 為每個自定義模型創建元素
+      Object.entries(customModels).forEach(([key, model]) => {
+        console.log(`創建模型 ${key} 的界面元素`);
+        
+        const modelItem = document.createElement('div');
+        modelItem.className = 'custom-model-item';
+        
+        modelItem.innerHTML = `
+          <div class="custom-model-info">
+            <div class="custom-model-name">${model.displayName}</div>
+            <div class="custom-model-details">${key}</div>
+            <div class="custom-model-api-type">${model.apiType === 'gemini' ? 'Gemini API' : 'OpenAI API'}</div>
+          </div>
+          <div class="custom-model-actions">
+            <button class="delete-model-button" data-model-key="${key}">刪除</button>
+          </div>
+        `;
+        
+        // 添加刪除按鈕的事件監聽器
+        const deleteButton = modelItem.querySelector('.delete-model-button');
+        deleteButton.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log(`點擊刪除模型: ${key}`);
+          this.removeCustomModel(key);
+        });
+        
+        customModelsContainer.appendChild(modelItem);
+        console.log(`模型 ${key} 的界面元素已添加`);
+      });
+      
+      console.log('自定義模型列表更新完成');
+    },
+
+    // 更新所有模型選擇下拉選單
+    updateAllModelSelects() {
+      const allModels = GlobalSettings.getAllAvailableModels();
+      
+      // API 金鑰選擇器應該只顯示服務提供商，不包含自定義模型
+      const apiProviders = {
+        'gemini': 'Gemini',
+        'openai': 'OpenAI', 
+        'google-translate': 'Google 翻譯'
+      };
+      
+      // 要更新的功能模型選擇器（不包括 API 金鑰選擇器）
+      const modelSelectors = [
+        fullRewriteModelSelect,
+        shortRewriteModelSelect,
+        autoRewriteModelSelect,
+        translateModelSelect,
+        generateModelSelect,
+        reflect1ModelSelect,
+        generationOptimize_1_ModelSelect,
+        reflect2ModelSelect,
+        generationOptimize_2_ModelSelect,
+        reflect3ModelSelect,
+        generationOptimize_3_ModelSelect,
+        summaryModelSelect,
+        reflectModelSelect,
+        optimizeModelSelect
+      ];
+
+      // 更新 API 金鑰選擇器（保持原有的服務提供商選項）
+      if (modelSelect) {
+        const currentValue = modelSelect.value;
+        modelSelect.innerHTML = '';
+        
+        Object.entries(apiProviders).forEach(([key, displayName]) => {
+          const option = document.createElement('option');
+          option.value = key;
+          option.textContent = displayName;
+          modelSelect.appendChild(option);
+        });
+        
+        // 恢復之前的選擇
+        if (apiProviders[currentValue]) {
+          modelSelect.value = currentValue;
+        }
+      }
+
+      // 更新功能模型選擇器（包含所有可用模型，但排除 google-translate）
+      modelSelectors.forEach(selector => {
+        if (!selector) return;
+        
+        const currentValue = selector.value;
+        console.log(`更新選擇器，當前值: ${currentValue}`);
+        
+        // 清空現有選項
+        selector.innerHTML = '';
+        
+        // 檢查是否有可用模型
+        const availableModels = Object.entries(allModels).filter(([key]) => key !== 'google-translate');
+        
+        if (availableModels.length === 0) {
+          // 沒有模型時，顯示提示選項
+          const option = document.createElement('option');
+          option.value = '';
+          option.textContent = '請先新增模型';
+          option.disabled = true;
+          selector.appendChild(option);
+          selector.disabled = true;
+        } else {
+          // 有模型時，啟用選擇器並添加模型選項
+          selector.disabled = false;
+          
+          availableModels.forEach(([key, displayName]) => {
+            const option = document.createElement('option');
+            option.value = key;
+            option.textContent = displayName;
+            selector.appendChild(option);
+          });
+          
+          // 恢復之前的選擇，如果該選項仍然存在
+          if (currentValue && allModels[currentValue]) {
+            console.log(`恢復之前的選擇: ${currentValue}`);
+            selector.value = currentValue;
+          } else {
+            console.log(`之前的選擇 ${currentValue} 不存在，保持空值`);
+            // 不要自動選擇第一個選項，保持用戶原來的設定
+            selector.value = '';
+          }
+        }
+      });
+    }
+  };
+
+  // 暴露 CustomModelManager 到全局作用域
+  window.CustomModelManager = CustomModelManager;
+  console.log('CustomModelManager 已暴露到全局作用域');
+
+  // 立即初始化 CustomModelManager
+  setTimeout(async () => {
+    console.log('🚀 開始初始化 CustomModelManager');
+    try {
+      CustomModelManager.init();
+      console.log('✅ CustomModelManager 初始化完成');
+      
+      // 在此處添加調用，以確保所有下拉選單在彈出視窗開啟時被正確填充
+      CustomModelManager.updateAllModelSelects();
+      console.log('✅ 已調用 updateAllModelSelects 更新所有模型下拉選單');
+      
+      // 重新載入設定以恢復用戶的模型選擇
+      console.log('🔄 重新載入設定以恢復用戶的模型選擇...');
+      const currentSettings = await GlobalSettings.loadSettings();
+      
+      // 重新應用模型選擇設定
+      const modelMappings = [
+        { setting: 'fullRewriteModel', element: fullRewriteModelSelect },
+        { setting: 'shortRewriteModel', element: shortRewriteModelSelect },
+        { setting: 'autoRewriteModel', element: autoRewriteModelSelect },
+        { setting: 'translateModel', element: translateModelSelect },
+        { setting: 'generateModel', element: generateModelSelect },
+        { setting: 'reflect1Model', element: reflect1ModelSelect },
+        { setting: 'generationOptimize_1_Model', element: generationOptimize_1_ModelSelect },
+        { setting: 'reflect2Model', element: reflect2ModelSelect },
+        { setting: 'generationOptimize_2_Model', element: generationOptimize_2_ModelSelect },
+        { setting: 'reflect3Model', element: reflect3ModelSelect },
+        { setting: 'generationOptimize_3_Model', element: generationOptimize_3_ModelSelect },
+        { setting: 'summaryModel', element: summaryModelSelect },
+        { setting: 'reflectModel', element: reflectModelSelect },
+        { setting: 'optimizeModel', element: optimizeModelSelect }
+      ];
+      
+      modelMappings.forEach(({ setting, element }) => {
+        if (element && currentSettings[setting]) {
+          console.log(`🔧 恢復 ${setting} 設定: ${currentSettings[setting]}`);
+          element.value = currentSettings[setting];
+        }
+      });
+      
+      console.log('✅ 模型選擇設定恢復完成');
+    } catch (error) {
+      console.error('❌ 初始化 CustomModelManager 時發生錯誤:', error);
+    }
+  }, 100);
 });

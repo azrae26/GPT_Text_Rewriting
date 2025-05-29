@@ -11,10 +11,7 @@ const GlobalSettings = {
       openai: 'https://api.openai.com/v1/chat/completions'
     },
     models: {
-      'gpt-4o': 'gpt-4o',
-      'gpt-4o-mini': 'gpt-4o-mini',
-      'gemini-1.5-flash': 'Gemini 1.5 Flash',
-      'gemini-2.0-flash-exp': 'Gemini 2.0 Flash'
+      // 初始為空，所有模型都透過自定義模型功能動態新增
     },
     safetySettings: [
       { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
@@ -29,6 +26,9 @@ const GlobalSettings = {
     appName: 'GPT_Text_Rewriting',
     version: '1.0'
   },
+
+  /** 自定義模型列表 */
+  customModels: {},
 
   /** API 金鑰物件，儲存不同模型的 API 金鑰。 */
   apiKeys: {},
@@ -128,36 +128,66 @@ const GlobalSettings = {
         })
       ]);
 
-      // 確保 apiKeys 物件有正確的結構
+      // 確保 apiKeys 物件有正確的結構，但不強制添加特定的金鑰
       this.apiKeys = {
-        'openai': '',
-        'gemini-2.0-flash-exp': '',
-        ...(syncResult.apiKeys || {})  // 合併已保存的金鑰
+        ...(syncResult.apiKeys || {})  // 只載入已保存的金鑰
       };
 
-      // 檢查並輸出 API 金鑰狀態
-      console.log('載入的 API 金鑰:', {
-        openai: this.apiKeys.openai ? '已設置' : '未設置',
-        gemini: this.apiKeys['gemini-2.0-flash-exp'] ? '已設置' : '未設置'
+      // 清理未實際設置的舊 API 金鑰（顯示為 "已設置" 但實際上是空值或預設值）
+      console.log('清理未實際設置的 API 金鑰...');
+      const keysToRemove = [];
+      Object.entries(this.apiKeys).forEach(([key, value]) => {
+        // 如果值為空、undefined、null 或者是一些預設的無效值
+        if (!value || value === '' || value === 'undefined' || value === 'null' || 
+            (typeof value === 'string' && (value === '已設置' || value === '未設置'))) {
+          keysToRemove.push(key);
+        }
+        // 額外清理：移除硬編碼的舊版本模型金鑰，除非是通用金鑰
+        else if (key.includes('-1.5-') || key.includes('-2.0-') || key.includes('-exp') || key.includes('-latest')) {
+          // 檢查是否有對應的自定義模型正在使用
+          const hasMatchingCustomModel = Object.keys(this.customModels).some(modelName => {
+            const modelApiType = this.getModelApiType(modelName);
+            return modelApiType === 'gemini' && modelName === key;
+          });
+          
+          if (!hasMatchingCustomModel) {
+            console.log(`發現舊版本硬編碼金鑰: ${key}，準備移除`);
+            keysToRemove.push(key);
+          }
+        }
       });
+      
+      if (keysToRemove.length > 0) {
+        console.log('移除無效的 API 金鑰:', keysToRemove);
+        keysToRemove.forEach(key => delete this.apiKeys[key]);
+        // 立即保存更新後的金鑰列表
+        chrome.storage.sync.set({ apiKeys: this.apiKeys });
+      }
+
+      // 檢查並輸出 API 金鑰狀態
+      const apiKeyStatus = {};
+      Object.keys(this.apiKeys).forEach(key => {
+        apiKeyStatus[key] = this.apiKeys[key] ? '已設置' : '未設置';
+      });
+      console.log('載入的 API 金鑰:', apiKeyStatus);
 
       // 一般設定使用 sync
-      this.model = syncResult.model || 'gemini-2.0-flash-exp';
+      this.model = syncResult.model || '';
       this.instruction = syncResult.instruction || '';
       this.shortInstruction = syncResult.shortInstruction || '';
-      this.fullRewriteModel = syncResult.fullRewriteModel || this.model;
-      this.shortRewriteModel = syncResult.shortRewriteModel || this.model;
-      this.autoRewriteModel = syncResult.autoRewriteModel || this.model;
-      this.translateModel = syncResult.translateModel || this.model;
-      this.reflectModel = syncResult.reflectModel || this.model;
-      this.optimizeModel = syncResult.optimizeModel || this.model;
-      this.generateModel = syncResult.generateModel || this.model;
-      this.reflect1Model = syncResult.reflect1Model || this.model;
-      this.generationOptimize_1_Model = syncResult.generationOptimize_1_Model || this.model;
-      this.reflect2Model = syncResult.reflect2Model || this.model;
-      this.generationOptimize_2_Model = syncResult.generationOptimize_2_Model || this.model;
-      this.reflect3Model = syncResult.reflect3Model || this.model;
-      this.generationOptimize_3_Model = syncResult.generationOptimize_3_Model || this.model;
+      this.fullRewriteModel = syncResult.fullRewriteModel || '';
+      this.shortRewriteModel = syncResult.shortRewriteModel || '';
+      this.autoRewriteModel = syncResult.autoRewriteModel || '';
+      this.translateModel = syncResult.translateModel || '';
+      this.reflectModel = syncResult.reflectModel || '';
+      this.optimizeModel = syncResult.optimizeModel || '';
+      this.generateModel = syncResult.generateModel || '';
+      this.reflect1Model = syncResult.reflect1Model || '';
+      this.generationOptimize_1_Model = syncResult.generationOptimize_1_Model || '';
+      this.reflect2Model = syncResult.reflect2Model || '';
+      this.generationOptimize_2_Model = syncResult.generationOptimize_2_Model || '';
+      this.reflect3Model = syncResult.reflect3Model || '';
+      this.generationOptimize_3_Model = syncResult.generationOptimize_3_Model || '';
       this.translateInstruction = localResult.translateInstruction || '';
       this.reflectInstruction = localResult.reflectInstruction || '';
       this.optimizeInstruction = localResult.optimizeInstruction || '';
@@ -169,7 +199,7 @@ const GlobalSettings = {
       this.reflect3Instruction = localResult.reflect3Instruction || '';
       this.generationOptimize_3_Instruction = localResult.generationOptimize_3_Instruction || '';
       this.backgroundKnowledge = localResult.backgroundKnowledge || '';
-      this.summaryModel = syncResult.summaryModel || this.model;
+      this.summaryModel = syncResult.summaryModel || '';
       this.summaryInstruction = localResult.summaryInstruction || '';
       this.zhEnMapping = localResult.zhEnMapping || ''; // 載入中英對照表
       
@@ -195,6 +225,64 @@ const GlobalSettings = {
       // 載入生成設定組合
       this.generationSettingsGroups = syncResult.generationSettingsGroups || {};
       this.currentGenerationSettings = syncResult.currentGenerationSettings || '';
+
+      // 載入自定義模型
+      this.customModels = syncResult.customModels || {};
+      
+      // 將自定義模型合併到 API.models 中
+      // 先清空 API.models，確保只有自定義模型
+      this.API.models = {};
+      Object.entries(this.customModels).forEach(([key, model]) => {
+        this.API.models[key] = model.displayName;
+      });
+
+      // 清理舊版本或無效的模型選擇
+      console.log('清理舊版本或無效的模型選擇...');
+      const modelSettingKeys = [
+        'model', 'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel',
+        'translateModel', 'reflectModel', 'optimizeModel', 'generateModel',
+        'reflect1Model', 'generationOptimize_1_Model', 'reflect2Model', 
+        'generationOptimize_2_Model', 'reflect3Model', 'generationOptimize_3_Model', 
+        'summaryModel'
+      ];
+
+      let settingsUpdated = false;
+      modelSettingKeys.forEach(key => {
+        const currentModel = this[key];
+        if (currentModel && !this.customModels[currentModel] && !this.API.models[currentModel]) {
+          console.log(`發現無效的模型設定 ${key}: ${currentModel}，將其重置為空`);
+          this[key] = ''; // 重置為空字串，讓getDefaultModel()選擇第一個可用模型
+          settingsUpdated = true;
+        } else if (currentModel && (currentModel.includes('-1.5-') || currentModel.includes('-2.0-') || currentModel.includes('-exp'))) {
+          // 如果是舊格式的模型名稱，且不在自定義模型列表中，也重置
+          if (!this.customModels[currentModel]) {
+            console.log(`發現舊格式模型設定 ${key}: ${currentModel}，將其重置為空`);
+            this[key] = '';
+            settingsUpdated = true;
+          }
+        }
+      });
+
+      if (settingsUpdated) {
+        console.log('模型設定已更新，正在保存...');
+        // 只保存被修改的模型設定
+        const updatedSettingsToSave = {};
+        modelSettingKeys.forEach(key => {
+          if (this[key] === '') { // 只保存被重置為空的設定
+            updatedSettingsToSave[key] = '';
+          }
+        });
+        chrome.storage.sync.set(updatedSettingsToSave);
+      }
+
+      console.log('設置載入完成:', {
+        model: this.model,
+        apiKeysStatus: Object.keys(this.apiKeys).map(key => ({ 
+          [key]: this.apiKeys[key] ? '已設置' : '未設置' 
+        })),
+        customModelsCount: Object.keys(this.customModels).length,
+        availableModels: Object.keys(this.API.models)
+      });
 
       return this;
     } catch (error) {
@@ -364,8 +452,12 @@ const GlobalSettings = {
 
   // 添加一個輔助方法來檢查 API 金鑰
   hasApiKey(model) {
-    const isGemini = model.startsWith('gemini');
-    const key = this.apiKeys[isGemini ? 'gemini-2.0-flash-exp' : 'openai'];
+    if (!model) return false;
+    
+    const apiType = this.getModelApiType(model);
+    const apiKeyName = this.getApiKeyNameForModel(model);
+    
+    const key = this.apiKeys[apiKeyName];
     return Boolean(key && key.trim());
   },
 
@@ -642,10 +734,36 @@ const GlobalSettings = {
         }
       });
       
+      // 確保重要的設定被包含
+      const importantSettings = {};
+      
+      // 高亮功能設定
+      if (syncData.highlightWords !== undefined) {
+        importantSettings.highlightWords = syncData.highlightWords;
+      }
+      if (syncData.highlightColors !== undefined) {
+        importantSettings.highlightColors = syncData.highlightColors;
+      }
+      
+      // UI 狀態設定
+      if (syncData.lastMainTab !== undefined) {
+        importantSettings.lastMainTab = syncData.lastMainTab;
+      }
+      if (syncData.lastSubTab !== undefined) {
+        importantSettings.lastSubTab = syncData.lastSubTab;
+      }
+      
+      // 自定義模型設定
+      if (syncData.customModels !== undefined) {
+        importantSettings.customModels = syncData.customModels;
+      }
+      
+      // 合併所有資料
       const allData = { 
         ...syncData, 
         ...localData,
-        ...replaceSettings  // 加入處理過的替換規則
+        ...replaceSettings,
+        ...importantSettings
       };
       
       return this._filterValidSettings(allData);
@@ -662,6 +780,47 @@ const GlobalSettings = {
       
       if (!settings || Object.keys(settings).length === 0) {
         throw new Error('無效的設定資料');
+      }
+
+      // 向後兼容性處理：遷移舊版本的 API 金鑰格式
+      if (settings.apiKeys) {
+        console.log('檢查並遷移舊版本的 API 金鑰格式...');
+        
+        // 如果存在舊的 gemini-2.0-flash-exp 金鑰，遷移到新的 gemini 格式
+        if (settings.apiKeys['gemini-2.0-flash-exp'] && !settings.apiKeys['gemini']) {
+          console.log('發現舊版本 Gemini API 金鑰，正在遷移...');
+          settings.apiKeys['gemini'] = settings.apiKeys['gemini-2.0-flash-exp'];
+          delete settings.apiKeys['gemini-2.0-flash-exp'];
+          console.log('Gemini API 金鑰遷移完成');
+        }
+        
+        // 清理其他可能的舊版本硬編碼金鑰
+        const oldKeys = Object.keys(settings.apiKeys).filter(key => 
+          key.includes('2.0-flash-exp') || key.includes('1.5-pro') || 
+          key.includes('-1.5-') || key.includes('-2.0-') || key.includes('-latest')
+        );
+        
+        if (oldKeys.length > 0) {
+          console.log('清理舊版本硬編碼金鑰:', oldKeys);
+          oldKeys.forEach(oldKey => {
+            // 只有當沒有通用金鑰時，才將舊金鑰值遷移到通用金鑰
+            if (oldKey.startsWith('gemini') && !settings.apiKeys['gemini'] && settings.apiKeys[oldKey]) {
+              settings.apiKeys['gemini'] = settings.apiKeys[oldKey];
+              console.log(`將 ${oldKey} 的值遷移到 gemini`);
+            }
+            delete settings.apiKeys[oldKey];
+          });
+        }
+        
+        // 最後清理空值或無效值
+        Object.keys(settings.apiKeys).forEach(key => {
+          const value = settings.apiKeys[key];
+          if (!value || value === '' || value === 'undefined' || value === 'null' || 
+              (typeof value === 'string' && (value === '已設置' || value === '未設置'))) {
+            console.log(`清理無效金鑰: ${key}`);
+            delete settings.apiKeys[key];
+          }
+        });
       }
 
       // 先清空所有儲存空間
@@ -701,6 +860,20 @@ const GlobalSettings = {
         Object.keys(replaceSettings).length > 0 ? this._setChromeStorage(replaceSettings, 'local') : Promise.resolve()
       ]);
 
+      // 特別處理自定義模型的還原
+      if (settings.customModels) {
+        console.log('還原自定義模型...');
+        this.customModels = settings.customModels;
+        
+        // 將自定義模型重新載入到 API.models 中
+        Object.entries(this.customModels).forEach(([key, model]) => {
+          this.API.models[key] = model.displayName;
+          console.log(`已還原自定義模型: ${key} -> ${model.displayName}`);
+        });
+        
+        console.log(`共還原 ${Object.keys(this.customModels).length} 個自定義模型`);
+      }
+
       console.log('設定儲存完成');
       console.groupEnd();
     } catch (error) {
@@ -730,24 +903,211 @@ const GlobalSettings = {
   // 儲存資料到 Chrome storage，支援前綴功能
   _setChromeStorage(data, type = 'sync', prefix = '') {
     return new Promise((resolve, reject) => {
-      try {
-        // 如果有指定前綴，則為所有 key 加上前綴
-        const storageData = prefix ? 
-          Object.fromEntries(
-            Object.entries(data).map(([key, value]) => [prefix + key, value])
-          ) : data;
-
-        chrome.storage[type].set(storageData, () => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve();
-          }
-        });
-      } catch (error) {
-        reject(error);
-      }
+      const storage = type === 'local' ? chrome.storage.local : chrome.storage.sync;
+      
+      // 如果有前綴，則為每個 key 添加前綴
+      const prefixedData = prefix ? 
+        Object.fromEntries(Object.entries(data).map(([key, value]) => [`${prefix}${key}`, value])) :
+        data;
+      
+      storage.set(prefixedData, () => {
+        if (chrome.runtime.lastError) {
+          console.error(`儲存資料到 ${type} storage 時發生錯誤:`, chrome.runtime.lastError);
+          reject(chrome.runtime.lastError);
+        } else {
+          console.log(`成功儲存資料到 ${type} storage`);
+          resolve();
+        }
+      });
     });
+  },
+
+  // 自定義模型管理
+  async addCustomModel(modelName, displayName, apiType) {
+    try {
+      if (!modelName || !displayName || !apiType) {
+        throw new Error('模型名稱、顯示名稱和API類型都是必填的');
+      }
+
+      // 檢查是否已存在
+      if (this.customModels[modelName]) {
+        throw new Error('模型名稱已存在');
+      }
+
+      // 新增自定義模型
+      this.customModels[modelName] = {
+        displayName: displayName,
+        apiType: apiType,
+        isCustom: true
+      };
+
+      // 也將模型新增到 API.models 中
+      this.API.models[modelName] = displayName;
+
+      // 儲存到 storage
+      await this.saveSingleSetting('customModels', this.customModels);
+      
+      console.log(`成功新增自定義模型: ${modelName}`);
+      return true;
+    } catch (error) {
+      console.error('新增自定義模型失敗:', error);
+      throw error;
+    }
+  },
+
+  async removeCustomModel(modelName) {
+    try {
+      if (!this.customModels[modelName]) {
+        throw new Error('找不到指定的自定義模型');
+      }
+
+      // 從自定義模型列表中移除
+      delete this.customModels[modelName];
+      
+      // 從 API.models 中移除
+      delete this.API.models[modelName];
+
+      // 注意：不要刪除 API 金鑰，因為自定義模型使用對應服務提供商的金鑰
+      // 例如自定義的 Gemini 模型使用 'gemini' API 金鑰
+      // 例如自定義的 OpenAI 模型使用 'openai' 的金鑰
+
+      // 儲存更新後的自定義模型列表
+      await this.saveSingleSetting('customModels', this.customModels);
+      
+      console.log(`成功移除自定義模型: ${modelName}`);
+      return true;
+    } catch (error) {
+      console.error('移除自定義模型失敗:', error);
+      throw error;
+    }
+  },
+
+  getCustomModels() {
+    return this.customModels;
+  },
+
+  getAllAvailableModels() {
+    // 合併內建模型和自定義模型
+    const allModels = { ...this.API.models };
+    
+    // 確保自定義模型也包含在內
+    Object.entries(this.customModels).forEach(([key, model]) => {
+      allModels[key] = model.displayName;
+    });
+    
+    return allModels;
+  },
+
+  isCustomModel(modelName) {
+    return this.customModels[modelName] && this.customModels[modelName].isCustom;
+  },
+
+  getModelApiType(modelName) {
+    // 檢查是否為自定義模型
+    if (this.customModels[modelName]) {
+      return this.customModels[modelName].apiType;
+    }
+    
+    // 內建模型的 API 類型判斷
+    if (modelName.startsWith('gemini')) {
+      return 'gemini';
+    } else if (modelName.startsWith('gpt') || modelName === 'openai') {
+      return 'openai';
+    } else if (modelName === 'google-translate') {
+      return 'google-translate';
+    }
+    
+    return 'unknown';
+  },
+
+  // 新增：獲取模型對應的 API 金鑰名稱
+  getApiKeyNameForModel(modelName) {
+    console.log('[getApiKeyNameForModel] 開始處理模型:', modelName);
+    const apiType = this.getModelApiType(modelName);
+    console.log('[getApiKeyNameForModel] 模型 API 類型:', apiType);
+    console.log('[getApiKeyNameForModel] 當前可用的 API 金鑰:', Object.keys(this.apiKeys));
+    
+    switch (apiType) {
+      case 'gemini':
+        // 對於 Gemini 模型，查找可用的 Gemini API 金鑰
+        const geminiKeys = Object.keys(this.apiKeys).filter(key => 
+          key === 'gemini' && this.apiKeys[key]  // 只查找 'gemini' 金鑰
+        );
+        console.log('[getApiKeyNameForModel] 找到的 Gemini 金鑰:', geminiKeys);
+        if (geminiKeys.length > 0) {
+          console.log('[getApiKeyNameForModel] 使用 Gemini 金鑰:', geminiKeys[0]);
+          return geminiKeys[0];
+        }
+        console.log('[getApiKeyNameForModel] 未找到可用的 Gemini 金鑰');
+        return null;
+        
+      case 'openai':
+        console.log('[getApiKeyNameForModel] 檢查 OpenAI 金鑰');
+        if (this.apiKeys['openai'] && this.apiKeys['openai'].trim()) {
+          console.log('[getApiKeyNameForModel] 找到 OpenAI 金鑰');
+          return 'openai';
+        } else {
+          console.log('[getApiKeyNameForModel] 未找到可用的 OpenAI 金鑰');
+          console.log('[getApiKeyNameForModel] 當前 OpenAI 金鑰值:', this.apiKeys['openai'] || 'undefined');
+          return null;
+        }
+        
+      case 'google-translate':
+        console.log('[getApiKeyNameForModel] 使用 Google Translate 金鑰');
+        return 'google-translate';
+        
+      default:
+        console.error('[getApiKeyNameForModel] 未知 API 類型:', apiType, '模型:', modelName);
+        return null;
+    }
+  },
+
+  // 新增：獲取模型的顯示名稱
+  getModelDisplayName(modelName) {
+    console.log('[getModelDisplayName] 開始處理模型名稱:', modelName);
+    
+    if (!modelName) {
+      console.log('[getModelDisplayName] 模型名稱為空，返回未知模型');
+      return '未知模型';
+    }
+    
+    // 優先檢查 API.models 中是否有對應的顯示名稱
+    if (this.API.models[modelName]) {
+      console.log('[getModelDisplayName] 找到 API 模型:', this.API.models[modelName]);
+      return this.API.models[modelName];
+    }
+    
+    // 檢查是否為自定義模型
+    if (this.customModels[modelName]) {
+      console.log('[getModelDisplayName] 找到自定義模型:', this.customModels[modelName].displayName);
+      return this.customModels[modelName].displayName;
+    }
+    
+    // 如果都沒有，直接返回模型名稱
+    console.log('[getModelDisplayName] 沒有找到顯示名稱，返回原始模型名稱:', modelName);
+    console.log('[getModelDisplayName] 當前自定義模型列表:', Object.keys(this.customModels));
+    console.log('[getModelDisplayName] 當前 API 模型列表:', Object.keys(this.API.models));
+    return modelName;
+  },
+
+  // 新增：獲取預設模型，如果沒有則返回第一個可用模型
+  getDefaultModel() {
+    // 如果有設定模型，優先使用
+    if (this.model && (this.customModels[this.model] || this.API.models[this.model])) {
+      return this.model;
+    }
+    
+    // 獲取所有可用模型
+    const allModels = this.getAllAvailableModels();
+    const modelKeys = Object.keys(allModels);
+    
+    // 如果沒有可用模型，返回 null
+    if (modelKeys.length === 0) {
+      return null;
+    }
+    
+    // 返回第一個可用模型
+    return modelKeys[0];
   }
 };
 
