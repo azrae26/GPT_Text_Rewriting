@@ -1033,175 +1033,232 @@ const ManualReplaceManager = {
 
   /** 設置排序拖移事件 */
   _setupSortDragEvents(button, groupIndex) {
-    button.addEventListener('dragstart', (e) => {
-      e.dataTransfer.setData('text/plain', groupIndex.toString());
-      e.dataTransfer.effectAllowed = 'move';
-      button.closest('.replace-extra-group').classList.add('dragging');
-      
-      // 為所有組設置拖放區域
-      this._setupDropZones();
-    });
+    let isDragging = false;
+    let startY, startX, startRect, placeholder;
+    let moveHandler, upHandler, scrollInterval;
 
-    button.addEventListener('dragend', () => {
-      document.querySelectorAll('.replace-extra-group').forEach(group => {
-        group.classList.remove('dragging', 'drag-over');
-      });
-      
-      // 清理拖放區域
-      this._cleanupDropZones();
-    });
-  },
-
-  /** 設置拖放區域 */
-  _setupDropZones() {
-    const container = document.querySelector('.manual-replace-container');
-    if (!container) return;
-
-    const allGroups = document.querySelectorAll('.replace-extra-group');
-    let currentDraggedIndex = null;
-    
-    // 容器級別的拖放處理
-    const handleContainerDragOver = (e) => {
+    button.addEventListener('mousedown', (e) => {
       e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
+      const group = button.closest('.replace-extra-group');
+      if (!group) return;
       
-      // 根據滑鼠位置找到最近的組
-      const closestGroup = this._getClosestGroup(e.clientY);
-      if (closestGroup) {
-        // 清除所有高亮
-        allGroups.forEach(g => g.classList.remove('drag-over'));
-        // 高亮最近的組
-        if (!closestGroup.classList.contains('dragging')) {
-          closestGroup.classList.add('drag-over');
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      
+      // 獲取初始位置和尺寸
+      startRect = group.getBoundingClientRect();
+      
+      // 創建佔位元素
+      placeholder = group.cloneNode(true);
+      placeholder.style.opacity = '0.3';
+      placeholder.style.pointerEvents = 'none';
+      placeholder.id = 'manual-drag-placeholder';
+      placeholder.classList.add('replace-extra-group'); // 保持相同的基本樣式
+      
+      // 設置拖曳中的組樣式
+      group.style.position = 'fixed';
+      group.style.zIndex = '1000';
+      group.style.width = `${startRect.width}px`;
+      group.style.left = `${startRect.left}px`;
+      group.style.top = `${startRect.top}px`;
+      group.style.backgroundColor = '#fff';
+      group.style.transform = 'scale(1.02)';
+      group.style.boxShadow = '0 4px 15px rgba(0,0,0,0.35)';
+      
+      // 將 placeholder 插入到 DOM 中 group 原本的位置
+      const container = group.parentElement;
+      container.insertBefore(placeholder, group);
+      
+      moveHandler = (e) => handleMouseMove(e, group, placeholder);
+      upHandler = () => handleMouseUp(group, placeholder);
+      
+      document.addEventListener('mousemove', moveHandler);
+      document.addEventListener('mouseup', upHandler);
+    });
+
+    const handleMouseMove = (e, group, placeholder) => {
+      if (!isDragging) return;
+      
+      // 計算新位置
+      const deltaYDragging = e.clientY - startY;
+      const deltaXDragging = e.clientX - startX; // 同時追蹤X方向的偏移
+      const newTop = startRect.top + deltaYDragging;
+      const newLeft = startRect.left + deltaXDragging;
+      
+      // 更新拖曳元素位置，保持X軸位置不變
+      group.style.top = `${newTop}px`;
+      group.style.left = `${startRect.left}px`; // 鎖定水平位置，避免偏移
+      
+      const container = group.parentElement;
+      const containerRect = container.getBoundingClientRect();
+      
+      // 取得佔位符與原始元素的相對位置
+      const placeholderRect = placeholder.getBoundingClientRect();
+      const groupRect = group.getBoundingClientRect();
+      
+      let nextSibling = null;
+      
+      // 判斷拖曳方向
+      if (placeholderRect.top < groupRect.top) {
+        // 佔位符在原始元素上方，往下拖
+        
+        // 只比較佔位符的下一列
+        const nextElement = placeholder.nextElementSibling;
+        
+        // 檢查下一元素是否為拖曳元素
+        if (nextElement === group) {
+          const nextNextElement = group.nextElementSibling;
+          
+          if (nextNextElement && nextNextElement.id !== 'manual-drag-placeholder') {
+            const nextElementRect = nextNextElement.getBoundingClientRect();
+            
+            // 如果滑鼠Y大於下下一列的頂邊界，把佔位符移到下下一列之前
+            if (e.clientY > nextElementRect.top) {
+              nextSibling = nextNextElement;
+            }
+          }
+        } else if (nextElement && nextElement.id !== 'manual-drag-placeholder') {
+          const nextElementRect = nextElement.getBoundingClientRect();
+          
+          // 如果滑鼠Y大於下一列的頂邊界，把佔位符移到下一列之後
+          if (e.clientY > nextElementRect.top) {
+            nextSibling = nextElement.nextElementSibling;
+          }
+        }
+      } else {
+        // 佔位符在原始元素下方，往上拖
+        
+        // 找出佔位符的前一列
+        let prevElement = null;
+        const siblings = Array.from(container.querySelectorAll('.replace-extra-group'));
+        for (let i = 0; i < siblings.length; i++) {
+          if (siblings[i] === placeholder && i > 0) {
+            prevElement = siblings[i-1];
+            break;
+          }
+        }
+        
+        // 檢查上一元素是否為拖曳元素
+        if (prevElement === group) {
+          // 尋找拖曳元素的前一個元素
+          for (let i = 0; i < siblings.length; i++) {
+            if (siblings[i] === group && i > 0) {
+              prevElement = siblings[i-1];
+              break;
+            }
+          }
+          
+          if (prevElement && prevElement.id !== 'manual-drag-placeholder') {
+            const prevElementRect = prevElement.getBoundingClientRect();
+            
+            // 如果滑鼠Y小於上上一列的底邊界，把佔位符移到上上一列之前
+            if (e.clientY < prevElementRect.bottom) {
+              nextSibling = prevElement;
+            }
+          }
+        } else if (prevElement && prevElement.id !== 'manual-drag-placeholder') {
+          const prevElementRect = prevElement.getBoundingClientRect();
+          
+          // 如果滑鼠Y小於上一列的底邊界，把佔位符移到上一列之前
+          if (e.clientY < prevElementRect.bottom) {
+            nextSibling = prevElement;
+          }
         }
       }
+      
+      // 如果需要移動佔位符
+      if (placeholder) {
+        const placeholderCurrentPosition = placeholder.nextSibling;
+        const needsMove = nextSibling !== null && 
+                         nextSibling !== placeholderCurrentPosition;
+        if (needsMove) {
+          container.insertBefore(placeholder, nextSibling);
+        }
+      }
+
+      // 處理容器滾動
+      const margin = 50;
+      const isInTopScrollZone = e.clientY - containerRect.top < margin && container.scrollTop > 0;
+      const isInBottomScrollZone = containerRect.bottom - e.clientY < margin && 
+                                container.scrollTop < container.scrollHeight - container.clientHeight;
+      
+      // 清除現有的滾動定時器
+      if (scrollInterval) {
+        clearInterval(scrollInterval);
+        scrollInterval = null;
+      }
+      
+      // 如果在滾動區域內，設置新的滾動定時器
+      if (isInTopScrollZone || isInBottomScrollZone) {
+        scrollInterval = setInterval(() => {
+          if (isInTopScrollZone) {
+            container.scrollTop -= 5;
+          } else if (isInBottomScrollZone) {
+            container.scrollTop += 5;
+          }
+        }, 16); // 約60fps的滾動速率
+      }
     };
 
-    const handleContainerDrop = (e) => {
-      e.preventDefault();
-      const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+    const handleMouseUp = (group, placeholder) => {
+      if (!isDragging) return;
+      isDragging = false;
       
-      // 根據滑鼠位置計算目標索引
-      const toIndex = this._getDropIndex(e.clientY);
-      
-      if (fromIndex !== toIndex && toIndex !== -1) {
-        this._reorderExtraGroups(fromIndex, toIndex);
+      // 清除滾動定時器
+      if (scrollInterval) {
+        clearInterval(scrollInterval);
+        scrollInterval = null;
       }
       
-      document.querySelectorAll('.replace-extra-group').forEach(g => {
-        g.classList.remove('dragging', 'drag-over');
-      });
+      // 恢復組的樣式
+      group.style.position = '';
+      group.style.zIndex = '';
+      group.style.width = '';
+      group.style.left = '';
+      group.style.top = '';
+      group.style.transform = '';
+      group.style.boxShadow = '';
+      group.style.backgroundColor = '';
+      
+      // 移動到新位置
+      const container = group.parentElement;
+      if (placeholder && container.contains(placeholder)) {
+        container.insertBefore(group, placeholder);
+        placeholder.remove();
+        
+        // 獲取所有 extra 組，建立新的順序陣列
+        const groups = Array.from(container.querySelectorAll('.replace-extra-group'));
+        const newExtraGroups = groups.map(groupElement => {
+          const fromInput = groupElement.querySelector('.replace-input');
+          const toInput = groupElement.querySelector('.replace-input:last-of-type');
+          return {
+            from: fromInput ? fromInput.value : '',
+            to: toInput ? toInput.value : ''
+          };
+        });
+        
+        // 更新資料模型中的順序
+        this._rules.extraGroups = newExtraGroups;
+        
+        // 保存新順序
+        this._saveRules();
+        
+        // 更新預覽（因為組的索引改變了）
+        this._updatePreviews();
+      }
+      
+      // 移除事件監聽器
+      if (moveHandler) {
+        document.removeEventListener('mousemove', moveHandler);
+        moveHandler = null;
+      }
+      if (upHandler) {
+        document.removeEventListener('mouseup', upHandler);
+        upHandler = null;
+      }
     };
-
-    const handleContainerDragLeave = (e) => {
-      // 只有真正離開容器時才清除高亮
-      if (!container.contains(e.relatedTarget)) {
-        allGroups.forEach(g => g.classList.remove('drag-over'));
-      }
-    };
-
-    // 添加容器事件監聽器
-    container._dragOverHandler = handleContainerDragOver;
-    container._dropHandler = handleContainerDrop;
-    container._dragLeaveHandler = handleContainerDragLeave;
-    
-    container.addEventListener('dragover', handleContainerDragOver);
-    container.addEventListener('drop', handleContainerDrop);
-    container.addEventListener('dragleave', handleContainerDragLeave);
   },
-
-  /** 根據Y座標找到最近的組 */
-  _getClosestGroup(y) {
-    const groups = Array.from(document.querySelectorAll('.replace-extra-group'));
-    let closestGroup = null;
-    let closestDistance = Infinity;
-
-    groups.forEach(group => {
-      const rect = group.getBoundingClientRect();
-      const groupCenter = rect.top + rect.height / 2;
-      const distance = Math.abs(y - groupCenter);
-      
-      if (distance < closestDistance) {
-        closestDistance = distance;
-        closestGroup = group;
-      }
-    });
-
-    return closestGroup;
-  },
-
-  /** 根據Y座標計算放置索引 */
-  _getDropIndex(y) {
-    const groups = Array.from(document.querySelectorAll('.replace-extra-group'));
-    
-    // 如果沒有組，返回0
-    if (groups.length === 0) return 0;
-    
-    // 檢查是否在第一個組之前
-    const firstRect = groups[0].getBoundingClientRect();
-    if (y < firstRect.top + firstRect.height / 2) {
-      return 0;
-    }
-    
-    // 檢查每個組之間的位置
-    for (let i = 0; i < groups.length - 1; i++) {
-      const currentRect = groups[i].getBoundingClientRect();
-      const nextRect = groups[i + 1].getBoundingClientRect();
-      
-      if (y >= currentRect.top + currentRect.height / 2 && 
-          y < nextRect.top + nextRect.height / 2) {
-        return i + 1;
-      }
-    }
-    
-    // 如果在最後一個組之後
-    return groups.length;
-  },
-
-  /** 清理拖放區域 */
-  _cleanupDropZones() {
-    const container = document.querySelector('.manual-replace-container');
-    if (container) {
-      if (container._dragOverHandler) {
-        container.removeEventListener('dragover', container._dragOverHandler);
-        delete container._dragOverHandler;
-      }
-      if (container._dropHandler) {
-        container.removeEventListener('drop', container._dropHandler);
-        delete container._dropHandler;
-      }
-      if (container._dragLeaveHandler) {
-        container.removeEventListener('dragleave', container._dragLeaveHandler);
-        delete container._dragLeaveHandler;
-      }
-    }
-    
-    const allGroups = document.querySelectorAll('.replace-extra-group');
-    allGroups.forEach(group => {
-      group.classList.remove('drag-over');
-    });
-  },
-
-  /** 重新排序額外組 */
-  _reorderExtraGroups(fromIndex, toIndex) {
-    if (fromIndex === toIndex) return;
-
-    // 調整目標索引（如果從較小索引移到較大索引，需要減1）
-    const adjustedToIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
-
-    // 重新排列陣列
-    const item = this._rules.extraGroups.splice(fromIndex, 1)[0];
-    this._rules.extraGroups.splice(adjustedToIndex, 0, item);
-
-    // 重新渲染所有組
-    this._rerenderExtraGroups();
-    
-    // 保存更新後的規則
-    this._saveRules();
-    
-    // 更新預覽（因為組的索引改變了）
-    this._updatePreviews();
-  }
 };
 
 window.ManualReplaceManager = ManualReplaceManager; 

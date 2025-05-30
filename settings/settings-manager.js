@@ -139,7 +139,18 @@ class FileManager {
         if (Array.isArray(value) && 
             key.includes('ReplaceRules') && 
             value.some(item => typeof item === 'object')) {
-          return value.filter(item => item && typeof item === 'object');
+          // 過濾掉無效的替換規則項
+          return value.filter(item => {
+            // 移除空值或完全空的物件
+            if (!item || typeof item !== 'object') return false;
+            
+            // 確保至少包含一個有效屬性
+            return Object.values(item).some(propValue => 
+              propValue !== undefined && 
+              propValue !== null && 
+              (typeof propValue !== 'string' || propValue.trim() !== '')
+            );
+          });
         }
         return value;
       };

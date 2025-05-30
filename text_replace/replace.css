@@ -45,7 +45,6 @@
   display: flex;
   gap: 6px;
   align-items: center;
-  margin-left: -11px;
 }
 
 /* 自動替換組樣式 */
@@ -53,13 +52,12 @@
   display: none;
   gap: 6px;
   align-items: center;
-  margin-left: -11px;
 }
 
 /* ===== 拖動圖示 ===== */
 .replace-drag-handle {
   position: absolute;
-  left: -26px;
+  left: -16px;
   top: 0;
   display: flex;
   align-items: center;
@@ -379,6 +377,8 @@
 }
 
 /* ===== 拖移排序視覺反饋樣式 ===== */
+/* 刪除舊版拖移相關的樣式，因為已經改用新的拖移實現 */
+/* 
 .replace-extra-group.dragging {
   opacity: 0.5;
   transition: opacity 0.2s ease;
@@ -388,7 +388,19 @@
   border-radius: 4px;
   animation: dragOverFadeIn 0.5s ease forwards;
 }
+*/
 
+/* 新增拖曳中佔位符樣式 */
+#manual-drag-placeholder {
+  border-radius: 4px;
+  /* 移除虛線邊框 */
+  /* border: 2px dashed rgba(91, 140, 219, 0.5); */
+  /* 移除背景色 */
+  /* background-color: rgba(91, 140, 219, 0.1); */
+}
+
+/* 刪除舊版拖移動畫 */
+/*
 @keyframes dragOverFadeIn {
   from {
     background-color: rgba(91, 140, 219, 0);
@@ -399,4 +411,5 @@
     outline: 2px dashed #5b8cdb;
   }
 }
+*/
  
