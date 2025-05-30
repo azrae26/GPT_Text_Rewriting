@@ -125,7 +125,7 @@ const Notification = {
         batchElement.textContent = currentBatch;
         const titleElement = this.notificationElement.querySelector('.notification-title');
         if (titleElement) {
-          titleElement.textContent = translationPhase;
+          titleElement.textContent = isTranslation ? translationPhase : isGeneration ? generationPhase : '正在改寫';
         }
         
         // 更新進度條
@@ -152,6 +152,52 @@ const Notification = {
         }
         return;
       }
+    }
+
+    // 如果通知元素已存在且是翻譯/生成相關的更新，只更新標題和信息區域
+    if (this.notificationElement && isLoading && (isTranslation || isGeneration)) {
+      const titleElement = this.notificationElement.querySelector('.notification-title');
+      const infoElement = this.notificationElement.querySelector('.notification-info');
+      
+      if (titleElement) {
+        titleElement.textContent = isTranslation ? translationPhase : generationPhase;
+      }
+      
+      if (infoElement) {
+        infoElement.innerHTML = `
+          模型: ${modelName}<br>
+          API KEY: ${apiKeyPrefix}
+        `;
+      }
+      
+      // 如果有批次進度，也要更新
+      if (currentBatch) {
+        const batchElement = this.notificationElement.querySelector('.current-batch');
+        if (batchElement) {
+          batchElement.textContent = currentBatch;
+        }
+        
+        // 更新進度條
+        const progressBar = this.notificationElement.querySelector('.progress-bar');
+        if (progressBar) {
+          const totalBatchesNum = parseInt(totalBatches);
+          const stepsPerBatch = isTranslation ? 3 : 7;
+          const totalSegments = totalBatchesNum * stepsPerBatch;
+          progressBar.innerHTML = Array.from({ length: totalSegments }, (_, i) => {
+            const isCompleted = i < (isTranslation ? window.TranslateManager.completedStepsCount : window.GenerationManager.completedStepsCount);
+            return `<div class="progress-segment ${isCompleted ? 'completed' : ''}"></div>`;
+          }).join('');
+        }
+      }
+      
+      return new Promise((resolve) => {
+        // 更新當前讀秒顯示
+        const countdownElement = document.getElementById('countdown');
+        if (countdownElement) {
+          countdownElement.textContent = this.currentCount;
+        }
+        resolve();
+      });
     }
 
     // 重建完整的通知內容

@@ -41,11 +41,11 @@ window.TranslateConfig = {
   
   // 階段標識符
   STAGES: {
-    INITIAL: 'TRANS_INITIAL',
-    REFLECT: 'TRANS_REFLECT',
-    OPTIMIZE: 'TRANS_OPTIMIZE',
-    COMPLETED: 'TRANS_COMPLETED',
-    CANCELLED: 'TRANS_CANCELLED'
+    INITIAL: '初步翻譯中',
+    REFLECT: '反思翻譯中',
+    OPTIMIZE: '優化翻譯中',
+    COMPLETED: '翻譯完成',
+    CANCELLED: '翻譯已取消'
   }
 };
 
@@ -56,6 +56,7 @@ window.TranslateManager = {
   translationQueue: [],
   pendingTranslations: new Map(),
   completedTranslations: new Set(),
+  failedTranslations: new Set(), // 新增：追蹤失敗的批次
   translationResults: {
     initial: new Map(),    // 初始翻譯結果
     reflection: new Map(),  // 反思結果
@@ -67,6 +68,8 @@ window.TranslateManager = {
   timeoutId: null,
   isLastBatchProcessed: false,
   batchInterval: 5000, // 預設間隔為5秒
+  finalRetryAttempts: 0, // 新增：追蹤最終重試次數
+  maxFinalRetries: 3, // 新增：最大最終重試次數
   removeHashCheckbox: null,
   removeStarCheckbox: null,
   selectionStart: null, // 新增：保存選取開始位置
@@ -84,7 +87,14 @@ window.TranslateManager = {
   },
 
   /**
-   * 檢查是否所有批次都已完成
+   * 檢查是否所有批次都已處理完成（包括失敗的）
+   */
+  isAllBatchesProcessed() {
+    return (this.completedTranslations.size + this.failedTranslations.size) === this.totalBatches;
+  },
+
+  /**
+   * 檢查是否所有批次都已成功完成
    */
   isAllBatchesCompleted() {
     return this.completedTranslations.size === this.totalBatches;
@@ -148,8 +158,10 @@ window.TranslateManager = {
       queueLength: this.translationQueue.length,
       pendingCount: this.pendingTranslations.size,
       completedCount: this.completedTranslations.size,
+      failedCount: this.failedTranslations.size,
       activeRequests: this.activeRequests?.size || 0,
-      completedStepsCount: this.completedStepsCount
+      completedStepsCount: this.completedStepsCount,
+      finalRetryAttempts: this.finalRetryAttempts
     });
 
     this.isTranslating = false;
@@ -158,6 +170,8 @@ window.TranslateManager = {
     this.translationQueue = [];
     this.pendingTranslations.clear();
     this.completedTranslations.clear();
+    this.failedTranslations.clear(); // 新增：清除失敗追蹤
+    this.finalRetryAttempts = 0; // 新增：重置重試計數
     this.completedStepsCount = 0;
     // 清除所有階段的翻譯結果
     this.translationResults.initial.clear();
@@ -191,6 +205,7 @@ window.TranslateManager = {
       queueLength: this.translationQueue.length,
       pendingCount: this.pendingTranslations.size,
       completedCount: this.completedTranslations.size,
+      failedCount: this.failedTranslations.size,
       activeRequests: this.activeRequests.size
     });
   },
@@ -506,7 +521,12 @@ window.TranslateManager = {
       const apiKey = settings.apiKeys[apiKeyName];
 
       // 顯示反思階段的通知
-      const reflectionNotification = await window.Notification.showNotification(`正在進行翻譯反思 (段落 ${blockIndex + 1})`, true);
+      const reflectionNotification = await window.Notification.showNotification(`
+        模型: ${window.GlobalSettings.getModelDisplayName(finalModel)}<br>
+        API KEY: ${apiKey.substring(0, 5)}...<br>
+        ${TranslateConfig.STAGES.REFLECT}<br>
+        批次進度: ${blockIndex + 1}/${this.totalBatches}
+      `, true);
       
       const reflectionInstruction = settings.reflectInstruction || `請分析以下翻譯的品質，並指出可以改進的地方：
 
@@ -527,8 +547,6 @@ window.TranslateManager = {
         reflectionNotification,
         'reflect'
       );
-      
-      await window.Notification.removeNotification();
       
       console.log(`段落 ${blockIndex + 1} 反思完成:`, reflectionResult?.substring(0, 100) + '...');
       
@@ -689,36 +707,8 @@ window.TranslateManager = {
         this.pendingTranslations.delete(batchIndex);
         this.completedTranslations.add(batchIndex);
 
-        if (this.isAllBatchesCompleted()) {
-          console.log('所有翻譯批次已完成，開始分區塊反思和優化流程');
-          clearTimeout(this.timeoutId);
-
-          try {
-            const finalText = await this.processAllBlocks();
-            
-            // 立即重置按鈕狀態，不等通知
-            this.resetTranslation();
-            
-            // 最後顯示完成通知
-            await window.Notification.showNotification(TranslateConfig.STAGES.COMPLETED, false);
-          } catch (error) {
-            console.error('反思優化處理失敗:', error);
-            
-            // 即使出錯也要重置按鈕狀態
-            this.resetTranslation();
-            
-            await window.Notification.showNotification('反思優化處理失敗: ' + error.message, false);
-          }
-        } else {
-          // 如果還有未完成的批次，更新進度通知
-          await window.Notification.showNotification(`
-            模型: ${window.GlobalSettings.getModelDisplayName(finalModel)}<br>
-            API KEY: ${apiKey.substring(0, 5)}...<br>
-            ${TranslateConfig.STAGES.INITIAL}<br>
-            批次進度: ${this.completedTranslations.size}/${this.totalBatches}<br>
-            發送間隔: ${this.batchInterval/1000}秒
-          `, true);
-        }
+        // 檢查是否需要處理完成邏輯
+        await this.checkAndHandleCompletion(finalModel, apiKey, settings);
       }
     } catch (error) {
       if (error.message === '翻譯請求已取消') {
@@ -726,6 +716,19 @@ window.TranslateManager = {
       }
       console.error(`批次 ${batchIndex + 1} 翻譯錯誤:`, error);
       this.pendingTranslations.delete(batchIndex);
+      this.failedTranslations.add(batchIndex); // 新增：記錄失敗的批次
+      
+      // 檢查是否需要處理完成邏輯
+      try {
+        const settings = await window.GlobalSettings.loadSettings();
+        const model = settings.translateModel || window.GlobalSettings.getDefaultModel();
+        const apiType = window.GlobalSettings.getModelApiType(model);
+        const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(model);
+        const apiKey = settings.apiKeys[apiKeyName];
+        await this.checkAndHandleCompletion(model, apiKey, settings);
+      } catch (settingsError) {
+        console.error('獲取設定時發生錯誤:', settingsError);
+      }
     }
   },
 
@@ -965,6 +968,124 @@ window.TranslateManager = {
   },
 
   /**
+   * 檢查是否需要處理完成邏輯
+   */
+  async checkAndHandleCompletion(model, apiKey, settings) {
+    // 檢查是否所有批次都已處理完成（包括失敗的）
+    if (this.isAllBatchesProcessed()) {
+      clearTimeout(this.timeoutId);
+      
+      // 如果有失敗的批次且還沒達到重試上限，嘗試重試
+      if (this.failedTranslations.size > 0 && this.finalRetryAttempts < this.maxFinalRetries) {
+        console.log(`檢測到 ${this.failedTranslations.size} 個失敗批次，開始第 ${this.finalRetryAttempts + 1} 次最終重試`);
+        await window.Notification.showNotification(`
+          檢測到 ${this.failedTranslations.size} 個失敗批次<br>
+          開始第 ${this.finalRetryAttempts + 1}/${this.maxFinalRetries} 次重試<br>
+          等待 15 秒後開始...
+        `, true);
+        
+        // 等待 15 秒再開始重試
+        setTimeout(() => {
+          this.retryFailedBatches(model, apiKey, settings);
+        }, 15000);
+      } else if (this.isAllBatchesCompleted()) {
+        // 所有批次都成功完成，開始反思和優化
+        console.log('所有翻譯批次已完成，開始分區塊反思和優化流程');
+        try {
+          const finalText = await this.processAllBlocks();
+          this.resetTranslation();
+          await window.Notification.showNotification(TranslateConfig.STAGES.COMPLETED, false);
+        } catch (error) {
+          console.error('反思優化處理失敗:', error);
+          this.resetTranslation();
+          await window.Notification.showNotification('反思優化處理失敗: ' + error.message, false);
+        }
+      } else {
+        // 有些批次最終失敗了，結束流程
+        console.log(`翻譯完成，但有 ${this.failedTranslations.size} 個批次失敗`);
+        this.resetTranslation();
+        await window.Notification.showNotification(`
+          翻譯完成，但有 ${this.failedTranslations.size} 個批次失敗<br>
+          已達最大重試次數 (${this.maxFinalRetries})
+        `, false);
+      }
+    } else if (!this.isAllBatchesCompleted()) {
+      // 如果還有未完成的批次，更新進度通知
+      await window.Notification.showNotification(`
+        模型: ${window.GlobalSettings.getModelDisplayName(model)}<br>
+        API KEY: ${apiKey.substring(0, 5)}...<br>
+        ${TranslateConfig.STAGES.INITIAL}<br>
+        批次進度: ${this.completedTranslations.size}/${this.totalBatches}<br>
+        失敗: ${this.failedTranslations.size}<br>
+        發送間隔: ${this.batchInterval/1000}秒
+      `, true);
+    }
+  },
+
+  /**
+   * 重試失敗的批次
+   */
+  async retryFailedBatches(model, apiKey, settings) {
+    if (this.shouldCancel) {
+      console.log('翻譯已取消，停止重試');
+      return;
+    }
+
+    this.finalRetryAttempts++;
+    const failedIndexes = Array.from(this.failedTranslations);
+    console.log(`開始重試失敗的批次: [${failedIndexes.join(', ')}]`);
+
+    for (const batchIndex of failedIndexes) {
+      if (this.shouldCancel) {
+        console.log('翻譯已取消，停止重試');
+        break;
+      }
+
+      try {
+        const originalText = this.translationQueue[batchIndex];
+        console.log(`重試批次 ${batchIndex + 1}/${this.totalBatches}`);
+
+        await window.Notification.showNotification(`
+          重試失敗批次 ${batchIndex + 1}/${this.totalBatches}<br>
+          第 ${this.finalRetryAttempts}/${this.maxFinalRetries} 次重試
+        `, true);
+
+        // 獲取翻譯上下文
+        const context = await this.getTranslationContext();
+
+        const { endpoint, body } = TextProcessor._prepareApiConfig(
+          model,
+          originalText,
+          settings.translateInstruction,
+          context
+        );
+
+        const isGemini = model.startsWith('gemini');
+        const translatedText = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true);
+
+        // 重試成功，更新狀態
+        this.updateTranslatedText(batchIndex, translatedText.trim(), settings);
+        this.failedTranslations.delete(batchIndex);
+        this.completedTranslations.add(batchIndex);
+
+        console.log(`批次 ${batchIndex + 1} 重試成功`);
+
+        // 重試間隔20秒（除了最後一個）
+        if (batchIndex !== failedIndexes[failedIndexes.length - 1]) {
+          await new Promise(resolve => setTimeout(resolve, 20000));
+        }
+
+      } catch (error) {
+        console.error(`批次 ${batchIndex + 1} 重試失敗:`, error);
+        // 保持在失敗列表中
+      }
+    }
+
+    // 重試完成後，再次檢查完成狀態
+    await this.checkAndHandleCompletion(model, apiKey, settings);
+  },
+
+  /**
    * 處理所有區塊的反思和優化
    */
   async processAllBlocks() {
@@ -1084,5 +1205,5 @@ window.TranslateManager = {
         this.updateFinalText(text);
         break;
     }
-  }
+  },
 };
