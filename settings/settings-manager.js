@@ -133,7 +133,18 @@ class FileManager {
       // 在檔名加入時間戳記
       const filenameWithTimestamp = filename.replace('.json', `_${timestamp}.json`);
       
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      // 過濾掉 undefined 和 null 值，這對於 text_replace 模組特別重要
+      const replacer = (key, value) => {
+        // 如果是替換規則，確保它是完整的結構化數據
+        if (Array.isArray(value) && 
+            key.includes('ReplaceRules') && 
+            value.some(item => typeof item === 'object')) {
+          return value.filter(item => item && typeof item === 'object');
+        }
+        return value;
+      };
+      
+      const blob = new Blob([JSON.stringify(data, replacer, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       
       const a = document.createElement('a');

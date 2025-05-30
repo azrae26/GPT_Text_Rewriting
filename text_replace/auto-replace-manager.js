@@ -32,6 +32,19 @@ const AutoReplaceManager = {
   // 添加一個屬性來存儲當前的規則
   _activeRules: [],
 
+  // 工具函數 - 節流函數，減少函數執行頻率
+  throttle: function(fn, delay) {
+    let lastCall = 0;
+    return function(...args) {
+      const now = new Date().getTime();
+      if (now - lastCall < delay) {
+        return;
+      }
+      lastCall = now;
+      return fn(...args);
+    };
+  },
+
   /** UI 創建相關方法 */
   UI: {
     /** 創建拖曳把手 */
@@ -57,6 +70,17 @@ const AutoReplaceManager = {
       input.className = 'replace-input';
       input.rows = 1;
       
+      // 創建共用的測量用div
+      const measureDiv = document.createElement('div');
+      measureDiv.style.cssText = `
+        position: fixed;
+        visibility: hidden;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        padding: 6px 8px;
+      `;
+      document.body.appendChild(measureDiv);
+      
       // 添加輸入事件來自動調整高
       const adjustHeight = (element) => {
         const container = element.parentElement;
@@ -67,46 +91,39 @@ const AutoReplaceManager = {
           return;
         }
 
-        // 創建臨時元素來計算高度
-        const div = document.createElement('div');
-        div.style.cssText = `
-          position: fixed;
-          visibility: hidden;
-          width: ${element.offsetWidth - 16}px;
-          font: ${getComputedStyle(element).font};
-          line-height: ${getComputedStyle(element).lineHeight};
-          white-space: pre-wrap;
-          word-wrap: break-word;
-          padding: 6px 8px;
-        `;
+        // 更新測量元素的樣式
+        measureDiv.style.width = `${element.offsetWidth - 16}px`;
+        measureDiv.style.font = getComputedStyle(element).font;
+        measureDiv.style.lineHeight = getComputedStyle(element).lineHeight;
         
         // 設置內容
         const content = element.value || element.placeholder;
         const hasNewline = content.includes('\n');
         
-        div.textContent = content;
-        document.body.appendChild(div);
+        measureDiv.textContent = content;
         
         // 計算新高度
-        const newHeight = Math.max(32, div.offsetHeight + (hasNewline ? 20 : 0));
+        const newHeight = Math.max(32, measureDiv.offsetHeight + (hasNewline ? 20 : 0));
         container.style.height = `${newHeight}px`;
         element.style.whiteSpace = 'pre-wrap';
-        
-        // 移除臨時元素
-        div.remove();
       };
+
+      // 使用節流函數減少觸發頻率
+      const throttledAdjust = AutoReplaceManager.throttle((element) => {
+        adjustHeight(element);
+      }, 100);
 
       // 監聽事件
       input.addEventListener('input', function() {
         if (document.activeElement === this) {
-          requestAnimationFrame(() => adjustHeight(this));
+          throttledAdjust(this);
         }
       });
 
       // 監聽 Enter 鍵事件
       input.addEventListener('keydown', function(e) {
         if (e.key === 'Enter' && document.activeElement === this) {
-          requestAnimationFrame(() => adjustHeight(this));
+          throttledAdjust(this);
         }
       });
 
@@ -128,6 +145,12 @@ const AutoReplaceManager = {
 
       // 將輸入框添加到容器中
       container.appendChild(input);
+      
+      // 在視窗關閉時清理測量元素
+      window.addEventListener('beforeunload', () => {
+        measureDiv.remove();
+      }, { once: true });
+      
       return container;
     },
 
@@ -274,8 +297,10 @@ const AutoReplaceManager = {
     let startY = 0;
     let startRect = null;
     let placeholder = null;
-    let groups = null;
-    let startIndex = 0;
+    let initialSiblingGroups = null;
+    let moveHandler = null;
+    let upHandler = null;
+    let scrollInterval = null;  // 新增：滾動定時器
 
     handle.addEventListener('mousedown', (e) => {
       e.preventDefault();
@@ -285,15 +310,15 @@ const AutoReplaceManager = {
       // 獲取初始位置和尺寸
       startRect = group.getBoundingClientRect();
       
-      // 獲取所有組
+      // 獲取所有可拖曳的兄弟組 (不包含當前拖曳的組)
       const container = group.parentElement;
-      groups = Array.from(container.querySelectorAll('.auto-replace-group'));
-      startIndex = groups.indexOf(group);
+      initialSiblingGroups = Array.from(container.querySelectorAll('.auto-replace-group')).filter(g => g !== group);
       
       // 創建佔位元素
       placeholder = group.cloneNode(true);
       placeholder.style.opacity = '0.3';
       placeholder.style.pointerEvents = 'none';
+      placeholder.id = 'drag-placeholder'; // 添加唯一ID便於識別
       
       // 設置拖曳中的組樣式
       group.style.position = 'fixed';
@@ -303,90 +328,174 @@ const AutoReplaceManager = {
       group.style.top = `${startRect.top}px`;
       group.style.backgroundColor = '#fff';
       group.style.transform = 'scale(1.02)';
-      group.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
+      group.style.boxShadow = '0 4px 15px rgba(0,0,0,0.35)';
       
+      // 將 placeholder 插入到 DOM 中 group 原本的位置
       container.insertBefore(placeholder, group);
       
-      // 更新 groups 陣列，將 placeholder 加入
-      const placeholderIndex = groups.indexOf(group);
-      groups.splice(placeholderIndex, 0, placeholder);
+      moveHandler = (e) => handleMouseMove(e);
+      upHandler = () => handleMouseUp();
       
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
+      document.addEventListener('mousemove', moveHandler);
+      document.addEventListener('mouseup', upHandler);
     });
 
     const handleMouseMove = (e) => {
       if (!isDragging) return;
       
       // 計算新位置
-      const deltaY = e.clientY - startY;
-      const newTop = startRect.top + deltaY;
+      const deltaYDragging = e.clientY - startY;
+      const newTop = startRect.top + deltaYDragging;
       group.style.top = `${newTop}px`;
       
-      // 計算當前位置
       const container = group.parentElement;
       const containerRect = container.getBoundingClientRect();
-      const relativeY = e.clientY - containerRect.top;
       
-      // 找到最接近的目標位置
-      let targetIndex = -1;
-      let minDistance = Infinity;
+      // 取得佔位符與原始元素的相對位置
+      const placeholder = document.getElementById('drag-placeholder');
+      const placeholderRect = placeholder.getBoundingClientRect();
+      const groupRect = group.getBoundingClientRect();
       
-      groups.forEach((item, index) => {
-        if (item === group || item === placeholder) return;
+      let nextSibling = null;
+      
+      // 判斷拖曳方向
+      if (placeholderRect.top < groupRect.top) {
+        // 佔位符在原始元素上方，往下拖
+        console.log('往下拖曳，滑鼠Y:', e.clientY);
         
-        const itemRect = item.getBoundingClientRect();
-        // 修改：使用項目的頂部位置而不是中點
-        const itemTop = itemRect.top - containerRect.top;
-        // 修改：降低距離判斷的門檻
-        const distance = Math.abs(relativeY - itemTop);
+        // 只比較佔位符的下一列
+        const nextElement = placeholder.nextElementSibling;
+        console.log('下一元素:', nextElement ? (nextElement.id || '普通元素') : '無');
         
-        // 修改：降低最小距離的門檻，讓更容易觸發
-        if (distance < minDistance && distance < itemRect.height) {
-          minDistance = distance;
-          targetIndex = index;
+        // 檢查下一元素是否為拖曳元素
+        if (nextElement === group) {
+          console.log('下一元素是拖曳元素，檢查下下一元素');
+          const nextNextElement = group.nextElementSibling;
+          
+          if (nextNextElement && nextNextElement.id !== 'drag-placeholder') {
+            const nextElementRect = nextNextElement.getBoundingClientRect();
+            console.log(`比較滑鼠Y(${e.clientY}) > 下下一列頂(${nextElementRect.top}) ?`, e.clientY > nextElementRect.top);
+            
+            // 如果滑鼠Y大於下下一列的頂邊界，把佔位符移到下下一列之前
+            if (e.clientY > nextElementRect.top) {
+              nextSibling = nextNextElement;
+              console.log('滑鼠超過下下一列頂部，移動佔位符');
+            }
+          } else {
+            console.log('沒有下下一列或者是佔位符，保持不變');
+          }
+        } else if (nextElement && nextElement.id !== 'drag-placeholder') {
+          const nextElementRect = nextElement.getBoundingClientRect();
+          console.log(`比較滑鼠Y(${e.clientY}) > 下一列頂(${nextElementRect.top}) ?`, e.clientY > nextElementRect.top);
+          
+          // 如果滑鼠Y大於下一列的頂邊界，把佔位符移到下一列之後
+          if (e.clientY > nextElementRect.top) {
+            nextSibling = nextElement.nextElementSibling;
+            console.log('滑鼠超過下一列頂部，移動佔位符');
+          }
+        } else {
+          console.log('沒有有效的下一列，保持佔位符位置不變');
         }
-      });
+      } else {
+        // 佔位符在原始元素下方，往上拖
+        console.log('往上拖曳，滑鼠Y:', e.clientY);
+        
+        // 找出佔位符的前一列
+        let prevElement = null;
+        const siblings = Array.from(container.querySelectorAll('.auto-replace-group'));
+        for (let i = 0; i < siblings.length; i++) {
+          if (siblings[i] === placeholder && i > 0) {
+            prevElement = siblings[i-1];
+            break;
+          }
+        }
+        
+        console.log('上一元素:', prevElement ? (prevElement.id || '普通元素') : '無');
+        
+        // 檢查上一元素是否為拖曳元素
+        if (prevElement === group) {
+          console.log('上一元素是拖曳元素，檢查上上一元素');
+          // 尋找拖曳元素的前一個元素
+          for (let i = 0; i < siblings.length; i++) {
+            if (siblings[i] === group && i > 0) {
+              prevElement = siblings[i-1];
+              break;
+            }
+          }
+          
+          if (prevElement && prevElement.id !== 'drag-placeholder') {
+            const prevElementRect = prevElement.getBoundingClientRect();
+            console.log(`比較滑鼠Y(${e.clientY}) < 上上一列底(${prevElementRect.bottom}) ?`, e.clientY < prevElementRect.bottom);
+            
+            // 如果滑鼠Y小於上上一列的底邊界，把佔位符移到上上一列之前
+            if (e.clientY < prevElementRect.bottom) {
+              nextSibling = prevElement;
+              console.log('滑鼠低於上上一列底部，移動佔位符');
+            }
+          } else {
+            console.log('沒有上上一列或者是佔位符，保持不變');
+          }
+        } else if (prevElement && prevElement.id !== 'drag-placeholder') {
+          const prevElementRect = prevElement.getBoundingClientRect();
+          console.log(`比較滑鼠Y(${e.clientY}) < 上一列底(${prevElementRect.bottom}) ?`, e.clientY < prevElementRect.bottom);
+          
+          // 如果滑鼠Y小於上一列的底邊界，把佔位符移到上一列之前
+          if (e.clientY < prevElementRect.bottom) {
+            nextSibling = prevElement;
+            console.log('滑鼠低於上一列底部，移動佔位符');
+          }
+        } else {
+          console.log('沒有有效的上一列，保持佔位符位置不變');
+        }
+      }
       
-      // 移動佔位元素
-      if (targetIndex !== -1) {
-        const targetGroup = groups[targetIndex];
-        // 修改：簡化插入位置的判斷
-        // 如果當拖動元素的中心點超過目標元素的 50% 高度時，插入到前面
-        const shouldInsertBefore = relativeY < 
-          targetGroup.getBoundingClientRect().top - containerRect.top + 
-          (targetGroup.offsetHeight * 0.5); // 降低到 50% 的高度就觸發
-        
-        // 從當前位置移除 placeholder
-        placeholder.remove();
-        
-        // 插入到新位置
-        container.insertBefore(
-          placeholder, 
-          shouldInsertBefore ? targetGroup : targetGroup.nextSibling
-        );
-        
-        // 更新 groups 陣列中 placeholder 的位置
-        const oldIndex = groups.indexOf(placeholder);
-        const newIndex = shouldInsertBefore ? targetIndex : targetIndex + 1;
-        if (oldIndex !== -1 && oldIndex !== newIndex) {
-          groups.splice(oldIndex, 1);
-          groups.splice(newIndex, 0, placeholder);
+      // 獲取佔位符
+      if (placeholder) {
+        const placeholderCurrentPosition = placeholder.nextSibling;
+        const needsMove = nextSibling !== null && 
+                          nextSibling !== placeholderCurrentPosition;
+        if (needsMove) {
+          console.log(`移動佔位符: 從 ${placeholderCurrentPosition ? placeholderCurrentPosition.id || '元素' : '尾部'} 到 ${nextSibling ? nextSibling.id || '元素' : '尾部'}`);
+          container.insertBefore(placeholder, nextSibling);
+          console.log('佔位符已移動到新位置');
+        } else {
+          console.log('佔位符位置無需變更');
         }
       }
 
-      // 處理容器滾動
+      // 處理容器滾動 - 改用定時器處理
       const margin = 100;
-      if (e.clientY - containerRect.top < margin) {
-        container.scrollTop -= 10;
-      } else if (containerRect.bottom - e.clientY < margin) {
-        container.scrollTop += 10;
+      const isInTopScrollZone = e.clientY - containerRect.top < margin && container.scrollTop > 0;
+      const isInBottomScrollZone = containerRect.bottom - e.clientY < margin && 
+                                 container.scrollTop < container.scrollHeight - container.clientHeight;
+      
+      // 清除現有的滾動定時器，
+      if (scrollInterval) {
+        clearInterval(scrollInterval);
+        scrollInterval = null;
+      }
+      
+      // 如果在滾動區域內，設置新的滾動定時器
+      if (isInTopScrollZone || isInBottomScrollZone) {
+        scrollInterval = setInterval(() => {
+          if (isInTopScrollZone) {
+            container.scrollTop -= 5;
+          } else if (isInBottomScrollZone) {
+            container.scrollTop += 5;
+          }
+        }, 16); // 約60fps的滾動速率
       }
     };
 
     const handleMouseUp = () => {
       if (!isDragging) return;
       isDragging = false;
+      
+      // 清除滾動定時器
+      if (scrollInterval) {
+        clearInterval(scrollInterval);
+        scrollInterval = null;
+      }
       
       // 恢復組的樣式
       group.style.position = '';
@@ -399,14 +508,25 @@ const AutoReplaceManager = {
       
       // 移動到新位置
       const container = group.parentElement;
-      container.insertBefore(group, placeholder);
-      placeholder.remove();
+      const placeholder = document.getElementById('drag-placeholder');
+      if (placeholder && container.contains(placeholder)) {
+        // 防止最後一次不必要的閃爍，先移除拖曳元素的視覺效果，再執行位置調整
+        container.insertBefore(group, placeholder);
+        placeholder.remove();
+      }
       
       // 保存新順序
       this.saveAutoReplaceRules(container);
       
-      document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      // 移除事件監聽器，防止內存洩漏
+      if (moveHandler) {
+        document.removeEventListener('mousemove', moveHandler);
+        moveHandler = null;
+      }
+      if (upHandler) {
+        document.removeEventListener('mouseup', upHandler);
+        upHandler = null;
+      }
     };
   },
 
@@ -532,12 +652,20 @@ const AutoReplaceManager = {
     let changed = false;
     let totalChanges = 0;
     let replacementDetails = [];
+    let regexCache = new Map(); // 正則表達式緩存
 
     const rules = this._getActiveRules();
     
     rules.forEach(rule => {
         try {
-            const regex = this.createRegex(rule.from);
+            const fromText = rule.from;
+            // 優先使用緩存中的正則表達式
+            let regex = regexCache.get(fromText);
+            if (!regex) {
+                regex = this.createRegex(fromText);
+                regexCache.set(fromText, regex); // 緩存新創建的正則表達式
+            }
+            
             const matches = text.match(regex);
             
             if (matches) {

@@ -28,58 +28,154 @@ const ReplaceManager = {
 
   /** 初始化替換介面 */
   initializeReplaceUI() {
-    // 先檢查是否應該啟用功能
-    if (!window.shouldEnableFeatures()) {
-      console.log('不在目標頁面，移除UI');
+    try {
+      // 先檢查是否應該啟用功能
+      if (!window.shouldEnableFeatures()) {
+        console.log('不在目標頁面，移除UI');
+        this.removeReplaceUI();
+        return;
+      }
+
+      // 先移除所有現有的UI元素
       this.removeReplaceUI();
-      return;
+
+      const textArea = document.querySelector('textarea[name="content"]');
+      if (!textArea) {
+        console.error('找不到文本區域元素');
+        return;
+      }
+
+      // 創建主組容器（第一組）
+      const mainContainer = document.createElement('div');
+      mainContainer.id = 'text-replace-main';
+      mainContainer.className = 'replace-controls-main';
+
+      // 創建其他組容器（第二組和自動組）
+      const otherContainer = document.createElement('div');
+      otherContainer.id = 'text-replace-container';
+      otherContainer.className = 'replace-controls';
+
+      // 載入儲存的位置，如果沒有則使用預設位置
+      this._loadContainerPosition(otherContainer);
+
+      // 添加拖動圖示
+      otherContainer.appendChild(document.createElement('div')).className = 'replace-drag-handle';
+
+      // 初始化替換組
+      Promise.all([
+        this._initializeManualGroups(mainContainer, otherContainer, textArea),
+        this._initializeAutoGroups(otherContainer, textArea)
+      ]).then(() => {
+        console.log('所有替換組初始化完成');
+      }).catch(error => {
+        console.error('初始化替換組時出錯:', error);
+      });
+
+      // 在創建其他組容器後，添加大型輸入框事件處理
+      this._initializeLargeInputFeature(otherContainer);
+
+      // 插入到頁面
+      if (textArea.parentElement) {
+        textArea.parentElement.insertBefore(mainContainer, textArea);
+      }
+      document.body.appendChild(otherContainer);
+
+      // 簡化的拖動功能
+      this._initializeDragFeature(otherContainer);
+
+      console.log('替換介面初始化完成');
+      
+      // 設置 MutationObserver 監控文本區域，處理動態變化
+      this._setupTextAreaObserver(textArea);
+      
+      return { mainContainer, otherContainer };
+    } catch (error) {
+      console.error('初始化替換介面時出錯:', error);
+      // 嘗試清理已創建的元素
+      this.removeReplaceUI();
+      return null;
     }
-
-    // 先移除所有現有的UI元素
-    this.removeReplaceUI();
-
-    const textArea = document.querySelector('textarea[name="content"]');
-    if (!textArea) {
-      console.log('找不到文本區域元素');
-      return;
+  },
+  
+  /** 載入容器位置 */
+  _loadContainerPosition(container) {
+    try {
+      chrome.storage.sync.get([this.CONFIG.STORAGE_KEY], (result) => {
+        if (chrome.runtime.lastError) {
+          console.warn('載入位置設定時出錯:', chrome.runtime.lastError);
+          container.style.cssText = 'right: 20px; top: 20px;';
+          return;
+        }
+        
+        const position = result[this.CONFIG.STORAGE_KEY];
+        container.style.cssText = position 
+          ? `left: ${position.left}px; top: ${position.top}px;`
+          : 'right: 20px; top: 20px;';
+      });
+    } catch (error) {
+      console.error('載入容器位置時出錯:', error);
+      container.style.cssText = 'right: 20px; top: 20px;';
     }
-
-    // 創建主組容器（第一組）
-    const mainContainer = document.createElement('div');
-    mainContainer.id = 'text-replace-main';
-    mainContainer.className = 'replace-controls-main';
-
-    // 創建其他組容器（第二組和自動組）
-    const otherContainer = document.createElement('div');
-    otherContainer.id = 'text-replace-container';
-    otherContainer.className = 'replace-controls';
-
-    // 載入儲存的位置，如果沒有則使用預設位置
-    chrome.storage.sync.get([this.CONFIG.STORAGE_KEY], (result) => {
-      const position = result[this.CONFIG.STORAGE_KEY];
-      otherContainer.style.cssText = position 
-        ? `left: ${position.left}px; top: ${position.top}px;`
-        : 'right: 20px; top: 20px;';
+  },
+  
+  /** 初始化手動替換組 */
+  _initializeManualGroups(mainContainer, otherContainer, textArea) {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!window.ManualReplaceManager) {
+          reject(new Error('找不到 ManualReplaceManager 模組'));
+          return;
+        }
+        
+        window.ManualReplaceManager.initializeManualGroups(mainContainer, otherContainer, textArea);
+        resolve();
+      } catch (error) {
+        console.error('初始化手動替換組時出錯:', error);
+        reject(error);
+      }
     });
-
-    // 添加拖動圖示
-    otherContainer.appendChild(document.createElement('div')).className = 'replace-drag-handle';
-
-    // 初始化替換組
-    window.ManualReplaceManager.initializeManualGroups(mainContainer, otherContainer, textArea);
-    window.AutoReplaceManager.initializeAutoReplaceGroups(otherContainer, textArea);
-
-    // 在創建其他組容器後，添加大型輸入框事件處理
-    this._initializeLargeInputFeature(otherContainer);
-
-    // 插入到頁面
-    textArea.parentElement.insertBefore(mainContainer, textArea);
-    document.body.appendChild(otherContainer);
-
-    // 簡化的拖動功能
-    this._initializeDragFeature(otherContainer);
-
-    console.log('替換介面初始化完成');
+  },
+  
+  /** 初始化自動替換組 */
+  _initializeAutoGroups(otherContainer, textArea) {
+    return new Promise((resolve, reject) => {
+      try {
+        if (!window.AutoReplaceManager) {
+          reject(new Error('找不到 AutoReplaceManager 模組'));
+          return;
+        }
+        
+        window.AutoReplaceManager.initializeAutoReplaceGroups(otherContainer, textArea);
+        resolve();
+      } catch (error) {
+        console.error('初始化自動替換組時出錯:', error);
+        reject(error);
+      }
+    });
+  },
+  
+  /** 設置文本區域觀察器 */
+  _setupTextAreaObserver(textArea) {
+    // 如果頁面上的文本區域被替換，重新初始化
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        if (mutation.type === 'childList' && mutation.removedNodes.contains(textArea)) {
+          console.log('文本區域被移除，重新初始化替換介面');
+          // 延遲執行以確保新的文本區域已經添加到頁面
+          setTimeout(() => this.initializeReplaceUI(), 500);
+          observer.disconnect();
+          break;
+        }
+      }
+    });
+    
+    // 監視文本區域的父元素
+    if (textArea.parentElement) {
+      observer.observe(textArea.parentElement, { 
+        childList: true, 
+        subtree: true 
+      });
+    }
   },
 
   /** 初始化拖動功能 */
@@ -416,80 +512,60 @@ const ReplaceManager = {
       onRulesSave = null   // 保存規則時的回調
     } = options;
 
-    const handleInput = (input) => {
-      console.group('處理輸入事件');
-      console.log('輸入框值:', {
-        from: fromInput.value,
-        to: toInput.value,
-        checked: checkbox?.checked
-      });
-
-      // 調用自定義的輸入處理函數
-      if (onInputChange) {
-        onInputChange(input);
-      }
-
-      // 保存規則
-      if (onRulesSave) {
-        onRulesSave(group.parentElement);
-      }
-      
-      // 只在 popup 頁面中發送消息
-      if (window.location.pathname.endsWith('popup.html')) {
-        console.log('準備發送消息到 content script');
-        chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-          if (tabs[0]) {
-            try {
-              // 獲取當前的規則
-              const container = group.parentElement;
-              const rules = Array.from(container.querySelectorAll('.auto-replace-group')).map(group => {
-                const containers = Array.from(group.children).filter(el => el.classList.contains('replace-input-container'));
-                const fromInput = containers[0]?.querySelector('.replace-input');
-                const toInput = containers[1]?.querySelector('.replace-input');
-                const checkbox = group.querySelector('.auto-replace-checkbox');
-                
-                return {
-                  from: fromInput?.value || '',
-                  to: toInput?.value || '',
-                  enabled: checkbox?.checked || false
-                };
-              });
-
-              console.log('準備發送的規則:', rules);
-
-              // 發送完整的規則列表
-              chrome.tabs.sendMessage(tabs[0].id, {
-                action: isManual ? "updateManualReplaceRules" : "updateAutoReplaceRules",
-                rules: rules
-              }, function(response) {
-                if (chrome.runtime.lastError) {
-                  console.debug('Content script 正在載入中...');
-                } else {
-                  console.log('消息發送成功:', response);
-                  // 發送觸發替換的消息
-                  chrome.tabs.sendMessage(tabs[0].id, {
-                    action: isManual ? "triggerManualReplace" : "triggerAutoReplace"
-                  });
-                }
-              });
-            } catch (error) {
-              console.error('發送消息時出錯:', error);
-            }
-          }
-        });
-      }
-      console.groupEnd();
+    // 防抖函數，延遲處理輸入事件
+    const debounce = (fn, delay) => {
+      let timer = null;
+      return function(...args) {
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(() => {
+          fn.apply(this, args);
+          timer = null;
+        }, delay);
+      };
     };
+
+    const handleInput = debounce((input) => {
+      try {
+        console.group('處理輸入事件');
+        console.log('輸入框值:', {
+          from: fromInput.value,
+          to: toInput.value,
+          checked: checkbox?.checked
+        });
+
+        // 調用自定義的輸入處理函數
+        if (onInputChange) {
+          onInputChange(input);
+        }
+
+        // 保存規則
+        if (onRulesSave) {
+          onRulesSave(group.parentElement);
+        }
+        
+        // 只在 popup 頁面中發送消息
+        if (window.location.pathname.endsWith('popup.html')) {
+          this._sendMessageToContentScript(group, isManual);
+        }
+        console.groupEnd();
+      } catch (error) {
+        console.error('處理輸入事件時出錯:', error);
+        console.groupEnd();
+      }
+    }, 300);
 
     // 為兩個輸入框添加輸入事件監聽
     [fromInput, toInput].forEach(input => {
-      let timeoutId = null;
+      // 使用事件代理，避免多次添加相同的事件監聽器
+      if (input.dataset.hasInputHandler) {
+        return;
+      }
+      
+      input.dataset.hasInputHandler = 'true';
+      
       input.addEventListener('input', () => {
         console.log('輸入事件觸發');
-        if (timeoutId) {
-          clearTimeout(timeoutId);
-        }
-        timeoutId = setTimeout(() => handleInput(input), 300);
+        handleInput(input);
       });
       
       // 失去焦點時也觸發更新
@@ -497,14 +573,73 @@ const ReplaceManager = {
         console.log('失去焦點事件觸發');
         handleInput(input);
       });
+      
+      // 同步自定義事件處理
+      input.addEventListener('value-sync', (e) => {
+        console.log('值同步事件觸發');
+        handleInput(input);
+      });
     });
 
     // 複選框事件
-    if (checkbox) {
+    if (checkbox && !checkbox.dataset.hasChangeHandler) {
+      checkbox.dataset.hasChangeHandler = 'true';
       checkbox.addEventListener('change', () => {
         console.log('複選框狀態改變:', checkbox.checked);
         handleInput(fromInput);
       });
+    }
+  },
+  
+  /** 發送消息到 content script */
+  _sendMessageToContentScript(group, isManual) {
+    try {
+      console.log('準備發送消息到 content script');
+      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+        if (!tabs[0]) {
+          console.log('找不到活動標籤頁');
+          return;
+        }
+        
+        try {
+          // 獲取當前的規則
+          const container = group.parentElement;
+          const rules = Array.from(container.querySelectorAll('.auto-replace-group')).map(group => {
+            const containers = Array.from(group.children).filter(el => el.classList.contains('replace-input-container'));
+            const fromInput = containers[0]?.querySelector('.replace-input');
+            const toInput = containers[1]?.querySelector('.replace-input');
+            const checkbox = group.querySelector('.auto-replace-checkbox');
+            
+            return {
+              from: fromInput?.value || '',
+              to: toInput?.value || '',
+              enabled: checkbox?.checked || false
+            };
+          });
+
+          console.log('準備發送的規則:', rules);
+
+          // 發送完整的規則列表
+          chrome.tabs.sendMessage(tabs[0].id, {
+            action: isManual ? "updateManualReplaceRules" : "updateAutoReplaceRules",
+            rules: rules
+          }, function(response) {
+            if (chrome.runtime.lastError) {
+              console.debug('Content script 正在載入中...');
+            } else {
+              console.log('消息發送成功:', response);
+              // 發送觸發替換的消息
+              chrome.tabs.sendMessage(tabs[0].id, {
+                action: isManual ? "triggerManualReplace" : "triggerAutoReplace"
+              });
+            }
+          });
+        } catch (error) {
+          console.error('發送消息時出錯:', error);
+        }
+      });
+    } catch (error) {
+      console.error('準備發送消息時出錯:', error);
     }
   },
 
