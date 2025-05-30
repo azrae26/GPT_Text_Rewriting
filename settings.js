@@ -663,19 +663,32 @@ const GlobalSettings = {
 
   // 檢查是否為需要使用 local storage 的設定
   isLocalStorageKey(key) {
-    // 檢查是否為已知的大型文本鍵名
-    if (this.LOCAL_STORAGE_KEYS.includes(key)) {
-      return true;
-    }
-    
-    // 檢查各種需要使用 local storage 的前綴
-    const localStoragePrefixes = [
-      'generation_settings_',  // 生成設定
-      'generation_',          // 生成相關
-      'instructions_',        // 指令相關
-    ];
-    
-    return localStoragePrefixes.some(prefix => key.startsWith(prefix));
+    // 檢查是否為需要使用 local storage 的大型設定
+    return (
+      // 檢查所有替換規則相關的鍵
+      key.startsWith('replace_') ||
+      key === 'autoReplaceRules' ||
+      key === 'manualReplaceRules' ||
+      
+      // 檢查其他大型文字內容
+      key.startsWith('instruction_') ||
+      key.startsWith('background_') ||
+      key.startsWith('custom_') ||
+      key.startsWith('template_') ||
+      key.startsWith('history_') ||
+      key === 'chatHistory' ||
+      key === 'defaultInstructions' ||
+      key === 'allInstructions' ||
+      key === 'recentInstructions' ||
+      key === 'defaultBackground' ||
+      key === 'allBackgrounds' ||
+      key === 'recentBackgrounds' ||
+      key === 'customInstructionGroups' ||
+      // 檢查是否包含大型文字的關鍵詞
+      key.includes('Content') ||
+      key.includes('Templates') ||
+      key.includes('Texts')
+    );
   },
 
   // 分類設定到不同的儲存類型
@@ -693,7 +706,33 @@ const GlobalSettings = {
       
       // 檢查是否為替換規則
       if (key.startsWith('replace_') || key === 'autoReplaceRules' || key === 'manualReplaceRules') {
-        replaceSettings[key.startsWith('replace_') ? key : `replace_${key}`] = value;
+        // 確保替換規則有統一的前綴 replace_
+        const formattedKey = key.startsWith('replace_') ? key : `replace_${key}`;
+        
+        // 檢查替換規則的格式並處理
+        if (Array.isArray(value)) {
+          // 過濾無效的替換規則項
+          const filteredValue = value.filter(item => {
+            if (!item || typeof item !== 'object') return false;
+            
+            // 處理自動替換規則（有 enabled 屬性）
+            if ('enabled' in item) {
+              // 啟用的規則必須有效，未啟用的規則可以保留
+              if (item.enabled) {
+                return item.from?.trim() || item.to?.trim();
+              }
+              return true; // 保留未啟用的規則
+            }
+            
+            // 處理手動替換規則
+            return item.from?.trim() || item.to?.trim();
+          });
+          
+          replaceSettings[formattedKey] = filteredValue;
+        } else {
+          // 如果不是陣列，保持原值
+          replaceSettings[formattedKey] = value;
+        }
       }
       // 檢查是否為需要使用 local storage 的大型文字
       else if (this.isLocalStorageKey(key)) {

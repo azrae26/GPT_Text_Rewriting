@@ -505,12 +505,28 @@ const ReplaceManager = {
   },
 
   /** 設置替換組的共用事件處理 */
-  setupGroupEvents(group, textArea, fromInput, toInput, checkbox, options = {}) {
+  setupGroupEvents(group, textArea, fromInput, toInput, checkboxOrButton, options = {}) {
     const {
       isManual = false,  // 是否為手動替換組
       onInputChange = null, // 輸入變更時的回調
-      onRulesSave = null   // 保存規則時的回調
+      onRulesSave = null,   // 保存規則時的回調
+      updatePreviewFn = null, // 更新預覽的函數
+      executeReplaceFn = null  // 執行替換的函數
     } = options;
+
+    // 獲取實際的輸入元素（處理可能的容器情況）
+    const getInputElement = (input) => {
+      if (input.classList.contains('replace-input')) {
+        return input;
+      }
+      return input.querySelector('.replace-input');
+    };
+
+    const fromInputElement = getInputElement(fromInput);
+    const toInputElement = getInputElement(toInput);
+    
+    // 判斷是按鈕還是複選框
+    const isButton = checkboxOrButton && checkboxOrButton.tagName === 'BUTTON';
 
     // 防抖函數，延遲處理輸入事件
     const debounce = (fn, delay) => {
@@ -524,14 +540,50 @@ const ReplaceManager = {
       };
     };
 
+    // 更新按鈕狀態（僅用於手動替換）
+    const updateButtonState = () => {
+      if (isManual && isButton) {
+        const button = checkboxOrButton;
+        const searchText = fromInputElement.value.trim();
+        
+        if (!searchText) {
+          button.textContent = '替換';
+          button.classList.add('disabled');
+          return;
+        }
+
+        try {
+          const regex = window.RegexHelper.createRegex(searchText);
+          const count = (textArea.value.match(regex) || []).length;
+          button.textContent = count > 0 ? `替換 (${count})` : '替換';
+          button.classList.toggle('disabled', count === 0);
+        } catch (error) {
+          button.textContent = '替換';
+          button.classList.add('disabled');
+        }
+      }
+    };
+
+    // 處理輸入事件
     const handleInput = debounce((input) => {
       try {
         console.group('處理輸入事件');
         console.log('輸入框值:', {
-          from: fromInput.value,
-          to: toInput.value,
-          checked: checkbox?.checked
+          from: fromInputElement.value,
+          to: toInputElement.value,
+          checked: isButton ? undefined : checkboxOrButton?.checked
         });
+
+        // 更新按鈕狀態（手動替換）
+        if (isManual) {
+          updateButtonState();
+        }
+
+        // 更新預覽（手動替換）
+        if (isManual && updatePreviewFn) {
+          const index = Array.from(group.parentElement.children).indexOf(group);
+          updatePreviewFn(textArea, fromInputElement.value, index);
+        }
 
         // 調用自定義的輸入處理函數
         if (onInputChange) {
@@ -554,8 +606,8 @@ const ReplaceManager = {
       }
     }, 300);
 
-    // 為兩個輸入框添加輸入事件監聽
-    [fromInput, toInput].forEach(input => {
+    // 為輸入框添加事件監聽
+    [fromInputElement, toInputElement].forEach(input => {
       // 使用事件代理，避免多次添加相同的事件監聽器
       if (input.dataset.hasInputHandler) {
         return;
@@ -581,13 +633,28 @@ const ReplaceManager = {
       });
     });
 
-    // 複選框事件
-    if (checkbox && !checkbox.dataset.hasChangeHandler) {
-      checkbox.dataset.hasChangeHandler = 'true';
-      checkbox.addEventListener('change', () => {
-        console.log('複選框狀態改變:', checkbox.checked);
-        handleInput(fromInput);
+    // 複選框事件（自動替換）
+    if (!isManual && checkboxOrButton && !checkboxOrButton.dataset.hasChangeHandler) {
+      checkboxOrButton.dataset.hasChangeHandler = 'true';
+      checkboxOrButton.addEventListener('change', () => {
+        console.log('複選框狀態改變:', checkboxOrButton.checked);
+        handleInput(fromInputElement);
       });
+    }
+
+    // 替換按鈕事件（手動替換）
+    if (isManual && isButton && !checkboxOrButton.dataset.hasClickHandler) {
+      checkboxOrButton.dataset.hasClickHandler = 'true';
+      checkboxOrButton.addEventListener('click', () => {
+        if (executeReplaceFn) {
+          executeReplaceFn(textArea, fromInputElement.value, toInputElement.value);
+        }
+      });
+    }
+
+    // 監聽文本區域的變化以更新按鈕狀態（手動替換）
+    if (isManual) {
+      textArea.addEventListener('input', updateButtonState);
     }
   },
   
@@ -725,9 +792,22 @@ const ReplaceManager = {
         
         const finalRules = filteredRules.length > 0 ? filteredRules : [{}];
         
+        // 創建和添加所有組
+        const groups = [];
         finalRules.forEach(rule => {
           const group = createGroupFn(textArea, rule);
           otherContainer.appendChild(group);
+          groups.push(group);
+        });
+
+        // 在所有組添加到 DOM 後，設置拖曳事件
+        requestAnimationFrame(() => {
+          // 為每個組設置拖曳事件
+          groups.forEach(group => {
+            if (group.dragHandle) {
+              window.AutoReplaceManager.setupDragEvents(group, group.dragHandle);
+            }
+          });
         });
 
         if (onInitialized) onInitialized();
@@ -740,7 +820,12 @@ const ReplaceManager = {
   
   // 統一的存儲邏輯
   StorageHelper: {
-    // 統一的存儲邏輯
+    /**
+     * 統一的規則保存方法
+     * @param {string} key - 存儲鍵名
+     * @param {Array} rules - 規則數組
+     * @param {Function} callback - 回調函數
+     */
     saveRules(key, rules, callback) {
       const storageKey = key.startsWith('replace_') ? key : `replace_${key}`;
       chrome.storage.local.set({ [storageKey]: rules }, () => {
@@ -752,12 +837,70 @@ const ReplaceManager = {
       });
     },
 
-    // 統一的讀取邏輯
+    /**
+     * 統一的規則讀取方法
+     * @param {string} key - 存儲鍵名
+     * @param {Array} defaultValue - 默認值
+     * @param {Function} callback - 回調函數
+     */
     loadRules(key, defaultValue, callback) {
       const storageKey = key.startsWith('replace_') ? key : `replace_${key}`;
       chrome.storage.local.get([storageKey], (result) => {
         const rules = result[storageKey] || defaultValue;
         if (callback) callback(rules);
+      });
+    },
+    
+    /**
+     * 從容器提取規則
+     * @param {Object} options - 配置項
+     * @param {HTMLElement} options.container - 容器元素
+     * @param {string} options.groupSelector - 組選擇器
+     * @param {boolean} options.hasCheckbox - 是否有啟用勾選框
+     * @returns {Array} - 提取的規則數組
+     */
+    extractRulesFromDOM(options) {
+      const {
+        container,
+        groupSelector,
+        hasCheckbox = false
+      } = options;
+      
+      if (!container) return [];
+      
+      return Array.from(container.querySelectorAll(groupSelector)).map(group => {
+        // 找出所有輸入框元素
+        const inputs = Array.from(group.querySelectorAll('.replace-input'));
+        
+        // 如果輸入框是被包裹在容器中的，需要進一步處理
+        let fromInput, toInput;
+        
+        if (inputs.length === 0) {
+          // 如果沒有直接的輸入框，查找包裝在容器中的
+          const containers = Array.from(group.children)
+            .filter(el => el.classList.contains('replace-input-container'));
+          
+          fromInput = containers[0]?.querySelector('.replace-input');
+          toInput = containers[1]?.querySelector('.replace-input');
+        } else {
+          // 直接使用找到的輸入框
+          fromInput = inputs[0];
+          toInput = inputs[1];
+        }
+        
+        // 創建規則對象
+        const rule = {
+          from: fromInput?.value?.trim() || '',
+          to: toInput?.value?.trim() || ''
+        };
+        
+        // 如果有勾選框，添加啟用狀態
+        if (hasCheckbox) {
+          const checkbox = group.querySelector('.auto-replace-checkbox');
+          rule.enabled = checkbox?.checked || false;
+        }
+        
+        return rule;
       });
     }
   },
@@ -900,6 +1043,688 @@ const ReplaceManager = {
           shouldInsertBefore ? targetItem : targetItem.nextSibling
         );
       }
+    },
+    
+    // 新增：統一的排序拖移處理函數
+    setupSortDragEvents(button, options = {}) {
+      const {
+        groupSelector = '.replace-extra-group',  // 默認組選擇器
+        container = null,  // 允許外部傳入容器
+        onComplete = null,  // 拖移完成回調
+        placeholderId = 'drag-placeholder'  // 佔位符ID
+      } = options || {};
+      
+      // 為每個拖曳實例創建獨立的狀態
+      const dragState = {
+        isDragging: false,
+        startY: 0,
+        startX: 0,
+        startRect: null,
+        placeholder: null,
+        scrollInterval: null
+      };
+      
+      button.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        // 先找到當前拖曳的組元素
+        const group = button.closest(groupSelector);
+        if (!group) return;
+        
+        // 確定容器元素
+        let targetContainer = container;
+        if (!targetContainer) {
+          // 如果未指定容器，嘗試從組元素獲取父元素
+          targetContainer = group.parentElement;
+          if (!targetContainer) {
+            console.error('無法找到有效的容器元素');
+            return; // 中止操作
+          }
+        }
+        
+        dragState.isDragging = true;
+        dragState.startX = e.clientX;
+        dragState.startY = e.clientY;
+        
+        // 獲取初始位置和尺寸
+        dragState.startRect = group.getBoundingClientRect();
+        
+        // 創建佔位元素
+        dragState.placeholder = group.cloneNode(true);
+        dragState.placeholder.style.opacity = '0.3';
+        dragState.placeholder.style.pointerEvents = 'none';
+        dragState.placeholder.id = placeholderId;
+        dragState.placeholder.classList.add(groupSelector.replace('.', '')); // 保持相同的基本樣式
+        
+        // 設置拖曳中的組樣式
+        group.style.position = 'fixed';
+        group.style.zIndex = '1000';
+        group.style.width = `${dragState.startRect.width}px`;
+        group.style.left = `${dragState.startRect.left}px`;
+        group.style.top = `${dragState.startRect.top}px`;
+        group.style.backgroundColor = '#fff';
+        group.style.transform = 'scale(1.02)';
+        group.style.boxShadow = '0 4px 15px rgba(0,0,0,0.35)';
+        
+        // 將 placeholder 插入到 DOM 中 group 原本的位置
+        targetContainer.insertBefore(dragState.placeholder, group);
+        
+        const moveHandler = (e) => {
+          if (!dragState.isDragging) return;
+          
+          // 使用幫助函數處理移動邏輯
+          const scrollInfo = this._handleSortMouseMove(e, group, dragState.placeholder, targetContainer, 
+                                                 true, dragState.startX, dragState.startY, dragState.startRect, 
+                                                 placeholderId, groupSelector);
+          
+          // 處理滾動邏輯
+          const { isInTopScrollZone, isInBottomScrollZone } = scrollInfo;
+          
+          // 清除現有的滾動定時器
+          if (dragState.scrollInterval) {
+            clearInterval(dragState.scrollInterval);
+            dragState.scrollInterval = null;
+          }
+          
+          // 如果在滾動區域內，設置新的滾動定時器
+          if (isInTopScrollZone || isInBottomScrollZone) {
+            dragState.scrollInterval = setInterval(() => {
+              if (isInTopScrollZone) {
+                targetContainer.scrollTop -= 5;
+              } else if (isInBottomScrollZone) {
+                targetContainer.scrollTop += 5;
+              }
+            }, 16); // 約60fps的滾動速率
+          }
+        };
+        
+        const upHandler = () => {
+          if (!dragState.isDragging) return;
+          dragState.isDragging = false;
+          
+          this._handleSortMouseUp(group, dragState.placeholder, targetContainer, 
+                             onComplete, dragState.scrollInterval, moveHandler, upHandler);
+        };
+        
+        document.addEventListener('mousemove', moveHandler);
+        document.addEventListener('mouseup', upHandler);
+      });
+    },
+    
+    _handleSortMouseMove(e, group, placeholder, container, 
+                        lockHorizontal, startX, startY, startRect, placeholderId, groupSelector) {
+      // 檢查必要參數
+      if (!group || !placeholder || !container || !startRect) {
+        console.error('_handleSortMouseMove: 缺少必要參數', { 
+          group, placeholder, container, startRect 
+        });
+        return { isInTopScrollZone: false, isInBottomScrollZone: false };
+      }
+      
+      // 計算新位置
+      const deltaYDragging = e.clientY - startY;
+      const deltaXDragging = e.clientX - startX;
+      const newTop = startRect.top + deltaYDragging;
+      // 水平位置固定不變
+      const newLeft = startRect.left;
+      
+      // 更新拖曳元素位置
+      group.style.top = `${newTop}px`;
+      group.style.left = `${newLeft}px`;
+      
+      // 安全獲取容器矩形
+      let containerRect;
+      try {
+        containerRect = container.getBoundingClientRect();
+      } catch (error) {
+        console.error('獲取容器位置信息失敗:', error);
+        return { isInTopScrollZone: false, isInBottomScrollZone: false };
+      }
+      
+      // 取得佔位符與原始元素的相對位置
+      const placeholderRect = placeholder.getBoundingClientRect();
+      const groupRect = group.getBoundingClientRect();
+      
+      let nextSibling = null;
+      
+      // 判斷拖曳方向
+      if (placeholderRect.top < groupRect.top) {
+        // 佔位符在原始元素上方，往下拖
+        
+        // 只比較佔位符的下一列
+        const nextElement = placeholder.nextElementSibling;
+        
+        // 檢查下一元素是否為拖曳元素
+        if (nextElement === group) {
+          const nextNextElement = group.nextElementSibling;
+          
+          if (nextNextElement && nextNextElement.id !== placeholderId) {
+            const nextElementRect = nextNextElement.getBoundingClientRect();
+            
+            // 如果滑鼠Y大於下下一列的頂邊界，把佔位符移到下下一列之前
+            if (e.clientY > nextElementRect.top) {
+              nextSibling = nextNextElement;
+            }
+          }
+        } else if (nextElement && nextElement.id !== placeholderId) {
+          const nextElementRect = nextElement.getBoundingClientRect();
+          
+          // 如果滑鼠Y大於下一列的頂邊界，把佔位符移到下一列之後
+          if (e.clientY > nextElementRect.top) {
+            nextSibling = nextElement.nextElementSibling;
+          }
+        }
+      } else {
+        // 佔位符在原始元素下方，往上拖
+        
+        // 找出佔位符的前一列
+        let prevElement = null;
+        // 安全獲取所有符合選擇器的元素
+        const siblings = Array.from(container.querySelectorAll(groupSelector) || []);
+        
+        for (let i = 0; i < siblings.length; i++) {
+          if (siblings[i] === placeholder && i > 0) {
+            prevElement = siblings[i-1];
+            break;
+          }
+        }
+        
+        // 檢查上一元素是否為拖曳元素
+        if (prevElement === group) {
+          // 尋找拖曳元素的前一個元素
+          for (let i = 0; i < siblings.length; i++) {
+            if (siblings[i] === group && i > 0) {
+              prevElement = siblings[i-1];
+              break;
+            }
+          }
+          
+          if (prevElement && prevElement.id !== placeholderId) {
+            const prevElementRect = prevElement.getBoundingClientRect();
+            
+            // 如果滑鼠Y小於上上一列的底邊界，把佔位符移到上上一列之前
+            if (e.clientY < prevElementRect.bottom) {
+              nextSibling = prevElement;
+            }
+          }
+        } else if (prevElement && prevElement.id !== placeholderId) {
+          const prevElementRect = prevElement.getBoundingClientRect();
+          
+          // 如果滑鼠Y小於上一列的底邊界，把佔位符移到上一列之前
+          if (e.clientY < prevElementRect.bottom) {
+            nextSibling = prevElement;
+          }
+        }
+      }
+      
+      // 如果需要移動佔位符
+      if (placeholder && container.contains(placeholder)) {
+        const placeholderCurrentPosition = placeholder.nextSibling;
+        const needsMove = nextSibling !== null && 
+                         nextSibling !== placeholderCurrentPosition;
+        if (needsMove) {
+          try {
+            container.insertBefore(placeholder, nextSibling);
+          } catch (error) {
+            console.error('移動佔位符失敗:', error);
+          }
+        }
+      }
+
+      // 處理容器滾動
+      const margin = 50;
+      const isInTopScrollZone = e.clientY - containerRect.top < margin && container.scrollTop > 0;
+      const isInBottomScrollZone = containerRect.bottom - e.clientY < margin && 
+                                container.scrollTop < container.scrollHeight - container.clientHeight;
+      
+      return {
+        isInTopScrollZone,
+        isInBottomScrollZone
+      };
+    },
+    
+    _handleSortMouseUp(group, placeholder, container, onComplete, scrollInterval, moveHandler, upHandler) {
+      // 檢查必要參數
+      if (!group) {
+        console.error('_handleSortMouseUp: 缺少必要參數 group');
+        return;
+      }
+      
+      // 清除滾動定時器
+      if (scrollInterval) {
+        try {
+          clearInterval(scrollInterval);
+        } catch (error) {
+          console.error('清除滾動定時器失敗:', error);
+        }
+      }
+      
+      // 恢復組的樣式
+      group.style.position = '';
+      group.style.zIndex = '';
+      group.style.width = '';
+      group.style.left = '';
+      group.style.top = '';
+      group.style.transform = '';
+      group.style.boxShadow = '';
+      group.style.backgroundColor = '';
+      
+      // 移動到新位置
+      if (placeholder && container && container.contains(placeholder)) {
+        try {
+          container.insertBefore(group, placeholder);
+          placeholder.remove();
+          
+          // 調用完成回調
+          if (typeof onComplete === 'function') {
+            onComplete(container);
+          }
+        } catch (error) {
+          console.error('移動元素到新位置失敗:', error);
+        }
+      } else {
+        // 如果無法找到佔位符或容器，嘗試恢復正常顯示
+        if (group.parentElement) {
+          console.log('無法找到佔位符或容器，嘗試恢復正常顯示');
+        }
+      }
+      
+      // 移除事件監聽器
+      if (moveHandler) {
+        document.removeEventListener('mousemove', moveHandler);
+      }
+      if (upHandler) {
+        document.removeEventListener('mouseup', upHandler);
+      }
+    }
+  },
+
+  // 統一的 UI 元素創建工廠
+  UIFactory: {
+    /**
+     * 創建輸入框
+     * @param {Object} options - 配置項
+     * @param {string} options.placeholder - 提示文字
+     * @param {number} options.width - 寬度
+     * @param {boolean} options.isTextArea - 是否為多行文本框
+     * @param {boolean} options.isMainGroup - 是否為主組輸入框
+     * @returns {HTMLElement} - 創建的輸入框元素或容器
+     */
+    createInput(options = {}) {
+      const {
+        placeholder = '',
+        width = 80,
+        isTextArea = false,
+        isMainGroup = false
+      } = options;
+
+      if (isTextArea) {
+        // 創建容器
+        const container = document.createElement('div');
+        container.className = 'replace-input-container';
+        container.style.width = `${width}px`;
+        
+        // 創建輸入框
+        const input = document.createElement('textarea');
+        input.placeholder = placeholder;
+        input.className = 'replace-input';
+        input.rows = 1;
+        
+        // 將輸入框添加到容器中
+        container.appendChild(input);
+        
+        return container;
+      } else {
+        // 創建單行輸入框
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = placeholder;
+        input.className = 'replace-input';
+        input.style.cssText = `width: ${width}px !important;`;
+        
+        return input;
+      }
+    },
+
+    /**
+     * 創建替換按鈕
+     * @param {Object} options - 配置項
+     * @param {boolean} options.isMainGroup - 是否為主組按鈕
+     * @returns {HTMLElement} - 創建的按鈕元素
+     */
+    createReplaceButton(options = {}) {
+      const { isMainGroup = false } = options;
+      
+      const button = document.createElement('button');
+      button.className = 'replace-button disabled';
+      button.textContent = '替換';
+      
+      return button;
+    },
+
+    /**
+     * 創建控制按鈕組
+     * @param {Object} options - 配置項
+     * @param {Function} options.addCallback - 添加按鈕回調
+     * @param {Function} options.removeCallback - 刪除按鈕回調
+     * @param {number|null} options.groupIndex - 組索引
+     * @param {boolean} options.needSortButton - 是否需要排序按鈕
+     * @returns {HTMLElement} - 創建的控制按鈕容器
+     */
+    createControlButtons(options = {}) {
+      const {
+        addCallback,
+        removeCallback,
+        groupIndex = null,
+        needSortButton = true
+      } = options;
+      
+      const container = document.createElement('div');
+      container.className = 'replace-group-controls';
+
+      if (needSortButton) {
+        // 創建排序拖移按鈕
+        const sortButton = document.createElement('button');
+        sortButton.innerHTML = '<span>⋮⋮</span>';
+        sortButton.className = 'replace-sort-button';
+        sortButton.draggable = true;
+        sortButton.title = '拖移排序';
+        container.appendChild(sortButton);
+        
+        // 存儲拖移按鈕和索引，以便稍後設置拖曳事件
+        if (groupIndex !== null) {
+          container.sortButton = sortButton;
+          container.groupIndex = groupIndex;
+        }
+      }
+
+      // 創建添加按鈕
+      const addButton = document.createElement('button');
+      addButton.textContent = '+';
+      addButton.className = 'replace-control-button';
+      addButton.id = 'replace-add-button';
+      addButton.onclick = () => addCallback(groupIndex);
+      container.appendChild(addButton);
+
+      // 創建刪除按鈕
+      const removeButton = document.createElement('button');
+      removeButton.textContent = '-';
+      removeButton.className = 'replace-control-button';
+      removeButton.id = 'replace-remove-button';
+      
+      // 設置雙擊刪除
+      let lastClickTime = 0;
+      removeButton.addEventListener('click', () => {
+        const currentTime = new Date().getTime();
+        if (currentTime - lastClickTime < 300) {
+          removeCallback();
+        }
+        lastClickTime = currentTime;
+      });
+      
+      container.appendChild(removeButton);
+
+      return container;
+    },
+
+    /**
+     * 創建拖曳把手
+     * @returns {HTMLElement} - 創建的拖曳把手元素
+     */
+    createDragHandle() {
+      const handle = document.createElement('div');
+      handle.className = 'replace-drag-handle';
+      return handle;
+    },
+
+    /**
+     * 創建自動替換的勾選框
+     * @param {boolean} checked - 是否選中
+     * @returns {HTMLElement} - 創建的勾選框元素
+     */
+    createCheckbox(checked = false) {
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.className = 'auto-replace-checkbox';
+      checkbox.checked = checked;
+      return checkbox;
+    }
+  },
+
+  // 統一的組管理模組
+  GroupManager: {
+    /**
+     * 添加新的替換組
+     * @param {Object} options - 配置項
+     * @param {HTMLElement} options.referenceGroup - 參考組元素
+     * @param {HTMLElement} options.container - 容器元素
+     * @param {Function} options.createGroupFn - 創建組的函數
+     * @param {HTMLElement} options.textArea - 文本區域元素
+     * @param {Function} options.onRulesSave - 保存規則的回調
+     * @param {boolean} options.isManual - 是否為手動替換
+     * @param {Function} options.setupDragEventsFn - 設置拖曳事件的函數
+     * @param {number} options.insertIndex - 插入位置索引
+     */
+    addGroup(options) {
+      const {
+        referenceGroup,
+        container,
+        createGroupFn,
+        textArea,
+        onRulesSave,
+        isManual = false,
+        setupDragEventsFn,
+        insertIndex = null
+      } = options;
+      
+      // 創建新組
+      const group = createGroupFn(textArea);
+      
+      // 在當前組的下一行插入新組，而不是添加到最後
+      if (referenceGroup && referenceGroup.nextSibling) {
+        container.insertBefore(group, referenceGroup.nextSibling);
+      } else {
+        // 如果當前組是最後一個，則直接添加到最後
+        container.appendChild(group);
+      }
+      
+      // 設置拖曳事件
+      if (setupDragEventsFn) {
+        requestAnimationFrame(() => {
+          setupDragEventsFn(group);
+        });
+      }
+      
+      // 保存規則
+      if (onRulesSave) {
+        onRulesSave(container);
+      }
+      
+      return group;
+    },
+
+    /**
+     * 移除替換組
+     * @param {Object} options - 配置項
+     * @param {HTMLElement} options.group - 要移除的組元素
+     * @param {HTMLElement} options.container - 容器元素
+     * @param {Function} options.onRulesSave - 保存規則的回調
+     * @param {Function} options.clearHighlightFn - 清除高亮的函數 (手動替換使用)
+     */
+    removeGroup(options) {
+      const {
+        group,
+        container,
+        onRulesSave,
+        clearHighlightFn
+      } = options;
+      
+      const groups = container.querySelectorAll(group.classList.contains('auto-replace-group') ? 
+                                               '.auto-replace-group' : '.replace-extra-group');
+      
+      // 獲取當前組的索引
+      const index = Array.from(groups).indexOf(group);
+      
+      if (groups.length === 1) {
+        // 如果是最後一個組，清空輸入框
+        const containers = Array.from(group.children).filter(el => 
+          el.classList.contains('replace-input-container') || 
+          el.classList.contains('replace-input')
+        );
+        
+        const fromInput = containers[0]?.classList.contains('replace-input') ? 
+                         containers[0] : containers[0]?.querySelector('.replace-input');
+        const toInput = containers[1]?.classList.contains('replace-input') ? 
+                       containers[1] : containers[1]?.querySelector('.replace-input');
+        
+        // 清空輸入值
+        if (fromInput) fromInput.value = '';
+        if (toInput) toInput.value = '';
+        
+        // 清除勾選框
+        const checkbox = group.querySelector('.auto-replace-checkbox');
+        if (checkbox) checkbox.checked = false;
+        
+        // 清除高亮
+        if (clearHighlightFn) {
+          clearHighlightFn(index);
+        }
+      } else {
+        // 移除組
+        group.remove();
+        
+        // 清除高亮
+        if (clearHighlightFn) {
+          clearHighlightFn(index);
+        }
+      }
+      
+      // 保存規則
+      if (onRulesSave) {
+        onRulesSave(container);
+      }
+    },
+    
+    /**
+     * 重新渲染所有組
+     * @param {Object} options - 配置項
+     * @param {Array} options.rules - 規則數組
+     * @param {HTMLElement} options.container - 容器元素
+     * @param {HTMLElement} options.textArea - 文本區域元素
+     * @param {Function} options.createGroupFn - 創建組的函數
+     * @param {Function} options.setupDragEventsFn - 設置拖曳事件的函數
+     * @param {Function} options.updatePreviewsFn - 更新預覽的函數
+     */
+    rerenderGroups(options) {
+      const {
+        rules,
+        container,
+        textArea,
+        createGroupFn,
+        setupDragEventsFn,
+        updatePreviewsFn
+      } = options;
+      
+      if (!textArea || !container) return;
+      
+      // 移除所有現有的組
+      const groupSelector = container.classList.contains('manual-replace-container') ? 
+                          '.replace-extra-group' : '.auto-replace-group';
+      const existingGroups = container.querySelectorAll(groupSelector);
+      existingGroups.forEach(group => group.remove());
+      
+      // 重新創建所有組
+      rules.forEach((rule, index) => {
+        const newGroup = createGroupFn(textArea, false, rule, index);
+        container.appendChild(newGroup);
+      });
+      
+      // 設置拖曳事件
+      if (setupDragEventsFn) {
+        requestAnimationFrame(() => {
+          setupDragEventsFn();
+        });
+      }
+      
+      // 更新預覽
+      if (updatePreviewsFn) {
+        updatePreviewsFn();
+      }
+    }
+  },
+
+  // 統一的組初始化模組
+  GroupInitializer: {
+    /**
+     * 初始化替換組
+     * @param {Object} options - 配置項
+     * @param {HTMLElement} options.container - 容器元素
+     * @param {HTMLElement} options.textArea - 文本區域元素
+     * @param {string} options.storageKey - 存儲鍵名
+     * @param {Function} options.createGroupFn - 創建組的函數
+     * @param {boolean} options.hasCheckbox - 是否有啟用勾選框
+     * @param {string} options.groupSelector - 組選擇器
+     * @param {Function} options.setupDragEventsFn - 設置拖曳事件的函數
+     * @param {Function} options.updateUIFn - 更新 UI 的函數 (例如更新預覽)
+     * @param {Function} options.onComplete - 初始化完成後的回調
+     */
+    initialize(options) {
+      const {
+        container,
+        textArea,
+        storageKey,
+        createGroupFn,
+        hasCheckbox = false,
+        groupSelector,
+        setupDragEventsFn,
+        updateUIFn,
+        onComplete
+      } = options;
+      
+      if (!container || !textArea || !createGroupFn) {
+        console.error('初始化組失敗：缺少必要參數');
+        return;
+      }
+      
+      // 步驟1: 從存儲加載規則
+      ReplaceManager.StorageHelper.loadRules(
+        storageKey,
+        hasCheckbox ? [{ enabled: false }] : [{}],
+        (rules) => {
+          // 步驟2: 過濾和準備規則
+          const filteredRules = rules.filter(rule => 
+            (rule.from?.trim() || rule.to?.trim()) || 
+            (hasCheckbox && rule.enabled)
+          );
+          
+          const finalRules = filteredRules.length > 0 ? filteredRules : [{}];
+          
+          // 步驟3: 創建和添加所有組
+          container.innerHTML = ''; // 清空容器
+          finalRules.forEach((rule, index) => {
+            const group = createGroupFn(textArea, false, rule, index);
+            container.appendChild(group);
+          });
+          
+          // 步驟4: 設置拖曳事件 (在所有組添加到 DOM 後)
+          if (setupDragEventsFn) {
+            requestAnimationFrame(() => {
+              setupDragEventsFn();
+            });
+          }
+          
+          // 步驟5: 更新 UI (如預覽等)
+          if (updateUIFn) {
+            requestAnimationFrame(() => {
+              updateUIFn();
+            });
+          }
+          
+          // 步驟6: 調用完成回調
+          if (onComplete) {
+            onComplete();
+          }
+        }
+      );
     }
   }
 };

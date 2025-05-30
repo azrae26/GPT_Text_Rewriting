@@ -95,6 +95,11 @@ const ManualReplaceManager = {
       manualContainer.appendChild(newGroup);
     });
 
+    // 為所有新創建的組設置拖曳事件
+    requestAnimationFrame(() => {
+      this._setupAllSortDragEvents();
+    });
+
     // 更新預覽
     this._updatePreviews();
   },
@@ -227,9 +232,10 @@ const ManualReplaceManager = {
       
       container.appendChild(removeButton);
 
-      // 設置排序拖移事件
+      // 存儲拖移按鈕和索引，以便稍後設置拖曳事件
       if (groupIndex !== null) {
-        ManualReplaceManager._setupSortDragEvents(sortButton, groupIndex);
+        container.sortButton = sortButton;
+        container.groupIndex = groupIndex;
       }
 
       return container;
@@ -893,23 +899,39 @@ const ManualReplaceManager = {
 
   /** 存儲相關方法 */
   _saveRules() {
-    const storageKey = 'replace_' + this.CONFIG.MANUAL_REPLACE_KEY;
-    chrome.storage.local.set({
-      [storageKey]: this._rules.extraGroups
-    }, () => {
-      if (chrome.runtime.lastError) {
-        console.error('保存規則失敗:', chrome.runtime.lastError);
-      }
+    const manualContainer = document.querySelector('.manual-replace-container');
+    if (!manualContainer) return;
+    
+    // 使用 ReplaceManager.StorageHelper 提取規則
+    const extraRules = window.ReplaceManager.StorageHelper.extractRulesFromDOM({
+      container: manualContainer,
+      groupSelector: '.replace-extra-group'
     });
+    
+    // 更新內部規則
+    this._rules.extraGroups = extraRules;
+    
+    // 使用 StorageHelper 保存
+    const storageKey = 'replace_' + this.CONFIG.MANUAL_REPLACE_KEY;
+    window.ReplaceManager.StorageHelper.saveRules(
+      storageKey,
+      extraRules,
+      () => console.log('手動替換規則已保存')
+    );
   },
 
   _loadRules(callback) {
     const storageKey = 'replace_' + this.CONFIG.MANUAL_REPLACE_KEY;
-    chrome.storage.local.get([storageKey], (result) => {
-      const rules = result[storageKey] || [{ from: '', to: '' }];
-      this._rules.extraGroups = rules;
-      if (callback) callback();
-    });
+    
+    // 使用 StorageHelper 加載
+    window.ReplaceManager.StorageHelper.loadRules(
+      storageKey,
+      [{ from: '', to: '' }],
+      (rules) => {
+        this._rules.extraGroups = rules;
+        if (callback) callback();
+      }
+    );
   },
 
   /** 初始化方法 */
@@ -943,6 +965,9 @@ const ManualReplaceManager = {
           from: group.querySelector('.replace-input').value,
           to: group.querySelector('.replace-input:last-of-type').value
         }));
+
+        // 設置所有拖曳事件
+        this._setupAllSortDragEvents();
 
         // 更新預覽
         this._updatePreviews();
@@ -1033,200 +1058,23 @@ const ManualReplaceManager = {
 
   /** 設置排序拖移事件 */
   _setupSortDragEvents(button, groupIndex) {
-    let isDragging = false;
-    let startY, startX, startRect, placeholder;
-    let moveHandler, upHandler, scrollInterval;
-
-    button.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      const group = button.closest('.replace-extra-group');
-      if (!group) return;
-      
-      isDragging = true;
-      startX = e.clientX;
-      startY = e.clientY;
-      
-      // 獲取初始位置和尺寸
-      startRect = group.getBoundingClientRect();
-      
-      // 創建佔位元素
-      placeholder = group.cloneNode(true);
-      placeholder.style.opacity = '0.3';
-      placeholder.style.pointerEvents = 'none';
-      placeholder.id = 'manual-drag-placeholder';
-      placeholder.classList.add('replace-extra-group'); // 保持相同的基本樣式
-      
-      // 設置拖曳中的組樣式
-      group.style.position = 'fixed';
-      group.style.zIndex = '1000';
-      group.style.width = `${startRect.width}px`;
-      group.style.left = `${startRect.left}px`;
-      group.style.top = `${startRect.top}px`;
-      group.style.backgroundColor = '#fff';
-      group.style.transform = 'scale(1.02)';
-      group.style.boxShadow = '0 4px 15px rgba(0,0,0,0.35)';
-      
-      // 將 placeholder 插入到 DOM 中 group 原本的位置
-      const container = group.parentElement;
-      container.insertBefore(placeholder, group);
-      
-      moveHandler = (e) => handleMouseMove(e, group, placeholder);
-      upHandler = () => handleMouseUp(group, placeholder);
-      
-      document.addEventListener('mousemove', moveHandler);
-      document.addEventListener('mouseup', upHandler);
-    });
-
-    const handleMouseMove = (e, group, placeholder) => {
-      if (!isDragging) return;
-      
-      // 計算新位置
-      const deltaYDragging = e.clientY - startY;
-      const deltaXDragging = e.clientX - startX; // 同時追蹤X方向的偏移
-      const newTop = startRect.top + deltaYDragging;
-      const newLeft = startRect.left + deltaXDragging;
-      
-      // 更新拖曳元素位置，保持X軸位置不變
-      group.style.top = `${newTop}px`;
-      group.style.left = `${startRect.left}px`; // 鎖定水平位置，避免偏移
-      
-      const container = group.parentElement;
-      const containerRect = container.getBoundingClientRect();
-      
-      // 取得佔位符與原始元素的相對位置
-      const placeholderRect = placeholder.getBoundingClientRect();
-      const groupRect = group.getBoundingClientRect();
-      
-      let nextSibling = null;
-      
-      // 判斷拖曳方向
-      if (placeholderRect.top < groupRect.top) {
-        // 佔位符在原始元素上方，往下拖
-        
-        // 只比較佔位符的下一列
-        const nextElement = placeholder.nextElementSibling;
-        
-        // 檢查下一元素是否為拖曳元素
-        if (nextElement === group) {
-          const nextNextElement = group.nextElementSibling;
-          
-          if (nextNextElement && nextNextElement.id !== 'manual-drag-placeholder') {
-            const nextElementRect = nextNextElement.getBoundingClientRect();
-            
-            // 如果滑鼠Y大於下下一列的頂邊界，把佔位符移到下下一列之前
-            if (e.clientY > nextElementRect.top) {
-              nextSibling = nextNextElement;
-            }
-          }
-        } else if (nextElement && nextElement.id !== 'manual-drag-placeholder') {
-          const nextElementRect = nextElement.getBoundingClientRect();
-          
-          // 如果滑鼠Y大於下一列的頂邊界，把佔位符移到下一列之後
-          if (e.clientY > nextElementRect.top) {
-            nextSibling = nextElement.nextElementSibling;
-          }
-        }
-      } else {
-        // 佔位符在原始元素下方，往上拖
-        
-        // 找出佔位符的前一列
-        let prevElement = null;
-        const siblings = Array.from(container.querySelectorAll('.replace-extra-group'));
-        for (let i = 0; i < siblings.length; i++) {
-          if (siblings[i] === placeholder && i > 0) {
-            prevElement = siblings[i-1];
-            break;
-          }
-        }
-        
-        // 檢查上一元素是否為拖曳元素
-        if (prevElement === group) {
-          // 尋找拖曳元素的前一個元素
-          for (let i = 0; i < siblings.length; i++) {
-            if (siblings[i] === group && i > 0) {
-              prevElement = siblings[i-1];
-              break;
-            }
-          }
-          
-          if (prevElement && prevElement.id !== 'manual-drag-placeholder') {
-            const prevElementRect = prevElement.getBoundingClientRect();
-            
-            // 如果滑鼠Y小於上上一列的底邊界，把佔位符移到上上一列之前
-            if (e.clientY < prevElementRect.bottom) {
-              nextSibling = prevElement;
-            }
-          }
-        } else if (prevElement && prevElement.id !== 'manual-drag-placeholder') {
-          const prevElementRect = prevElement.getBoundingClientRect();
-          
-          // 如果滑鼠Y小於上一列的底邊界，把佔位符移到上一列之前
-          if (e.clientY < prevElementRect.bottom) {
-            nextSibling = prevElement;
-          }
-        }
-      }
-      
-      // 如果需要移動佔位符
-      if (placeholder) {
-        const placeholderCurrentPosition = placeholder.nextSibling;
-        const needsMove = nextSibling !== null && 
-                         nextSibling !== placeholderCurrentPosition;
-        if (needsMove) {
-          container.insertBefore(placeholder, nextSibling);
-        }
-      }
-
-      // 處理容器滾動
-      const margin = 50;
-      const isInTopScrollZone = e.clientY - containerRect.top < margin && container.scrollTop > 0;
-      const isInBottomScrollZone = containerRect.bottom - e.clientY < margin && 
-                                container.scrollTop < container.scrollHeight - container.clientHeight;
-      
-      // 清除現有的滾動定時器
-      if (scrollInterval) {
-        clearInterval(scrollInterval);
-        scrollInterval = null;
-      }
-      
-      // 如果在滾動區域內，設置新的滾動定時器
-      if (isInTopScrollZone || isInBottomScrollZone) {
-        scrollInterval = setInterval(() => {
-          if (isInTopScrollZone) {
-            container.scrollTop -= 5;
-          } else if (isInBottomScrollZone) {
-            container.scrollTop += 5;
-          }
-        }, 16); // 約60fps的滾動速率
-      }
-    };
-
-    const handleMouseUp = (group, placeholder) => {
-      if (!isDragging) return;
-      isDragging = false;
-      
-      // 清除滾動定時器
-      if (scrollInterval) {
-        clearInterval(scrollInterval);
-        scrollInterval = null;
-      }
-      
-      // 恢復組的樣式
-      group.style.position = '';
-      group.style.zIndex = '';
-      group.style.width = '';
-      group.style.left = '';
-      group.style.top = '';
-      group.style.transform = '';
-      group.style.boxShadow = '';
-      group.style.backgroundColor = '';
-      
-      // 移動到新位置
-      const container = group.parentElement;
-      if (placeholder && container.contains(placeholder)) {
-        container.insertBefore(group, placeholder);
-        placeholder.remove();
-        
+    // 獲取組元素和容器
+    const group = button.closest('.replace-extra-group');
+    if (!group) return;
+    
+    const container = group.parentElement;
+    if (!container) {
+      console.error('無法找到替換組的父容器');
+      return;
+    }
+    
+    // 使用 ReplaceManager.DragManager 提供的統一拖移排序函數
+    ReplaceManager.DragManager.setupSortDragEvents(button, {
+      groupSelector: '.replace-extra-group',  // 組選擇器
+      container: container,                   // 明確指定容器
+      lockHorizontal: true,                   // 鎖定水平位置
+      placeholderId: 'manual-drag-placeholder', // 沿用原有佔位符ID
+      onComplete: (container) => {
         // 獲取所有 extra 組，建立新的順序陣列
         const groups = Array.from(container.querySelectorAll('.replace-extra-group'));
         const newExtraGroups = groups.map(groupElement => {
@@ -1247,17 +1095,19 @@ const ManualReplaceManager = {
         // 更新預覽（因為組的索引改變了）
         this._updatePreviews();
       }
-      
-      // 移除事件監聽器
-      if (moveHandler) {
-        document.removeEventListener('mousemove', moveHandler);
-        moveHandler = null;
+    });
+  },
+
+  /** 設置所有排序拖移事件 */
+  _setupAllSortDragEvents() {
+    // 查找所有額外組的控制按鈕容器
+    const containers = document.querySelectorAll('.manual-replace-container .replace-extra-group .replace-group-controls');
+    
+    containers.forEach(container => {
+      if (container.sortButton && container.groupIndex !== undefined) {
+        this._setupSortDragEvents(container.sortButton, container.groupIndex);
       }
-      if (upHandler) {
-        document.removeEventListener('mouseup', upHandler);
-        upHandler = null;
-      }
-    };
+    });
   },
 };
 

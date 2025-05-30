@@ -391,12 +391,10 @@
 */
 
 /* 新增拖曳中佔位符樣式 */
-#manual-drag-placeholder {
+#manual-drag-placeholder, #drag-placeholder {
   border-radius: 4px;
-  /* 移除虛線邊框 */
-  /* border: 2px dashed rgba(91, 140, 219, 0.5); */
-  /* 移除背景色 */
-  /* background-color: rgba(91, 140, 219, 0.1); */
+  opacity: 0.3;
+  pointer-events: none;
 }
 
 /* 刪除舊版拖移動畫 */

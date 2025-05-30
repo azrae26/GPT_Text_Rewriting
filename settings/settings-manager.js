@@ -137,19 +137,24 @@ class FileManager {
       const replacer = (key, value) => {
         // 如果是替換規則，確保它是完整的結構化數據
         if (Array.isArray(value) && 
-            key.includes('ReplaceRules') && 
+            (key.includes('ReplaceRules') || key.includes('replace_')) && 
             value.some(item => typeof item === 'object')) {
           // 過濾掉無效的替換規則項
           return value.filter(item => {
             // 移除空值或完全空的物件
             if (!item || typeof item !== 'object') return false;
             
-            // 確保至少包含一個有效屬性
-            return Object.values(item).some(propValue => 
-              propValue !== undefined && 
-              propValue !== null && 
-              (typeof propValue !== 'string' || propValue.trim() !== '')
-            );
+            // 檢查自動替換規則（有 enabled 屬性的情況）
+            if ('enabled' in item) {
+              // 啟用的規則必須有效，未啟用的規則可以保留
+              if (item.enabled) {
+                return item.from?.trim() || item.to?.trim();
+              }
+              return true; // 保留未啟用的規則
+            }
+            
+            // 檢查手動替換規則（沒有 enabled 屬性的情況）
+            return item.from?.trim() || item.to?.trim();
           });
         }
         return value;

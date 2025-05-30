@@ -285,249 +285,31 @@ const AutoReplaceManager = {
     group.appendChild(fromInputContainer);
     group.appendChild(toInputContainer);
 
-    // 設置拖曳事件
-    this.setupDragEvents(group, dragHandle);
+    // 存儲拖曳把手引用，稍後設置拖曳事件
+    group.dragHandle = dragHandle;
 
     return group;
   },
 
   /** 設置拖曳事件 */
   setupDragEvents(group, handle) {
-    let isDragging = false;
-    let startY = 0;
-    let startRect = null;
-    let placeholder = null;
-    let initialSiblingGroups = null;
-    let moveHandler = null;
-    let upHandler = null;
-    let scrollInterval = null;  // 新增：滾動定時器
-
-    handle.addEventListener('mousedown', (e) => {
-      e.preventDefault();
-      isDragging = true;
-      startY = e.clientY;
-      
-      // 獲取初始位置和尺寸
-      startRect = group.getBoundingClientRect();
-      
-      // 獲取所有可拖曳的兄弟組 (不包含當前拖曳的組)
-      const container = group.parentElement;
-      initialSiblingGroups = Array.from(container.querySelectorAll('.auto-replace-group')).filter(g => g !== group);
-      
-      // 創建佔位元素
-      placeholder = group.cloneNode(true);
-      placeholder.style.opacity = '0.3';
-      placeholder.style.pointerEvents = 'none';
-      placeholder.id = 'drag-placeholder'; // 添加唯一ID便於識別
-      
-      // 設置拖曳中的組樣式
-      group.style.position = 'fixed';
-      group.style.zIndex = '1000';
-      group.style.width = `${startRect.width}px`;
-      group.style.left = `${startRect.left}px`;
-      group.style.top = `${startRect.top}px`;
-      group.style.backgroundColor = '#fff';
-      group.style.transform = 'scale(1.02)';
-      group.style.boxShadow = '0 4px 15px rgba(0,0,0,0.35)';
-      
-      // 將 placeholder 插入到 DOM 中 group 原本的位置
-      container.insertBefore(placeholder, group);
-      
-      moveHandler = (e) => handleMouseMove(e);
-      upHandler = () => handleMouseUp();
-      
-      document.addEventListener('mousemove', moveHandler);
-      document.addEventListener('mouseup', upHandler);
+    // 獲取容器
+    const container = group.parentElement;
+    if (!container) {
+      console.error('無法找到自動替換組的父容器');
+      return;
+    }
+    
+    // 使用 ReplaceManager.DragManager 提供的統一拖移排序函數
+    ReplaceManager.DragManager.setupSortDragEvents(handle, {
+      groupSelector: '.auto-replace-group',  // 組選擇器
+      container: container,                  // 明確指定容器
+      placeholderId: 'drag-placeholder',     // 沿用原有佔位符ID
+      onComplete: (container) => {
+        // 保存新順序
+        this.saveAutoReplaceRules(container);
+      }
     });
-
-    const handleMouseMove = (e) => {
-      if (!isDragging) return;
-      
-      // 計算新位置
-      const deltaYDragging = e.clientY - startY;
-      const newTop = startRect.top + deltaYDragging;
-      group.style.top = `${newTop}px`;
-      
-      const container = group.parentElement;
-      const containerRect = container.getBoundingClientRect();
-      
-      // 取得佔位符與原始元素的相對位置
-      const placeholder = document.getElementById('drag-placeholder');
-      const placeholderRect = placeholder.getBoundingClientRect();
-      const groupRect = group.getBoundingClientRect();
-      
-      let nextSibling = null;
-      
-      // 判斷拖曳方向
-      if (placeholderRect.top < groupRect.top) {
-        // 佔位符在原始元素上方，往下拖
-        console.log('往下拖曳，滑鼠Y:', e.clientY);
-        
-        // 只比較佔位符的下一列
-        const nextElement = placeholder.nextElementSibling;
-        console.log('下一元素:', nextElement ? (nextElement.id || '普通元素') : '無');
-        
-        // 檢查下一元素是否為拖曳元素
-        if (nextElement === group) {
-          console.log('下一元素是拖曳元素，檢查下下一元素');
-          const nextNextElement = group.nextElementSibling;
-          
-          if (nextNextElement && nextNextElement.id !== 'drag-placeholder') {
-            const nextElementRect = nextNextElement.getBoundingClientRect();
-            console.log(`比較滑鼠Y(${e.clientY}) > 下下一列頂(${nextElementRect.top}) ?`, e.clientY > nextElementRect.top);
-            
-            // 如果滑鼠Y大於下下一列的頂邊界，把佔位符移到下下一列之前
-            if (e.clientY > nextElementRect.top) {
-              nextSibling = nextNextElement;
-              console.log('滑鼠超過下下一列頂部，移動佔位符');
-            }
-          } else {
-            console.log('沒有下下一列或者是佔位符，保持不變');
-          }
-        } else if (nextElement && nextElement.id !== 'drag-placeholder') {
-          const nextElementRect = nextElement.getBoundingClientRect();
-          console.log(`比較滑鼠Y(${e.clientY}) > 下一列頂(${nextElementRect.top}) ?`, e.clientY > nextElementRect.top);
-          
-          // 如果滑鼠Y大於下一列的頂邊界，把佔位符移到下一列之後
-          if (e.clientY > nextElementRect.top) {
-            nextSibling = nextElement.nextElementSibling;
-            console.log('滑鼠超過下一列頂部，移動佔位符');
-          }
-        } else {
-          console.log('沒有有效的下一列，保持佔位符位置不變');
-        }
-      } else {
-        // 佔位符在原始元素下方，往上拖
-        console.log('往上拖曳，滑鼠Y:', e.clientY);
-        
-        // 找出佔位符的前一列
-        let prevElement = null;
-        const siblings = Array.from(container.querySelectorAll('.auto-replace-group'));
-        for (let i = 0; i < siblings.length; i++) {
-          if (siblings[i] === placeholder && i > 0) {
-            prevElement = siblings[i-1];
-            break;
-          }
-        }
-        
-        console.log('上一元素:', prevElement ? (prevElement.id || '普通元素') : '無');
-        
-        // 檢查上一元素是否為拖曳元素
-        if (prevElement === group) {
-          console.log('上一元素是拖曳元素，檢查上上一元素');
-          // 尋找拖曳元素的前一個元素
-          for (let i = 0; i < siblings.length; i++) {
-            if (siblings[i] === group && i > 0) {
-              prevElement = siblings[i-1];
-              break;
-            }
-          }
-          
-          if (prevElement && prevElement.id !== 'drag-placeholder') {
-            const prevElementRect = prevElement.getBoundingClientRect();
-            console.log(`比較滑鼠Y(${e.clientY}) < 上上一列底(${prevElementRect.bottom}) ?`, e.clientY < prevElementRect.bottom);
-            
-            // 如果滑鼠Y小於上上一列的底邊界，把佔位符移到上上一列之前
-            if (e.clientY < prevElementRect.bottom) {
-              nextSibling = prevElement;
-              console.log('滑鼠低於上上一列底部，移動佔位符');
-            }
-          } else {
-            console.log('沒有上上一列或者是佔位符，保持不變');
-          }
-        } else if (prevElement && prevElement.id !== 'drag-placeholder') {
-          const prevElementRect = prevElement.getBoundingClientRect();
-          console.log(`比較滑鼠Y(${e.clientY}) < 上一列底(${prevElementRect.bottom}) ?`, e.clientY < prevElementRect.bottom);
-          
-          // 如果滑鼠Y小於上一列的底邊界，把佔位符移到上一列之前
-          if (e.clientY < prevElementRect.bottom) {
-            nextSibling = prevElement;
-            console.log('滑鼠低於上一列底部，移動佔位符');
-          }
-        } else {
-          console.log('沒有有效的上一列，保持佔位符位置不變');
-        }
-      }
-      
-      // 獲取佔位符
-      if (placeholder) {
-        const placeholderCurrentPosition = placeholder.nextSibling;
-        const needsMove = nextSibling !== null && 
-                          nextSibling !== placeholderCurrentPosition;
-        if (needsMove) {
-          console.log(`移動佔位符: 從 ${placeholderCurrentPosition ? placeholderCurrentPosition.id || '元素' : '尾部'} 到 ${nextSibling ? nextSibling.id || '元素' : '尾部'}`);
-          container.insertBefore(placeholder, nextSibling);
-          console.log('佔位符已移動到新位置');
-        } else {
-          console.log('佔位符位置無需變更');
-        }
-      }
-
-      // 處理容器滾動 - 改用定時器處理
-      const margin = 100;
-      const isInTopScrollZone = e.clientY - containerRect.top < margin && container.scrollTop > 0;
-      const isInBottomScrollZone = containerRect.bottom - e.clientY < margin && 
-                                 container.scrollTop < container.scrollHeight - container.clientHeight;
-      
-      // 清除現有的滾動定時器，
-      if (scrollInterval) {
-        clearInterval(scrollInterval);
-        scrollInterval = null;
-      }
-      
-      // 如果在滾動區域內，設置新的滾動定時器
-      if (isInTopScrollZone || isInBottomScrollZone) {
-        scrollInterval = setInterval(() => {
-          if (isInTopScrollZone) {
-            container.scrollTop -= 5;
-          } else if (isInBottomScrollZone) {
-            container.scrollTop += 5;
-          }
-        }, 16); // 約60fps的滾動速率
-      }
-    };
-
-    const handleMouseUp = () => {
-      if (!isDragging) return;
-      isDragging = false;
-      
-      // 清除滾動定時器
-      if (scrollInterval) {
-        clearInterval(scrollInterval);
-        scrollInterval = null;
-      }
-      
-      // 恢復組的樣式
-      group.style.position = '';
-      group.style.zIndex = '';
-      group.style.width = '';
-      group.style.left = '';
-      group.style.top = '';
-      group.style.transform = '';
-      group.style.boxShadow = '';
-      
-      // 移動到新位置
-      const container = group.parentElement;
-      const placeholder = document.getElementById('drag-placeholder');
-      if (placeholder && container.contains(placeholder)) {
-        // 防止最後一次不必要的閃爍，先移除拖曳元素的視覺效果，再執行位置調整
-        container.insertBefore(group, placeholder);
-        placeholder.remove();
-      }
-      
-      // 保存新順序
-      this.saveAutoReplaceRules(container);
-      
-      // 移除事件監聽器，防止內存洩漏
-      if (moveHandler) {
-        document.removeEventListener('mousemove', moveHandler);
-        moveHandler = null;
-      }
-      if (upHandler) {
-        document.removeEventListener('mouseup', upHandler);
-        upHandler = null;
-      }
-    };
   },
 
   /** 設置組事件 */
@@ -576,36 +358,28 @@ const AutoReplaceManager = {
 
   /** 保存自動替換規則 */
   saveAutoReplaceRules(container) {
-    console.group('保存替換規則');
+    console.group('保存自動替換規則');
     
-    const rules = Array.from(container.querySelectorAll('.auto-replace-group')).map(group => {
-        const containers = Array.from(group.children).filter(el => el.classList.contains('replace-input-container')); // 獲取輸入框容器
-        const fromInput = containers[0]?.querySelector('.replace-input'); // 獲取替換目標框
-        const toInput = containers[1]?.querySelector('.replace-input');   // 獲取替換結果框
-        const checkbox = group.querySelector('.auto-replace-checkbox'); // 獲取勾選框
-        
-        const rule = {
-            from: fromInput?.value || '', // 獲取替換目標框的值
-            to: toInput?.value || '',     // 獲取替換結果框的值
-            enabled: checkbox?.checked || false // 獲取勾選框的狀態
-        };
-        
-        console.log('保存規則:', rule); // 輸出規則
-        return rule;
+    // 使用 ReplaceManager.StorageHelper 提取規則
+    const rules = window.ReplaceManager.StorageHelper.extractRulesFromDOM({
+      container: container,
+      groupSelector: '.auto-replace-group',
+      hasCheckbox: true
     });
-
-    console.log('所有規則:', rules); // 輸出所有規則
-
-    // 修改：使用 local storage 和帶前綴的 key 儲存
-    const storageKey = 'replace_' + this.CONFIG.AUTO_REPLACE_KEY; // 帶前綴的 key
-    chrome.storage.local.set({ [storageKey]: rules }, () => {
-        if (chrome.runtime.lastError) {
-            console.error('保存規則失敗:', chrome.runtime.lastError);
-        } else {
-            console.log('規則保存成功'); // 規則保存成功
-        }
-    });
-
+    
+    console.log('所有規則:', rules);
+    
+    // 更新活動規則緩存
+    this._activeRules = rules;
+    
+    // 使用 StorageHelper 保存
+    const storageKey = 'replace_' + this.CONFIG.AUTO_REPLACE_KEY;
+    window.ReplaceManager.StorageHelper.saveRules(
+      storageKey,
+      rules,
+      () => console.log('自動替換規則已保存')
+    );
+    
     console.groupEnd();
   },
 
