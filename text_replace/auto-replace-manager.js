@@ -24,7 +24,7 @@
 const AutoReplaceManager = {
   CONFIG: {
     AUTO_REPLACE_KEY: 'autoReplaceRules',
-    FROM_INPUT_WIDTH: 285,    // 替換目標框寬度
+    FROM_INPUT_WIDTH: 367,    // 替換目標框寬度 (285 + 82)
     TO_INPUT_WIDTH: 115,      // 替換結果框寬度
     INPUT_HEIGHT: 32          // 輸入框高度
   },
@@ -174,7 +174,15 @@ const AutoReplaceManager = {
     addGroup(referenceGroup, textArea) {
       const container = referenceGroup.parentElement;
       const group = AutoReplaceManager.createAutoReplaceGroup(textArea);
-      container.appendChild(group);
+      
+      // 在當前組的下一行插入新組，而不是添加到最後
+      if (referenceGroup.nextSibling) {
+        container.insertBefore(group, referenceGroup.nextSibling);
+      } else {
+        // 如果當前組是最後一個，則直接添加到最後
+        container.appendChild(group);
+      }
+      
       AutoReplaceManager.saveAutoReplaceRules(container);
     },
 
@@ -452,8 +460,8 @@ const AutoReplaceManager = {
     
     const rules = Array.from(container.querySelectorAll('.auto-replace-group')).map(group => {
         const containers = Array.from(group.children).filter(el => el.classList.contains('replace-input-container')); // 獲取輸入框容器
-        const fromInput = containers[0]?.querySelector('textarea'); // 獲取替換目標框
-        const toInput = containers[1]?.querySelector('textarea');   // 獲取替換結果框
+        const fromInput = containers[0]?.querySelector('.replace-input'); // 獲取替換目標框
+        const toInput = containers[1]?.querySelector('.replace-input');   // 獲取替換結果框
         const checkbox = group.querySelector('.auto-replace-checkbox'); // 獲取勾選框
         
         const rule = {
@@ -575,8 +583,8 @@ const AutoReplaceManager = {
       .map(group => {
         const containers = Array.from(group.children)
           .filter(el => el.classList.contains('replace-input-container'));
-        const fromInput = containers[0]?.querySelector('textarea');
-        const toInput = containers[1]?.querySelector('textarea');
+        const fromInput = containers[0]?.querySelector('.replace-input');
+        const toInput = containers[1]?.querySelector('.replace-input');
         const enabled = group.querySelector('.auto-replace-checkbox').checked;
         
         return {

@@ -182,6 +182,38 @@
   gap: 4px;
 }
 
+/* 排序拖移按鈕樣式 */
+.replace-sort-button {
+  padding: 0;
+  width: 16px;
+  height: 14px;
+  border: none;
+  background: none;
+  cursor: move;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgb(87 87 87);
+  user-select: none;
+  margin-right: -3px;
+  margin-left: 2px;
+}
+
+.replace-sort-button span {
+  font-size: 13px !important;
+  line-height: 14px;
+  font-weight: 600 !important;
+  display: block;
+}
+
+.replace-sort-button:hover span {
+  color: #333;
+}
+
+.replace-sort-button:active span {
+  color: #000;
+}
+
 /* 控制按鈕樣式 */
 .replace-control-button {
   padding: 0;
@@ -214,22 +246,14 @@
 
 /* 添加按鈕樣式 */
 #replace-add-button {
-  opacity: 0;
-  pointer-events: none;
+  opacity: 0.3;
+  pointer-events: auto;
   transition: all 0.2s ease;
   z-index: 1000;
 }
 
-/* 添加按鈕顯示樣式 */
-.auto-replace-group:last-child #replace-add-button,
-.replace-extra-group:last-child #replace-add-button {
-  opacity: 0.3;
-  pointer-events: auto;
-}
-
 /* 添加按鈕懸停樣式 */
-.auto-replace-group:last-child #replace-add-button:hover,
-.replace-extra-group:last-child #replace-add-button:hover {
+#replace-add-button:hover {
   opacity: 1;
 }
 
@@ -352,5 +376,27 @@
   opacity: 0.5;
   /* 確保光暈在邊框下方 */
   z-index: -1;
+}
+
+/* ===== 拖移排序視覺反饋樣式 ===== */
+.replace-extra-group.dragging {
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+.replace-extra-group.drag-over {
+  border-radius: 4px;
+  animation: dragOverFadeIn 0.5s ease forwards;
+}
+
+@keyframes dragOverFadeIn {
+  from {
+    background-color: rgba(91, 140, 219, 0);
+    outline: 2px dashed rgba(91, 140, 219, 0);
+  }
+  to {
+    background-color: rgba(91, 140, 219, 0.2);
+    outline: 2px dashed #5b8cdb;
+  }
 }
  

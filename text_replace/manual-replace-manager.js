@@ -21,7 +21,7 @@
 const ManualReplaceManager = {
   CONFIG: {
     MIN_WIDTH: 80,
-    MAX_WIDTH: 300,
+    MAX_WIDTH: 600,
     PADDING: 24,
     MANUAL_REPLACE_KEY: 'manualReplaceRules',
     MAX_PREVIEWS: 1000, // 最大預覽數量
@@ -65,18 +65,38 @@ const ManualReplaceManager = {
   },
 
   /** 添加規則 */
-  _addRule() {
-    this._rules.extraGroups.push({ from: '', to: '' });
-    
-    // 立即在 DOM 中添加新組
-    const textArea = document.querySelector('textarea[name="content"]');
-    const manualContainer = document.querySelector('.manual-replace-container');
-    if (textArea && manualContainer) {
-      const newGroup = this.createReplaceGroup(textArea, false, { from: '', to: '' });
-      manualContainer.appendChild(newGroup);
+  _addRule(insertIndex = null) {
+    // 如果沒有指定插入位置，則在末尾添加
+    if (insertIndex === null || insertIndex >= this._rules.extraGroups.length) {
+      this._rules.extraGroups.push({ from: '', to: '' });
+    } else {
+      // 在指定位置插入
+      this._rules.extraGroups.splice(insertIndex + 1, 0, { from: '', to: '' });
     }
     
+    // 重新渲染所有extra組
+    this._rerenderExtraGroups();
     this._saveRules();
+  },
+
+  /** 重新渲染所有extra組 */
+  _rerenderExtraGroups() {
+    const textArea = document.querySelector('textarea[name="content"]');
+    const manualContainer = document.querySelector('.manual-replace-container');
+    if (!textArea || !manualContainer) return;
+
+    // 移除所有現有的extra組
+    const existingGroups = manualContainer.querySelectorAll('.replace-extra-group');
+    existingGroups.forEach(group => group.remove());
+
+    // 重新創建所有extra組
+    this._rules.extraGroups.forEach((rule, index) => {
+      const newGroup = this.createReplaceGroup(textArea, false, rule, index);
+      manualContainer.appendChild(newGroup);
+    });
+
+    // 更新預覽
+    this._updatePreviews();
   },
 
   /** 移除規則 */
@@ -86,24 +106,8 @@ const ManualReplaceManager = {
       this._rules.extraGroups.push({ from: '', to: '' });
     }
     
-    // 立即從 DOM 中移除組
-    const manualContainer = document.querySelector('.manual-replace-container');
-    if (manualContainer) {
-      const groups = manualContainer.querySelectorAll('.replace-extra-group');
-      if (groups.length > 1 || this._rules.extraGroups.length === 0) {
-        groups[index]?.remove();
-        // 如果是最後一個組，創建一個空組
-        if (groups.length === 1 && this._rules.extraGroups.length > 0) {
-          const textArea = document.querySelector('textarea[name="content"]');
-          if (textArea) {
-            const newGroup = this.createReplaceGroup(textArea, false, { from: '', to: '' });
-            manualContainer.appendChild(newGroup);
-          }
-        }
-      }
-    }
-    
-    this._updatePreviews();
+    // 重新渲染所有extra組
+    this._rerenderExtraGroups();
     this._saveRules();
   },
 
@@ -116,16 +120,65 @@ const ManualReplaceManager = {
       input.className = 'replace-input';
       input.style.cssText = `width: ${width}px !important;`;
       
+      // 先檢查文字是否過長的函數 - 如果過長，直接返回 true
+      const isTextTooLong = (element) => {
+        const text = element.value;
+        if (!text) return false;
+        
+        const span = document.createElement('span');
+        span.style.cssText = `
+          visibility: hidden;
+          position: absolute;
+          white-space: pre;
+          font: ${window.getComputedStyle(element).font};
+        `;
+        span.textContent = text;
+        document.body.appendChild(span);
+        
+        const textWidth = span.offsetWidth;
+        span.remove();
+        
+        // 如果寬度接近最大值，返回 true
+        const paddedWidth = textWidth + ManualReplaceManager.CONFIG.PADDING;
+        return paddedWidth >= ManualReplaceManager.CONFIG.MAX_WIDTH * 0.8; // 降低閾值，提前攔截
+      };
+      
       // 加入焦點事件
-      input.addEventListener('focus', () => {
-        if (!input.closest('.replace-main-group')) {
-          ManualReplaceManager._adjustInputWidth(input);
+      input.addEventListener('focus', (e) => {
+        // 如果主組輸入框，一律不擴展
+        if (input.closest('.replace-main-group')) {
+          return;
         }
-      });
+        
+        // 攔截原始焦點事件，暫停輸入框擴展
+        e.preventDefault();
+        
+        // 標記輸入框，防止其他處理器再次擴展
+        input.dataset.skipExpand = 'true';
+        
+        // 立即檢查文本長度
+        if (isTextTooLong(input)) {
+          // 阻止擴展，僅將焦點設置回原輸入框
+          input.focus();
+          // 確保不擴展
+          setTimeout(() => {
+            if (input.dataset.skipExpand === 'true') {
+              // 維持原始寬度
+              input.style.cssText = `width: ${ManualReplaceManager.CONFIG.MIN_WIDTH}px !important;`;
+            }
+          }, 0);
+          return;
+        }
+        
+        // 正常擴展輸入框
+        delete input.dataset.skipExpand;
+        ManualReplaceManager._adjustInputWidth(input);
+      }, true);
       
       input.addEventListener('blur', () => {
         if (!input.closest('.replace-main-group')) {
           input.style.cssText = `width: ${ManualReplaceManager.CONFIG.MIN_WIDTH}px !important;`;
+          delete input.dataset.skipExpand;
         }
       });
       
@@ -139,15 +192,23 @@ const ManualReplaceManager = {
       return button;
     },
 
-    createControlButtons(addCallback, removeCallback) {
+    createControlButtons(addCallback, removeCallback, groupIndex = null) {
       const container = document.createElement('div');
       container.className = 'replace-group-controls';
+
+      // 新增排序拖移按鈕
+      const sortButton = document.createElement('button');
+      sortButton.innerHTML = '<span>⋮⋮</span>';
+      sortButton.className = 'replace-sort-button';
+      sortButton.draggable = true;
+      sortButton.title = '拖移排序';
+      container.appendChild(sortButton);
 
       const addButton = document.createElement('button');
       addButton.textContent = '+';
       addButton.className = 'replace-control-button';
       addButton.id = 'replace-add-button';
-      addButton.onclick = addCallback;
+      addButton.onclick = () => addCallback(groupIndex);
       container.appendChild(addButton);
 
       const removeButton = document.createElement('button');
@@ -165,18 +226,24 @@ const ManualReplaceManager = {
       });
       
       container.appendChild(removeButton);
+
+      // 設置排序拖移事件
+      if (groupIndex !== null) {
+        ManualReplaceManager._setupSortDragEvents(sortButton, groupIndex);
+      }
+
       return container;
     }
   },
 
   /** 創建替換組 */
-  createReplaceGroup(textArea, isMainGroup = false, initialData = null) {
+  createReplaceGroup(textArea, isMainGroup = false, initialData = null, groupIndex = null) {
     const group = document.createElement('div');
     group.className = isMainGroup ? 'replace-main-group' : 'replace-extra-group';
 
     if (!isMainGroup) {
       const controlButtons = this.UI.createControlButtons(
-        () => this._addRule(),
+        (index) => this._addRule(index),
         () => {
           const container = group.parentElement;
           const groups = Array.from(container.querySelectorAll('.replace-extra-group'));
@@ -184,7 +251,8 @@ const ManualReplaceManager = {
           if (index !== -1) {
             this._removeRule(index);
           }
-        }
+        },
+        groupIndex  // 傳遞組索引
       );
       group.appendChild(controlButtons);
     }
@@ -264,7 +332,16 @@ const ManualReplaceManager = {
       });
       
       input.addEventListener('focus', () => {
-        this._adjustInputWidth(input);
+        // 檢查是否應該跳過擴展
+        if (!input.dataset.skipExpand) {
+          this._adjustInputWidth(input);
+        }
+      });
+      
+      // 監聽自定義的值同步事件
+      input.addEventListener('value-sync', () => {
+        handleInput();
+        updateButton();
       });
     });
 
@@ -850,6 +927,178 @@ const ManualReplaceManager = {
         this.checkAndForceUpdateHighlights();
       }, delay);
     });
+  },
+
+  /** 設置排序拖移事件 */
+  _setupSortDragEvents(button, groupIndex) {
+    button.addEventListener('dragstart', (e) => {
+      e.dataTransfer.setData('text/plain', groupIndex.toString());
+      e.dataTransfer.effectAllowed = 'move';
+      button.closest('.replace-extra-group').classList.add('dragging');
+      
+      // 為所有組設置拖放區域
+      this._setupDropZones();
+    });
+
+    button.addEventListener('dragend', () => {
+      document.querySelectorAll('.replace-extra-group').forEach(group => {
+        group.classList.remove('dragging', 'drag-over');
+      });
+      
+      // 清理拖放區域
+      this._cleanupDropZones();
+    });
+  },
+
+  /** 設置拖放區域 */
+  _setupDropZones() {
+    const container = document.querySelector('.manual-replace-container');
+    if (!container) return;
+
+    const allGroups = document.querySelectorAll('.replace-extra-group');
+    let currentDraggedIndex = null;
+    
+    // 容器級別的拖放處理
+    const handleContainerDragOver = (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      
+      // 根據滑鼠位置找到最近的組
+      const closestGroup = this._getClosestGroup(e.clientY);
+      if (closestGroup) {
+        // 清除所有高亮
+        allGroups.forEach(g => g.classList.remove('drag-over'));
+        // 高亮最近的組
+        if (!closestGroup.classList.contains('dragging')) {
+          closestGroup.classList.add('drag-over');
+        }
+      }
+    };
+
+    const handleContainerDrop = (e) => {
+      e.preventDefault();
+      const fromIndex = parseInt(e.dataTransfer.getData('text/plain'));
+      
+      // 根據滑鼠位置計算目標索引
+      const toIndex = this._getDropIndex(e.clientY);
+      
+      if (fromIndex !== toIndex && toIndex !== -1) {
+        this._reorderExtraGroups(fromIndex, toIndex);
+      }
+      
+      document.querySelectorAll('.replace-extra-group').forEach(g => {
+        g.classList.remove('dragging', 'drag-over');
+      });
+    };
+
+    const handleContainerDragLeave = (e) => {
+      // 只有真正離開容器時才清除高亮
+      if (!container.contains(e.relatedTarget)) {
+        allGroups.forEach(g => g.classList.remove('drag-over'));
+      }
+    };
+
+    // 添加容器事件監聽器
+    container._dragOverHandler = handleContainerDragOver;
+    container._dropHandler = handleContainerDrop;
+    container._dragLeaveHandler = handleContainerDragLeave;
+    
+    container.addEventListener('dragover', handleContainerDragOver);
+    container.addEventListener('drop', handleContainerDrop);
+    container.addEventListener('dragleave', handleContainerDragLeave);
+  },
+
+  /** 根據Y座標找到最近的組 */
+  _getClosestGroup(y) {
+    const groups = Array.from(document.querySelectorAll('.replace-extra-group'));
+    let closestGroup = null;
+    let closestDistance = Infinity;
+
+    groups.forEach(group => {
+      const rect = group.getBoundingClientRect();
+      const groupCenter = rect.top + rect.height / 2;
+      const distance = Math.abs(y - groupCenter);
+      
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestGroup = group;
+      }
+    });
+
+    return closestGroup;
+  },
+
+  /** 根據Y座標計算放置索引 */
+  _getDropIndex(y) {
+    const groups = Array.from(document.querySelectorAll('.replace-extra-group'));
+    
+    // 如果沒有組，返回0
+    if (groups.length === 0) return 0;
+    
+    // 檢查是否在第一個組之前
+    const firstRect = groups[0].getBoundingClientRect();
+    if (y < firstRect.top + firstRect.height / 2) {
+      return 0;
+    }
+    
+    // 檢查每個組之間的位置
+    for (let i = 0; i < groups.length - 1; i++) {
+      const currentRect = groups[i].getBoundingClientRect();
+      const nextRect = groups[i + 1].getBoundingClientRect();
+      
+      if (y >= currentRect.top + currentRect.height / 2 && 
+          y < nextRect.top + nextRect.height / 2) {
+        return i + 1;
+      }
+    }
+    
+    // 如果在最後一個組之後
+    return groups.length;
+  },
+
+  /** 清理拖放區域 */
+  _cleanupDropZones() {
+    const container = document.querySelector('.manual-replace-container');
+    if (container) {
+      if (container._dragOverHandler) {
+        container.removeEventListener('dragover', container._dragOverHandler);
+        delete container._dragOverHandler;
+      }
+      if (container._dropHandler) {
+        container.removeEventListener('drop', container._dropHandler);
+        delete container._dropHandler;
+      }
+      if (container._dragLeaveHandler) {
+        container.removeEventListener('dragleave', container._dragLeaveHandler);
+        delete container._dragLeaveHandler;
+      }
+    }
+    
+    const allGroups = document.querySelectorAll('.replace-extra-group');
+    allGroups.forEach(group => {
+      group.classList.remove('drag-over');
+    });
+  },
+
+  /** 重新排序額外組 */
+  _reorderExtraGroups(fromIndex, toIndex) {
+    if (fromIndex === toIndex) return;
+
+    // 調整目標索引（如果從較小索引移到較大索引，需要減1）
+    const adjustedToIndex = fromIndex < toIndex ? toIndex - 1 : toIndex;
+
+    // 重新排列陣列
+    const item = this._rules.extraGroups.splice(fromIndex, 1)[0];
+    this._rules.extraGroups.splice(adjustedToIndex, 0, item);
+
+    // 重新渲染所有組
+    this._rerenderExtraGroups();
+    
+    // 保存更新後的規則
+    this._saveRules();
+    
+    // 更新預覽（因為組的索引改變了）
+    this._updatePreviews();
   }
 };
 

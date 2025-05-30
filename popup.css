@@ -435,7 +435,7 @@ input[type="checkbox"] {
   padding: 6px 8px;
   border: none;
   border-radius: 4px;
-  font-size: 14.5px;
+  font-size: 13.5px;
   line-height: 20px;
   resize: none;
   background: transparent;
@@ -447,8 +447,6 @@ input[type="checkbox"] {
   top: 0;
   left: 0;
 }
-
-
 
 /* 輸入框焦點樣式 */
 .replace-input:focus {

@@ -19,6 +19,7 @@
  * - 統一管理手動和自動替換的初始化
  * - 管理替換介面的位置和拖曳功能
  * - 處理大型輸入框的顯示
+ * - 提供通用的存儲和事件處理邏輯
  */
 const ReplaceManager = {
   CONFIG: {
@@ -137,13 +138,111 @@ const ReplaceManager = {
     largeInput.className = 'replace-large-input';
     largeInput.style.display = 'none';
     document.body.appendChild(largeInput);
+    
+    // 標記是否正在處理點擊事件
+    let isHandlingClick = false;
+    
+    // 防止原始輸入框焦點的函數
+    const preventOriginalFocus = (originalInput) => {
+      if (!originalInput) return;
+      
+      // 創建一個不可見的覆蓋層覆蓋在原始輸入框上
+      const blocker = document.createElement('div');
+      blocker.style.cssText = `
+        position: fixed;
+        z-index: 3000;
+        background: transparent;
+        pointer-events: all;
+      `;
+      
+      // 設置覆蓋層位置和大小
+      const rect = originalInput.getBoundingClientRect();
+      blocker.style.left = `${rect.left}px`;
+      blocker.style.top = `${rect.top}px`;
+      blocker.style.width = `${rect.width}px`;
+      blocker.style.height = `${rect.height}px`;
+      
+      // 攔截所有可能引起焦點變化的事件
+      ['mousedown', 'mouseup', 'click', 'touchstart', 'touchend'].forEach(eventType => {
+        blocker.addEventListener(eventType, (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          // 重新聚焦到大型輸入框，確保不會丟失焦點
+          if (largeInput.style.display === 'block') {
+            largeInput.focus();
+          }
+        }, true);
+      });
+      
+      document.body.appendChild(blocker);
+      
+      // 在大型輸入框關閉時移除覆蓋層
+      const removeBlocker = () => {
+        if (document.body.contains(blocker)) {
+          document.body.removeChild(blocker);
+        }
+        largeInput.removeEventListener('blur', checkBlur);
+      };
+      
+      // 在大型輸入框失去焦點時檢查
+      const checkBlur = (e) => {
+        // 如果焦點不是轉移到原始輸入框，移除覆蓋層
+        if (e.relatedTarget !== originalInput) {
+          removeBlocker();
+        } else {
+          // 如果焦點嘗試轉移到原始輸入框，立即將焦點轉回大型輸入框
+          setTimeout(() => {
+            if (largeInput.style.display === 'block') {
+              largeInput.focus();
+            }
+          }, 0);
+        }
+      };
+      
+      largeInput.addEventListener('blur', checkBlur);
+      
+      return blocker;
+    };
 
-    // 監聽所有替換輸入框的點擊事件
-    container.addEventListener('click', (e) => {
-      const input = e.target;
-      if (input.classList.contains('replace-input') && 
-          !input.closest('.replace-main-group') && 
-          input.value.length > 38) {
+    // 檢查並顯示大型輸入框的函數
+    const checkAndShowLargeInput = (input) => {
+      if (!input || !input.classList.contains('replace-input') || input.closest('.replace-main-group')) {
+        return false;
+      }
+      
+      // 如果大型輸入框已經顯示並且關聯的就是當前輸入框，不做任何操作
+      if (largeInput.style.display === 'block' && largeInput.originalInput === input) {
+        return true;
+      }
+      
+      const text = input.value;
+      if (!text) return false;
+      
+      // 使用原生方法計算寬度
+      const span = document.createElement('span');
+      span.style.cssText = `
+        visibility: hidden;
+        position: absolute;
+        white-space: pre;
+        font: ${window.getComputedStyle(input).font};
+      `;
+      span.textContent = text;
+      document.body.appendChild(span);
+
+      const textWidth = span.offsetWidth;
+      span.remove();
+      
+      // 如果文字寬度加上填充接近或超過MAX_WIDTH，則開啟大型輸入框
+      const paddedWidth = textWidth + window.ManualReplaceManager.CONFIG.PADDING;
+      if (paddedWidth >= window.ManualReplaceManager.CONFIG.MAX_WIDTH * 0.8) { // 降低閾值，與手動替換協調
+        // 先從原始輸入框中捕獲當前值，避免可能的同步問題
+        const currentValue = input.value;
+        
+        // 設置原始輸入框為不可見，防止閃爍
+        input.style.visibility = 'hidden';
+        
+        // 標記輸入框，防止其他處理器擴展它
+        input.dataset.skipExpand = 'true';
         
         // 計算位置
         const inputRect = input.getBoundingClientRect();
@@ -153,19 +252,108 @@ const ReplaceManager = {
         // 設定大型輸入框位置和內容
         largeInput.style.left = `${left}px`;
         largeInput.style.top = `${top}px`;
-        largeInput.value = input.value;
+        largeInput.value = currentValue;
+        
+        // 放置一個覆蓋層在原始輸入框上
+        const blocker = preventOriginalFocus(input);
+        
+        // 設置大型輸入框顯示並聚焦
         largeInput.style.display = 'block';
         largeInput.focus();
 
         // 儲存對應的原始輸入框引用
         largeInput.originalInput = input;
+        
+        // 在大型輸入框關閉時恢復原始輸入框可見性和清除標記
+        const restoreVisibility = () => {
+          input.style.visibility = 'visible';
+          delete input.dataset.skipExpand;
+          largeInput.removeEventListener('blur', handleBlur);
+        };
+        
+        const handleBlur = () => {
+          // 確保大型輸入框真的關閉了才恢復原始輸入框可見性
+          if (largeInput.style.display === 'none') {
+            restoreVisibility();
+          }
+        };
+        
+        largeInput.addEventListener('blur', handleBlur);
+        
+        return true;
+      }
+      
+      return false;
+    };
+
+    // 監聽替換輸入框的點擊事件
+    container.addEventListener('click', (e) => {
+      // 如果點擊的是大型輸入框或其內部元素，不處理
+      if (largeInput.contains(e.target)) return;
+      
+      // 正常處理點擊事件
+      isHandlingClick = true;
+      checkAndShowLargeInput(e.target);
+      isHandlingClick = false;
+    }, true);
+    
+    // 監聽替換輸入框的焦點事件，這樣能更快地響應
+    container.addEventListener('focusin', (e) => {
+      // 如果是點擊事件處理中引起的焦點變化，忽略
+      if (isHandlingClick) return;
+      
+      if (e.target.classList.contains('replace-input') && !e.target.closest('.replace-main-group')) {
+        setTimeout(() => {
+          // 再次檢查是否需要顯示大型輸入框
+          checkAndShowLargeInput(e.target);
+        }, 0);
+      }
+    });
+
+    // 監聽大型輸入框的輸入事件，實時同步到原始輸入框
+    largeInput.addEventListener('input', () => {
+      const originalInput = largeInput.originalInput;
+      if (originalInput) {
+        // 同步值但不觸發焦點和輸入事件，避免可能的循環
+        originalInput.value = largeInput.value;
+        
+        // 觸發原始輸入框的自定義事件，讓應用邏輯知道值已更改
+        originalInput.dispatchEvent(new CustomEvent('value-sync', { 
+          bubbles: true,
+          detail: { value: largeInput.value }
+        }));
       }
     });
 
     // 監聽大型輸入框失去焦點事件
-    largeInput.addEventListener('blur', () => {
-      if (largeInput.originalInput) {
-        largeInput.originalInput.value = largeInput.value;
+    largeInput.addEventListener('blur', (e) => {
+      // 立即獲取當前值，避免後續可能的變化
+      const currentValue = largeInput.value;
+      const originalInput = largeInput.originalInput;
+      
+      // 檢查焦點是否轉移到了原始輸入框
+      if (e.relatedTarget === originalInput) {
+        // 立即重新聚焦到大型輸入框
+        setTimeout(() => {
+          if (largeInput.style.display === 'block') {
+            largeInput.focus();
+          }
+        }, 0);
+        return;
+      }
+      
+      // 其他情況正常關閉大型輸入框
+      if (originalInput) {
+        // 將值同步到原始輸入框
+        originalInput.value = currentValue;
+        
+        // 觸發原始輸入框的值同步事件
+        originalInput.dispatchEvent(new CustomEvent('value-sync', { 
+          bubbles: true,
+          detail: { value: currentValue }
+        }));
+        
+        // 隱藏大型輸入框
         largeInput.style.display = 'none';
         largeInput.originalInput = null;
       }
@@ -174,7 +362,23 @@ const ReplaceManager = {
     // 監聽ESC鍵關閉大型輸入框
     document.addEventListener('keydown', (e) => {
       if (e.key === 'Escape' && largeInput.style.display === 'block') {
-        largeInput.blur();
+        // 立即獲取當前值
+        const currentValue = largeInput.value;
+        const originalInput = largeInput.originalInput;
+        
+        // 同步值並關閉
+        if (originalInput) {
+          originalInput.value = currentValue;
+          
+          // 觸發原始輸入框的值同步事件
+          originalInput.dispatchEvent(new CustomEvent('value-sync', { 
+            bubbles: true,
+            detail: { value: currentValue }
+          }));
+        }
+        
+        largeInput.style.display = 'none';
+        largeInput.originalInput = null;
       }
     });
   },
@@ -240,8 +444,8 @@ const ReplaceManager = {
               const container = group.parentElement;
               const rules = Array.from(container.querySelectorAll('.auto-replace-group')).map(group => {
                 const containers = Array.from(group.children).filter(el => el.classList.contains('replace-input-container'));
-                const fromInput = containers[0]?.querySelector('textarea');
-                const toInput = containers[1]?.querySelector('textarea');
+                const fromInput = containers[0]?.querySelector('.replace-input');
+                const toInput = containers[1]?.querySelector('.replace-input');
                 const checkbox = group.querySelector('.auto-replace-checkbox');
                 
                 return {
@@ -331,16 +535,9 @@ const ReplaceManager = {
       manualContainer.className = 'manual-replace-container';
       otherContainer.appendChild(manualContainer);
 
-      // 從 local storage 讀取規則
-      chrome.storage.local.get([storageKey], (result) => {
-        console.log('讀取到的規則:', result[storageKey]);
-        
-        // 修改過濾邏輯，先確保規則存在且是有效對象
-        const rules = (result[storageKey] || [])
-          .filter(rule => rule && typeof rule === 'object')  // 先確保是有效對象
-          .filter(rule => rule.from?.trim() || rule.to?.trim());  // 再檢查內容
-        
-        console.log('過濾後的規則:', rules);
+      // 使用統一的存儲邏輯讀取規則
+      this.StorageHelper.loadRules(storageKey, [{ from: '', to: '' }], (rules) => {
+        console.log('讀取到的規則:', rules);
         
         // 如果沒有規則，添加一個空規則
         if (rules.length === 0) {
@@ -348,8 +545,8 @@ const ReplaceManager = {
         }
         
         // 創建組
-        rules.forEach(rule => {
-          manualContainer.appendChild(createGroupFn(textArea, false, rule));
+        rules.forEach((rule, index) => {
+          manualContainer.appendChild(createGroupFn(textArea, false, rule, index));
         });
 
         // 等待 DOM 更新後初始化預覽
@@ -384,18 +581,16 @@ const ReplaceManager = {
     } else {
       console.log('初始化自動替換組，使用存儲鍵名:', storageKey);
       
-      // 自動替換初始化
-      chrome.storage.local.get([storageKey], (result) => {
-        console.log('讀取到的規則:', result[storageKey]);
+      // 使用統一的存儲邏輯讀取規則
+      this.StorageHelper.loadRules(storageKey, [{}], (rules) => {
+        console.log('讀取到的規則:', rules);
         
-        const rules = (result[storageKey] || [])
-          .filter(rule => rule.from?.trim() || rule.to?.trim());
+        const filteredRules = rules.filter(rule => rule.from?.trim() || rule.to?.trim());
+        console.log('過濾後的規則:', filteredRules);
         
-        console.log('過濾後的規則:', rules);
+        const finalRules = filteredRules.length > 0 ? filteredRules : [{}];
         
-        if (rules.length === 0) rules.push({});
-        
-        rules.forEach(rule => {
+        finalRules.forEach(rule => {
           const group = createGroupFn(textArea, rule);
           otherContainer.appendChild(group);
         });
@@ -405,6 +600,171 @@ const ReplaceManager = {
 
       // 監聽文本變化
       textArea.addEventListener('input', () => window.AutoReplaceManager.handleAutoReplace(textArea));
+    }
+  },
+  
+  // 統一的存儲邏輯
+  StorageHelper: {
+    // 統一的存儲邏輯
+    saveRules(key, rules, callback) {
+      const storageKey = key.startsWith('replace_') ? key : `replace_${key}`;
+      chrome.storage.local.set({ [storageKey]: rules }, () => {
+        if (chrome.runtime.lastError) {
+          console.error(`保存規則失敗: ${storageKey}`, chrome.runtime.lastError);
+        } else if (callback) {
+          callback();
+        }
+      });
+    },
+
+    // 統一的讀取邏輯
+    loadRules(key, defaultValue, callback) {
+      const storageKey = key.startsWith('replace_') ? key : `replace_${key}`;
+      chrome.storage.local.get([storageKey], (result) => {
+        const rules = result[storageKey] || defaultValue;
+        if (callback) callback(rules);
+      });
+    }
+  },
+
+  // 統一的事件處理系統
+  _setupEventHandlers(elementMap, handlerMap) {
+    Object.entries(handlerMap).forEach(([eventType, handlers]) => {
+      Object.entries(handlers).forEach(([elementKey, handler]) => {
+        if (elementMap[elementKey]) {
+          elementMap[elementKey].addEventListener(eventType, handler);
+        }
+      });
+    });
+  },
+
+  // 拖曳管理功能
+  DragManager: {
+    setupDragSorting(element, options = {}) {
+      const {
+        container = element.parentElement,
+        selector = '.replace-extra-group',
+        handleSelector = '.replace-sort-button',
+        onComplete = null
+      } = options;
+      
+      const handle = element.querySelector(handleSelector);
+      if (!handle) return;
+      
+      let isDragging = false;
+      let startY = 0;
+      let startRect = null;
+      let placeholder = null;
+      let allItems = null;
+      
+      handle.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        isDragging = true;
+        startY = e.clientY;
+        startRect = element.getBoundingClientRect();
+        
+        allItems = Array.from(container.querySelectorAll(selector));
+        const startIndex = allItems.indexOf(element);
+        
+        // 創建佔位元素
+        placeholder = element.cloneNode(true);
+        placeholder.style.opacity = '0.3';
+        placeholder.style.pointerEvents = 'none';
+        
+        // 設置拖曳樣式
+        this._setDragStyles(element, startRect);
+        
+        // 插入佔位元素
+        container.insertBefore(placeholder, element);
+        
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', handleMouseUp);
+      });
+      
+      const handleMouseMove = (e) => {
+        if (!isDragging) return;
+        
+        // 更新位置
+        element.style.top = `${startRect.top + (e.clientY - startY)}px`;
+        
+        // 計算目標位置
+        const containerRect = container.getBoundingClientRect();
+        const relativeY = e.clientY - containerRect.top;
+        
+        // 處理位置更新邏輯
+        this._updateItemPosition(container, element, placeholder, allItems, relativeY);
+      };
+      
+      const handleMouseUp = () => {
+        if (!isDragging) return;
+        isDragging = false;
+        
+        // 恢復樣式
+        this._resetDragStyles(element);
+        
+        // 移動到最終位置
+        container.insertBefore(element, placeholder);
+        placeholder.remove();
+        
+        // 完成回調
+        if (onComplete) onComplete(container);
+        
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+    },
+    
+    _setDragStyles(element, rect) {
+      element.style.position = 'fixed';
+      element.style.zIndex = '1000';
+      element.style.width = `${rect.width}px`;
+      element.style.left = `${rect.left}px`;
+      element.style.top = `${rect.top}px`;
+      element.style.backgroundColor = '#fff';
+      element.style.transform = 'scale(1.02)';
+      element.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
+    },
+    
+    _resetDragStyles(element) {
+      element.style.position = '';
+      element.style.zIndex = '';
+      element.style.width = '';
+      element.style.left = '';
+      element.style.top = '';
+      element.style.transform = '';
+      element.style.boxShadow = '';
+    },
+    
+    _updateItemPosition(container, element, placeholder, allItems, relativeY) {
+      let targetIndex = -1;
+      let minDistance = Infinity;
+      
+      allItems.forEach((item, index) => {
+        if (item === element || item === placeholder) return;
+        
+        const itemRect = item.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        const itemTop = itemRect.top - containerRect.top;
+        const distance = Math.abs(relativeY - itemTop);
+        
+        if (distance < minDistance && distance < itemRect.height) {
+          minDistance = distance;
+          targetIndex = index;
+        }
+      });
+      
+      if (targetIndex !== -1) {
+        const targetItem = allItems[targetIndex];
+        const shouldInsertBefore = relativeY < 
+          targetItem.getBoundingClientRect().top - container.getBoundingClientRect().top + 
+          (targetItem.offsetHeight * 0.5);
+        
+        placeholder.remove();
+        container.insertBefore(
+          placeholder, 
+          shouldInsertBefore ? targetItem : targetItem.nextSibling
+        );
+      }
     }
   }
 };
