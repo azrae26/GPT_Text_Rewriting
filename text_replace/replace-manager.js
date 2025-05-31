@@ -159,7 +159,7 @@ const ReplaceManager = {
     // 如果頁面上的文本區域被替換，重新初始化
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
-        if (mutation.type === 'childList' && mutation.removedNodes.contains(textArea)) {
+        if (mutation.type === 'childList' && Array.from(mutation.removedNodes).includes(textArea)) {
           console.log('文本區域被移除，重新初始化替換介面');
           // 延遲執行以確保新的文本區域已經添加到頁面
           setTimeout(() => this.initializeReplaceUI(), 500);
