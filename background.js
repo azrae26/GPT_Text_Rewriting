@@ -1,4 +1,25 @@
 // background.js
+// 
+// 功能：
+// - 背景服務工作器，處理插件的核心邏輯
+// - 股票爬蟲管理：在背景運行股票清單爬取功能
+// - 跨域請求處理：處理 MOPS 網站的數據爬取
+// - 狀態持久化：維護爬蟲狀態，支援插件重新啟動後恢復
+// - 消息路由：處理來自 popup 和 content scripts 的消息
+// - 長連接管理：提供實時狀態更新給 popup
+// 
+// 職責：
+// - 管理 BackgroundStockCrawlerManager 執行定時和單次股票爬取
+// - 處理 chrome.storage 數據持久化
+// - 維護與 popup 的雙向通信
+// - 提供跨域網路請求服務
+// - 管理插件生命週期和狀態恢復
+// 
+// 依賴：
+// - Chrome Extensions API (runtime, storage, tabs)
+// - Fetch API for 跨域請求
+// - StockCrawlerUrls 配置
+
 // 用於追踪內容腳本是否已準備就緒的標誌
 let contentScriptReady = false;
 // 用於存儲待處理的改寫請求
@@ -71,10 +92,12 @@ const BackgroundStockCrawlerManager = {
       const result = await chrome.storage.local.get(['stockCrawlerState']);
       const state = result.stockCrawlerState || {};
       
+      console.log('恢復的爬蟲狀態:', state);
+      
       if (state.isScheduled && state.intervalMinutes) {
         console.log(`恢復定時爬取，間隔 ${state.intervalMinutes} 分鐘`);
-        this.intervalMinutes = state.intervalMinutes;
-        this._startScheduledCrawl(state.intervalMinutes, false); // false = 不立即執行
+        this.intervalMinutes = state.intervalMinutes; // 重要：先設置 intervalMinutes
+        await this._startScheduledCrawl(state.intervalMinutes, false); // false = 不立即執行
       }
       
       console.log('背景股票爬蟲管理器初始化完成');
@@ -273,48 +296,64 @@ const BackgroundStockCrawlerManager = {
 
   /**
    * 解析股票資料
+   * 使用正則表達式解析 MOPS 返回的 HTML 表格數據
+   * Service Worker 環境中沒有 DOMParser，需要使用字符串處理
    */
   _parseStockData(html) {
+    console.log('開始解析 MOPS 股票資料（使用正則表達式）');
     const stocks = [];
     
     try {
-      const parser = new DOMParser();
-      const doc = parser.parseFromString(html, 'text/html');
-      const rows = doc.querySelectorAll('tr');
+      // 使用正則表達式匹配表格行
+      // MOPS 的表格結構: <tr>...</tr>
+      const trRegex = /<tr[^>]*>(.*?)<\/tr>/gi;
+      const tdRegex = /<td[^>]*>(.*?)<\/td>/gi;
       
-      rows.forEach((row) => {
-        try {
-          const cells = row.querySelectorAll('td');
-          
-          if (cells.length >= 3) {
-            const codeCell = cells[0];
-            const stockCode = codeCell ? codeCell.textContent.trim().replace(/&nbsp;/g, '').replace(/\s+/g, '') : '';
-            
-            const fullNameCell = cells[1];
-            const fullName = fullNameCell ? fullNameCell.textContent.trim() : '';
-            
-            const shortNameCell = cells[2];
-            const shortName = shortNameCell ? shortNameCell.textContent.trim() : '';
-            
-            if (stockCode && /^\d{4,6}$/.test(stockCode) && shortName) {
-              const stock = {
-                code: stockCode,
-                name: shortName,
-                fullName: fullName
-              };
-              
-              stocks.push(stock);
-            }
-          }
-        } catch (error) {
-          // 跳過單個行的解析錯誤
+      let trMatch;
+      while ((trMatch = trRegex.exec(html)) !== null) {
+        const rowHtml = trMatch[1];
+        const cells = [];
+        
+        // 提取每個 td 的內容
+        let tdMatch;
+        const tempTdRegex = /<td[^>]*>(.*?)<\/td>/gi; // 創建新的 regex 實例避免狀態污染
+        while ((tdMatch = tempTdRegex.exec(rowHtml)) !== null) {
+          // 移除 HTML 標籤和特殊字符
+          let cellContent = tdMatch[1]
+            .replace(/<[^>]*>/g, '') // 移除 HTML 標籤
+            .replace(/&nbsp;/g, '') // 移除 &nbsp;
+            .replace(/\s+/g, '') // 移除多餘空白
+            .trim();
+          cells.push(cellContent);
         }
-      });
+        
+        // MOPS格式至少需要有足夠的欄位 (股票代號、公司全名、公司簡稱)
+        if (cells.length >= 3) {
+          const stockCode = cells[0]; // 第一欄：股票代號
+          const fullName = cells[1];  // 第二欄：公司全名
+          const shortName = cells[2]; // 第三欄：公司簡稱
+          
+          // 檢查是否為有效的股票代號（數字開頭，4-6位）
+          if (stockCode && /^\d{4,6}$/.test(stockCode) && shortName) {
+            const stock = {
+              code: stockCode,
+              name: shortName,  // 使用公司簡稱
+              fullName: fullName  // 保留完整公司名稱作為參考
+            };
+            
+            stocks.push(stock);
+          }
+        }
+      }
       
+      console.log(`MOPS 解析完成，共找到 ${stocks.length} 支股票`);
+      if (stocks.length > 0) {
+        console.log('解析範例:', stocks.slice(0, 3).map(s => `${s.code}(${s.name})`));
+      }
       return stocks;
       
     } catch (error) {
-      console.error('解析股票資料時發生錯誤:', error);
+      console.error('解析 MOPS 股票資料時發生錯誤:', error);
       return [];
     }
   },
@@ -484,19 +523,25 @@ const BackgroundStockCrawlerManager = {
     this.statusListeners.add(sendResponse);
     
     // 立即發送當前狀態
-    const currentStatus = {
+    const currentStatus = this.getCurrentStatus();
+    const statusMessage = {
       type: 'stockCrawlerStatus',
-      status: this.running ? 'running' : (this.intervalTimer ? 'scheduled' : 'idle'),
+      status: currentStatus.isRunning ? 'running' : (currentStatus.isScheduled ? 'scheduled' : 'idle'),
       data: {
-        status: this.running ? '正在爬取中...' : '等待中',
-        progress: this.currentProgress
+        status: currentStatus.isRunning ? '正在背景爬取中...' : 
+                currentStatus.isScheduled ? `自動爬取已啟用，間隔 ${currentStatus.intervalMinutes} 分鐘` : 
+                '點擊按鈕開始爬取股票清單',
+        progress: currentStatus.progress || 0,
+        intervalMinutes: currentStatus.intervalMinutes
       },
-      isRunning: this.running,
-      intervalMinutes: this.intervalMinutes
+      isRunning: currentStatus.isRunning,
+      intervalMinutes: currentStatus.intervalMinutes
     };
     
+    console.log('發送初始狀態到監聽器:', statusMessage);
+    
     try {
-      sendResponse(currentStatus);
+      sendResponse(statusMessage);
     } catch (error) {
       console.log('發送初始狀態失敗:', error.message);
       this.statusListeners.delete(sendResponse);
@@ -575,7 +620,8 @@ chrome.runtime.onConnect.addListener((port) => {
         status: currentStatus.isRunning ? '正在背景爬取中...' : 
                 currentStatus.isScheduled ? `自動爬取已啟用，間隔 ${currentStatus.intervalMinutes} 分鐘` : 
                 '點擊按鈕開始爬取股票清單',
-        progress: currentStatus.progress || 0
+        progress: currentStatus.progress || 0,
+        intervalMinutes: currentStatus.intervalMinutes  // 確保傳遞分鐘數
       },
       isRunning: currentStatus.isRunning,
       intervalMinutes: currentStatus.intervalMinutes
