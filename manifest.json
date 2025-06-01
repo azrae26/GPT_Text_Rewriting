@@ -10,7 +10,8 @@
   ],
   "host_permissions": [
     "https://data.uanalyze.twobitto.com/*",
-    "https://pro.uanalyze.com.tw/*"
+    "https://pro.uanalyze.com.tw/*",
+    "https://goodinfo.tw/*"
   ],
   "background": {
     "service_worker": "background.js"

@@ -1002,6 +1002,161 @@ input.form-input {
 
 /* 股票清單輸入框特殊樣式 */
 #stock-list-input {
-  border: 1px solid #ddd;
+  min-height: 200px;
+  height: 200px;
+}
+
+/* 股票爬蟲控制區域樣式 */
+.stock-crawler-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 10px;
+  padding: 10px;
+  background-color: #f9f9f9;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+}
+
+.crawler-interval-container {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.crawler-interval-container label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+  white-space: nowrap;
+}
+
+/* 新增爬蟲按鈕容器樣式 */
+.crawler-buttons-container {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.interval-input {
+  width: 60px;
+  padding: 4px 6px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  font-size: 13px;
+  text-align: center;
+}
+
+.interval-input:focus {
+  outline: none;
+  border-color: #4CAF50;
+  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+.crawler-button {
+  padding: 8px 16px;
+  background-color: #4CAF50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  min-width: 80px;
+  margin-top: 0;
+}
+
+.crawler-button:hover {
+  background-color: #45a049;
+}
+
+.crawler-button:disabled {
+  background-color: #cccccc;
+  cursor: not-allowed;
+}
+
+/* 自動爬取切換按鈕樣式 */
+.crawler-button.auto-toggle {
+  background-color: #2196F3;
+  min-width: 100px;
+}
+
+.crawler-button.auto-toggle:hover {
+  background-color: #1976D2;
+}
+
+.crawler-button.auto-toggle.running {
+  background-color: #f44336;
+}
+
+.crawler-button.auto-toggle.running:hover {
+  background-color: #da190b;
+}
+
+.crawler-button.stop {
+  background-color: #f44336;
+}
+
+.crawler-button.stop:hover {
+  background-color: #da190b;
+}
+
+/* 爬蟲狀態顯示區域 */
+.crawler-status {
+  margin-top: 10px;
+}
+
+.progress-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 6px;
+  background-color: #e0e0e0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: #4CAF50;
+  transition: width 0.3s ease;
+  width: 0%;
+}
+
+.progress-text {
+  font-size: 12px;
+  font-weight: 500;
+  color: #666;
+  min-width: 35px;
+  text-align: right;
+}
+
+.status-text {
+  font-size: 12px;
+  color: #666;
+  line-height: 1.4;
+  min-height: 16px;
+  padding: 2px 0;
+}
+
+.status-text.success {
+  color: #4CAF50;
+  font-weight: 500;
+}
+
+.status-text.error {
+  color: #f44336;
+  font-weight: 500;
+}
+
+.status-text.running {
+  color: #2196F3;
+  font-weight: 500;
 }
   

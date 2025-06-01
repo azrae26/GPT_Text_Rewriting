@@ -13,6 +13,34 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 // 監聽來自其他部分的消息
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // 處理股票爬蟲的 URL 爬取請求
+  if (request.action === 'fetchUrl') {
+    const { url } = request;
+    
+    console.log('開始爬取網址:', url);
+    
+    fetch(url)
+      .then(response => {
+        if (!response.ok) {
+          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        }
+        return response.text();
+      })
+      .then(data => {
+        console.log('爬取成功，數據長度:', data.length);
+        sendResponse({ success: true, data: data });
+      })
+      .catch(error => {
+        console.error('爬取失敗:', error);
+        sendResponse({ 
+          success: false, 
+          error: error.message || '爬取網頁失敗' 
+        });
+      });
+    
+    return true; // 表示會異步發送回應
+  }
+
   // 處理日誌消息
   if (request.type === 'LOG') {
     const timestamp = new Date(request.timestamp).toLocaleTimeString();

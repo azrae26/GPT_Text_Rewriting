@@ -97,6 +97,9 @@ const GlobalSettings = {
   /** 股票清單。 */
   stockList: '',
 
+  /** 爬蟲間隔時間（分鐘）。 */
+  crawlerInterval: 30,
+
   /** 生成設定組合 */
   generationSettingsGroups: {},
   /** 當前選中的生成設定組合名稱 */
@@ -208,6 +211,7 @@ const GlobalSettings = {
       this.summaryInstruction = localResult.summaryInstruction || '';
       this.zhEnMapping = localResult.zhEnMapping || ''; // 載入中英對照表
       this.stockList = localResult.stockList || ''; // 載入股票清單
+      this.crawlerInterval = syncResult.crawlerInterval || 30; // 載入爬蟲間隔
       
       // 使用 DefaultSettings 中的預設值
       this.confirmModel = syncResult.confirmModel === undefined ? window.DefaultSettings?.confirmModel : syncResult.confirmModel;
@@ -359,7 +363,8 @@ const GlobalSettings = {
             removeStar: this.removeStar,
             summaryModel: this.summaryModel,
             generationSettingsGroups: this.generationSettingsGroups,
-            currentGenerationSettings: this.currentGenerationSettings
+            currentGenerationSettings: this.currentGenerationSettings,
+            crawlerInterval: this.crawlerInterval
           };
           // 移除 translateInstruction，因為它會存在 local storage
           chrome.storage.sync.set(syncSettings, resolve);

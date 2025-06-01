@@ -160,6 +160,12 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 載入股票清單
   stockListInput.value = settings.stockList || '';
   
+  // 載入爬蟲間隔
+  const crawlerIntervalInput = document.getElementById('crawler-interval');
+  if (crawlerIntervalInput) {
+    crawlerIntervalInput.value = settings.crawlerInterval || 30;
+  }
+  
   updateApiKeyInput();
 
   // 載入已保存的高亮文字
@@ -298,6 +304,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         type: 'input', 
         element: stockListInput,
         callback: updateStockListSettings 
+      },
+      'crawlerInterval': { 
+        type: 'input', 
+        element: document.getElementById('crawler-interval')
       },
       'reflectInstruction': { type: 'input', element: reflectInstructionInput },
       'optimizeInstruction': { type: 'input', element: optimizeInstructionInput }
@@ -642,20 +652,237 @@ document.addEventListener('DOMContentLoaded', async function() {
   }
 
   function updateStockListSettings() {
-    // 通知 content script 更新股票清單
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "updateStockList",
-        stockList: stockListInput.value
-      }, function(response) {
-        if (response && response.success) {
-          console.log('股票清單已更新');
+    GlobalSettings.saveSingleSetting('stockList', stockListInput.value);
+  }
+
+  // 股票爬蟲控制器
+  const StockCrawlerController = {
+    // 元素引用
+    startButton: document.getElementById('start-crawler'),
+    autoToggleButton: document.getElementById('auto-crawler-toggle'),
+    intervalInput: document.getElementById('crawler-interval'),
+    progressContainer: document.getElementById('crawler-progress'),
+    progressFill: document.getElementById('progress-fill'),
+    progressText: document.getElementById('progress-text'),
+    statusText: document.getElementById('crawler-status-text'),
+    
+    // 狀態變數
+    isScheduled: false,
+    savedStockListValue: '',
+    
+    // 初始化
+    init() {
+      console.log('初始化股票爬蟲控制器');
+      
+      // 設置爬蟲管理器的回調函數
+      if (window.StockCrawlerManager) {
+        window.StockCrawlerManager.setCallbacks(
+          (status) => this.updateStatus(status),
+          (progress) => this.updateProgress(progress),
+          (result) => this.onCrawlComplete(result)
+        );
+      }
+      
+      // 綁定事件
+      this.bindEvents();
+      
+      // 初始化UI狀態
+      this.updateUI();
+    },
+    
+    // 綁定事件
+    bindEvents() {
+      // 立刻爬取按鈕事件
+      this.startButton.addEventListener('click', () => {
+        if (window.StockCrawlerManager && window.StockCrawlerManager.isRunning()) {
+          this.stopCurrentCrawl();
         } else {
-          console.log('股票清單設置已保存，將在頁面重新載入時應用');
+          this.startSingleCrawl();
         }
       });
-    });
-  }
+      
+      // 自動爬取切換按鈕事件
+      this.autoToggleButton.addEventListener('click', () => {
+        if (this.isScheduled) {
+          this.stopScheduledCrawl();
+        } else {
+          this.startScheduledCrawl();
+        }
+      });
+      
+      // 間隔時間變化事件
+      this.intervalInput.addEventListener('change', () => {
+        // 如果當前有定時爬取，重新啟動以應用新間隔
+        if (this.isScheduled) {
+          this.stopScheduledCrawl();
+          this.startScheduledCrawl();
+        }
+      });
+      
+      // 監聽股票清單輸入變化
+      stockListInput.addEventListener('input', () => {
+        // 保存股票清單時也觸發更新
+        updateStockListSettings();
+      });
+    },
+    
+    // 開始單次爬取
+    startSingleCrawl() {
+      if (!window.StockCrawlerManager) {
+        this.updateStatus('爬蟲管理器未載入', 'error');
+        return;
+      }
+      
+      console.log('開始單次股票爬取');
+      this.updateStatus('開始爬取...', 'running');
+      this.updateStartButtonState(true);
+      this.showProgress();
+      
+      // 保存當前股票清單內容
+      this.savedStockListValue = stockListInput.value;
+      
+      // 開始爬取
+      window.StockCrawlerManager.startCrawl();
+    },
+    
+    // 停止當前爬取
+    stopCurrentCrawl() {
+      if (!window.StockCrawlerManager) {
+        return;
+      }
+      
+      console.log('停止當前股票爬取');
+      window.StockCrawlerManager.stopCrawl();
+      this.updateStatus('已停止當前爬取');
+      this.updateStartButtonState(false);
+      this.hideProgress();
+    },
+    
+    // 開始定時爬取
+    startScheduledCrawl() {
+      const interval = parseInt(this.intervalInput.value) || 30;
+      
+      if (!window.StockCrawlerManager) {
+        this.updateStatus('爬蟲管理器未載入', 'error');
+        return;
+      }
+      
+      console.log(`開始定時股票爬取，間隔 ${interval} 分鐘`);
+      window.StockCrawlerManager.startScheduledCrawl(interval);
+      this.isScheduled = true;
+      this.updateAutoToggleButtonState(true);
+      this.updateStatus(`已啟動自動爬取，每 ${interval} 分鐘執行一次`);
+    },
+    
+    // 停止定時爬取
+    stopScheduledCrawl() {
+      if (!window.StockCrawlerManager) {
+        return;
+      }
+      
+      console.log('停止定時股票爬取');
+      window.StockCrawlerManager.stopScheduledCrawl();
+      this.isScheduled = false;
+      this.updateAutoToggleButtonState(false);
+      this.updateStatus('已停止自動爬取');
+    },
+    
+    // 更新狀態顯示
+    updateStatus(message, type = 'info') {
+      this.statusText.textContent = message;
+      this.statusText.className = `status-text ${type}`;
+      console.log(`爬蟲狀態: ${message}`);
+    },
+    
+    // 更新進度顯示
+    updateProgress(progress) {
+      this.progressFill.style.width = `${progress}%`;
+      this.progressText.textContent = `${progress}%`;
+    },
+    
+    // 顯示進度條
+    showProgress() {
+      this.progressContainer.style.display = 'flex';
+      this.updateProgress(0);
+    },
+    
+    // 隱藏進度條
+    hideProgress() {
+      this.progressContainer.style.display = 'none';
+    },
+    
+    // 更新立刻爬取按鈕狀態
+    updateStartButtonState(isRunning) {
+      if (isRunning) {
+        this.startButton.textContent = '停止爬取';
+        this.startButton.classList.add('stop');
+      } else {
+        this.startButton.textContent = '立刻爬取';
+        this.startButton.classList.remove('stop');
+      }
+    },
+    
+    // 更新自動爬取切換按鈕狀態
+    updateAutoToggleButtonState(isScheduled) {
+      if (isScheduled) {
+        this.autoToggleButton.textContent = '停止自動爬取';
+        this.autoToggleButton.classList.add('running');
+      } else {
+        this.autoToggleButton.textContent = '啟動自動爬取';
+        this.autoToggleButton.classList.remove('running');
+      }
+    },
+    
+    // 爬取完成回調
+    onCrawlComplete(result) {
+      console.log('爬取完成', result);
+      this.updateStatus(`爬取完成！新增 ${result.added} 支，刪除 ${result.removed} 支股票`, 'success');
+      this.hideProgress();
+      
+      // 重新載入股票清單到輸入框
+      this.reloadStockList();
+      
+      // 恢復按鈕狀態（但保持定時爬取）
+      this.updateStartButtonState(false);
+    },
+    
+    // 重新載入股票清單
+    async reloadStockList() {
+      try {
+        const settings = await window.GlobalSettings.loadSettings();
+        const newStockList = settings.stockList || '';
+        
+        // 如果內容有變化，更新輸入框
+        if (newStockList !== this.savedStockListValue) {
+          stockListInput.value = newStockList;
+          console.log('股票清單已更新');
+          
+          // 觸發內容腳本更新
+          throttledUpdateContentScript();
+        }
+      } catch (error) {
+        console.error('重新載入股票清單失敗:', error);
+      }
+    },
+    
+    // 更新UI狀態
+    updateUI() {
+      // 檢查爬蟲是否正在運行
+      if (window.StockCrawlerManager && window.StockCrawlerManager.isRunning && window.StockCrawlerManager.isRunning()) {
+        this.updateStartButtonState(true);
+        this.showProgress();
+        this.updateProgress(window.StockCrawlerManager.getCurrentProgress());
+        this.updateStatus('正在爬取中...', 'running');
+      } else {
+        this.updateStartButtonState(false);
+        this.hideProgress();
+        this.updateStatus('點擊按鈕開始爬取股票清單');
+      }
+      
+      // 更新自動爬取按鈕狀態
+      this.updateAutoToggleButtonState(this.isScheduled);
+    }
+  };
 
   // 添加節流函數
   const throttle = (func, limit) => {
@@ -1741,7 +1968,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   window.CustomModelManager = CustomModelManager;
   console.log('CustomModelManager 已暴露到全局作用域');
 
-  // 立即初始化 CustomModelManager
+  // 立即初始化 CustomModelManager 和 StockCrawlerController
   setTimeout(async () => {
     console.log('🚀 開始初始化 CustomModelManager');
     try {
@@ -1784,6 +2011,19 @@ document.addEventListener('DOMContentLoaded', async function() {
       console.log('✅ 模型選擇設定恢復完成');
     } catch (error) {
       console.error('❌ 初始化 CustomModelManager 時發生錯誤:', error);
+    }
+    
+    // 初始化股票爬蟲控制器
+    console.log('🚀 開始初始化 StockCrawlerController');
+    try {
+      if (typeof StockCrawlerController !== 'undefined') {
+        StockCrawlerController.init();
+        console.log('✅ StockCrawlerController 初始化完成');
+      } else {
+        console.warn('⚠️ StockCrawlerController 未定義');
+      }
+    } catch (error) {
+      console.error('❌ 初始化 StockCrawlerController 時發生錯誤:', error);
     }
   }, 100);
 });
