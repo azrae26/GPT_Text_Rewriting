@@ -1049,13 +1049,13 @@ input.form-input {
 
 .interval-input:focus {
   outline: none;
-  border-color: #4CAF50;
+  border-color: #29a12d;
   box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
 }
 
 .crawler-button {
   padding: 8px 16px;
-  background-color: #4CAF50;
+  background-color: #29a12d;
   color: white;
   border: none;
   border-radius: 4px;
@@ -1115,6 +1115,7 @@ input.form-input {
 /* 爬蟲狀態顯示區域 */
 .crawler-status {
   margin-top: 10px;
+  padding: 0 8px;
 }
 
 .progress-container {
@@ -1134,7 +1135,7 @@ input.form-input {
 
 .progress-fill {
   height: 100%;
-  background-color: #4CAF50;
+  background-color: #29a12d;
   transition: width 0.3s ease;
   width: 0%;
 }
@@ -1156,7 +1157,7 @@ input.form-input {
 }
 
 .status-text.success {
-  color: #4CAF50;
+  color: #29a12d;
   font-weight: 500;
 }
 
