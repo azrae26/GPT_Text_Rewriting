@@ -692,7 +692,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
         
       case 'startScheduled':
-        BackgroundStockCrawlerManager._startScheduledCrawl(request.intervalMinutes)
+        BackgroundStockCrawlerManager._startScheduledCrawl(request.intervalMinutes, false)
           .then(() => sendResponse({ success: true }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;

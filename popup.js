@@ -804,11 +804,14 @@ document.addEventListener('DOMContentLoaded', async function() {
           break;
           
         case 'scheduled':
+          // 只通過狀態更新來處理scheduled狀態，避免競態條件
+          this.isScheduled = true;
           this.updateAutoToggleButtonState(true);
           this.updateStatus(`已啟動自動爬取，每 ${message.data.intervalMinutes} 分鐘執行一次`);
           break;
           
         case 'stopped':
+          this.isScheduled = false;
           this.updateAutoToggleButtonState(false);
           this.updateStatus('已停止自動爬取');
           break;
@@ -835,6 +838,7 @@ document.addEventListener('DOMContentLoaded', async function() {
           this.updateStartButtonState(false);
           this.hideProgress();
         }
+        // 成功的狀態會通過 handleStatusUpdate 處理，不在這裡更新
       });
     },
     
@@ -869,13 +873,15 @@ document.addEventListener('DOMContentLoaded', async function() {
         command: 'startScheduled',
         intervalMinutes: interval
       }, (response) => {
-        if (response && response.success) {
-          this.isScheduled = true;
-          this.updateAutoToggleButtonState(true);
-          this.updateStatus(`已啟動自動爬取，每 ${interval} 分鐘執行一次`);
-        } else {
+        // 移除這裡的狀態更新，完全依賴 handleStatusUpdate 來處理
+        // 只處理錯誤情況
+        if (!response || !response.success) {
           this.updateStatus('啟動自動爬取失敗: ' + (response?.error || '未知錯誤'), 'error');
+          // 確保按鈕狀態保持未啟動狀態
+          this.isScheduled = false;
+          this.updateAutoToggleButtonState(false);
         }
+        // 成功的狀態會通過 handleStatusUpdate 的 'scheduled' 案例處理
       });
     },
     
@@ -888,13 +894,13 @@ document.addEventListener('DOMContentLoaded', async function() {
         action: 'stockCrawler',
         command: 'stopScheduled'
       }, (response) => {
-        if (response && response.success) {
-          this.isScheduled = false;
-          this.updateAutoToggleButtonState(false);
-          this.updateStatus('已停止自動爬取');
-        } else {
+        // 移除這裡的狀態更新，完全依賴 handleStatusUpdate 來處理
+        // 只處理錯誤情況
+        if (!response || !response.success) {
           this.updateStatus('停止自動爬取失敗: ' + (response?.error || '未知錯誤'), 'error');
+          // 保持當前按鈕狀態不變
         }
+        // 成功的狀態會通過 handleStatusUpdate 的 'stopped' 案例處理
       });
     },
     
