@@ -301,39 +301,52 @@ const BackgroundStockCrawlerManager = {
    */
   _parseStockData(html) {
     console.log('開始解析 MOPS 股票資料（使用正則表達式）');
+    console.log('HTML 長度:', html.length);
     const stocks = [];
     
     try {
-      // 使用正則表達式匹配表格行
-      // MOPS 的表格結構: <tr>...</tr>
-      const trRegex = /<tr[^>]*>(.*?)<\/tr>/gi;
-      const tdRegex = /<td[^>]*>(.*?)<\/td>/gi;
+      // 使用正則表達式匹配表格行，專門匹配包含 class="even" 或 class="odd" 的數據行
+      // 支持單引號和雙引號兩種格式，並匹配跨行內容
+      const trRegex = /<tr\s*class=['"]?(even|odd)['"]?[^>]*>([\s\S]*?)<\/tr>/gi;
       
       let trMatch;
+      let rowCount = 0;
+      
       while ((trMatch = trRegex.exec(html)) !== null) {
-        const rowHtml = trMatch[1];
+        rowCount++;
+        const rowHtml = trMatch[2]; // 第二個捕獲組是行內容
         const cells = [];
         
+        console.log(`處理第 ${rowCount} 行數據...`);
+        
         // 提取每個 td 的內容
+        const tempTdRegex = /<td[^>]*>(.*?)<\/td>/gi;
         let tdMatch;
-        const tempTdRegex = /<td[^>]*>(.*?)<\/td>/gi; // 創建新的 regex 實例避免狀態污染
+        
         while ((tdMatch = tempTdRegex.exec(rowHtml)) !== null) {
           // 移除 HTML 標籤和特殊字符
           let cellContent = tdMatch[1]
             .replace(/<[^>]*>/g, '') // 移除 HTML 標籤
-            .replace(/&nbsp;/g, '') // 移除 &nbsp;
-            .replace(/\s+/g, '') // 移除多餘空白
-            .trim();
+            .replace(/&nbsp;/g, ' ') // 將 &nbsp; 替換為空格
+            .replace(/\s+/g, ' ') // 將多個空白字符替換為單個空格
+            .trim(); // 去除首尾空白
           cells.push(cellContent);
         }
         
-        // MOPS格式至少需要有足夠的欄位 (股票代號、公司全名、公司簡稱)
+        console.log(`第 ${rowCount} 行解析到 ${cells.length} 個欄位`);
+        if (cells.length > 0) {
+          console.log('前 3 個欄位:', cells.slice(0, 3));
+        }
+        
+        // MOPS格式：第1欄是股票代號，第3欄是公司簡稱
         if (cells.length >= 3) {
-          const stockCode = cells[0]; // 第一欄：股票代號
-          const fullName = cells[1];  // 第二欄：公司全名
-          const shortName = cells[2]; // 第三欄：公司簡稱
+          const stockCode = cells[0].trim(); // 第一欄：股票代號
+          const fullName = cells[1].trim();  // 第二欄：公司全名
+          const shortName = cells[2].trim(); // 第三欄：公司簡稱
           
-          // 檢查是否為有效的股票代號（數字開頭，4-6位）
+          console.log(`檢查股票: 代號="${stockCode}", 簡稱="${shortName}"`);
+          
+          // 檢查是否為有效的股票代號（純數字，4-6位）
           if (stockCode && /^\d{4,6}$/.test(stockCode) && shortName) {
             const stock = {
               code: stockCode,
@@ -342,14 +355,33 @@ const BackgroundStockCrawlerManager = {
             };
             
             stocks.push(stock);
+            console.log(`✅ 成功添加股票: ${stockCode} (${shortName})`);
+          } else {
+            console.log(`❌ 跳過無效數據: 代號="${stockCode}" (格式檢查: ${/^\d{4,6}$/.test(stockCode)}), 簡稱="${shortName}"`);
           }
+        } else {
+          console.log(`❌ 欄位不足，跳過此行 (需要至少3欄，實際 ${cells.length} 欄)`);
         }
       }
       
+      console.log(`總共處理了 ${rowCount} 行數據`);
       console.log(`MOPS 解析完成，共找到 ${stocks.length} 支股票`);
       if (stocks.length > 0) {
         console.log('解析範例:', stocks.slice(0, 3).map(s => `${s.code}(${s.name})`));
+      } else {
+        console.log('⚠️ 未解析到任何股票，檢查HTML結構...');
+        // 如果沒有找到數據行，嘗試查找HTML中是否包含預期的結構
+        const hasTable = html.includes('<table');
+        const hasTr = html.includes('<tr');
+        const hasTd = html.includes('<td');
+        const hasClassEven = html.includes('class="even"');
+        const hasClassOdd = html.includes('class="odd"');
+        console.log('HTML結構檢查:', { hasTable, hasTr, hasTd, hasClassEven, hasClassOdd });
+        
+        // 打印HTML的前5000個字符用於調試
+        console.log('HTML 前5000字符:', html.substring(0, 5000));
       }
+      
       return stocks;
       
     } catch (error) {
