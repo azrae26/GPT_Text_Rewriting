@@ -151,9 +151,9 @@ input[type="checkbox"] {
 
 /* 分頁標籤樣式 */
 .tab {
-  flex: auto;
+  flex: 1;
   text-align: center;
-  padding: 8px;
+  padding: 8px 8px;
   background-color: #eee;
   cursor: pointer;
   transition: all 0.3s;
@@ -162,6 +162,8 @@ input[type="checkbox"] {
   border-right: 1px solid #ddd;
   border-bottom: 1px solid #00000000;
   font-size: 14px;
+  white-space: nowrap;
+  min-width: fit-content;
 }
 
 /* 最後一個分頁標籤 */
@@ -255,7 +257,7 @@ input[type="checkbox"] {
 .main-tab {
   flex: 1;
   text-align: center;
-  padding: 10px;
+  padding: 10px 16px;
   background-color: #eee;
   cursor: pointer;
   transition: all 0.3s;
@@ -265,6 +267,8 @@ input[type="checkbox"] {
   border-bottom: 1px solid #ddd;
   font-size: 16px;
   font-family: 'Noto Sans TC', sans-serif;
+  white-space: nowrap;
+  min-width: fit-content;
 }
 
 /* 當前選中的主分頁 */
@@ -994,5 +998,10 @@ input.form-input {
 
 .auto-detect-pulse {
   animation: autoDetectPulse 0.6s ease-in-out;
+}
+
+/* 股票清單輸入框特殊樣式 */
+#stock-list-input {
+  border: 1px solid #ddd;
 }
   

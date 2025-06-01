@@ -35,3 +35,6 @@ coverage/
 # Google Cloud 憑證檔案
 google_translator/*.json
 *.json 
+
+# 規則
+*.mdc

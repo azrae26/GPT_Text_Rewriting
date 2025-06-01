@@ -207,7 +207,13 @@ Auras=雙鴻
   generationOptimize_2_Instruction: '', // 生成優化二指令
   reflect3Instruction: '',      // 反思三指令
   generationOptimize_3_Instruction: '', // 生成優化三指令
-  backgroundKnowledge: ''       // 背景知識
+  backgroundKnowledge: '',       // 背景知識
+
+  // 股票清單預設設定
+  stockList: '1101,台泥',
+
+  // 中英對照表預設設定
+  zhEnMapping: '1101,台泥',
 };
 
 window.DefaultSettings = DefaultSettings;

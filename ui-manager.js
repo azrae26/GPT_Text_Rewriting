@@ -335,6 +335,56 @@ const UIManager = {
     }
   },
 
+  /** 從設定載入股票清單 */
+  async _loadStockListFromSettings() {
+    try {
+      const settings = await window.GlobalSettings.loadSettings();
+      const stockListText = settings.stockList || '';
+      window.stockListFromSettings = this._parseStockList(stockListText);
+      window.console.log('載入股票清單', {
+        原始文字長度: stockListText.length,
+        解析出的股票數量: window.stockListFromSettings.length
+      });
+    } catch (error) {
+      window.console.error('載入股票清單失敗:', error);
+      window.stockListFromSettings = [];
+    }
+  },
+
+  /** 解析股票清單文字為股票物件陣列 */
+  _parseStockList(stockListText) {
+    if (!stockListText || typeof stockListText !== 'string') {
+      return [];
+    }
+
+    const stocks = [];
+    const lines = stockListText.split('\n');
+
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) continue;
+
+      // 支援格式：代碼,公司名稱 或 代碼,公司名稱,匹配模式
+      const parts = trimmedLine.split(',').map(part => part.trim());
+      
+      if (parts.length >= 2) {
+        const stock = {
+          code: parts[0],
+          name: parts[1]
+        };
+        
+        // 如果有第三個部分，作為匹配模式
+        if (parts.length >= 3 && parts[2]) {
+          stock.pattern = parts[2];
+        }
+        
+        stocks.push(stock);
+      }
+    }
+
+    return stocks;
+  },
+
   /** 初始化股票代碼功能 */
   initializeStockCodeFeature() {
     window.console.log('開始初始化股票代碼功能');
@@ -362,78 +412,81 @@ const UIManager = {
       return;
     }
 
-    // 預處理股票列表，建立快速查找表
-    const stockMap = new Map();
-    const nameMap = new Map();
-    
-    if (window.stockList) {
-      window.stockList.forEach(stock => {
-        stockMap.set(stock.code, stock);
-        nameMap.set(stock.name, stock);
-        const baseName = stock.name.replace(/-KY$/, '');
-        if (baseName !== stock.name) {
-          nameMap.set(baseName, stock);
-        }
-      });
-    }
-
-    // 更新股票UI的函數
-    const updateUI = (source = 'textarea') => {
-      const textValue = elements.textarea.value;
-      const inputValue = elements.input.value.trim();
+    // 載入股票清單設定
+    this._loadStockListFromSettings().then(() => {
+      // 預處理股票列表，建立快速查找表
+      const stockMap = new Map();
+      const nameMap = new Map();
       
-      if (textValue.length < 4 && !inputValue) return;
-      
-      // 使用 _getStockCodes 來處理文本
-      const { codes, matchedStocks, stockCounts } = this._getStockCodes(textValue, inputValue);
-      
-      // 記錄找到的股票代碼數量
-      window.console.log('找到的股票代碼', { 
-          總數量: codes.length,
-          代碼列表: codes,
-          來源: source,
-          當前輸入值: inputValue
-      });
-      
-      // 自動填入最常出現的股票代碼（僅在文本區域觸發時）
-      if (source === 'textarea' && codes.length > 0 && !inputValue) {
-          window.console.log('符合自動填入條件', {
-              來源是否為文本區域: source === 'textarea',
-              是否有找到代碼: codes.length > 0,
-              輸入框是否為空: !inputValue
-          });
-          
-          if (codes[0]) { // codes 已經是按出現次數排序的了
-              const mostFrequentCode = codes[0];
-              window.console.log('選擇最常出現的股票代碼', {
-                  代碼: mostFrequentCode,
-                  出現次數: stockCounts.get(mostFrequentCode),
-                  所有代碼出現次數: Object.fromEntries(stockCounts),
-                  檢查範圍: '全文'
-              });
-              
-              elements.input.value = mostFrequentCode;
-              elements.input.dispatchEvent(new Event('input', { bubbles: true }));
-              elements.input.focus();
-              setTimeout(() => elements.input.blur(), 10);
+      if (window.stockListFromSettings && window.stockListFromSettings.length > 0) {
+        window.stockListFromSettings.forEach(stock => {
+          stockMap.set(stock.code, stock);
+          nameMap.set(stock.name, stock);
+          const baseName = stock.name.replace(/-KY$/, '');
+          if (baseName !== stock.name) {
+            nameMap.set(baseName, stock);
           }
+        });
       }
-      
-      this._updateStockButtons(codes, matchedStocks, elements);
-    };
 
-    // 監聽文本區域變化
-    elements.textarea.addEventListener('input', () => {
+      // 更新股票UI的函數
+      const updateUI = (source = 'textarea') => {
+        const textValue = elements.textarea.value;
+        const inputValue = elements.input.value.trim();
+        
+        if (textValue.length < 4 && !inputValue) return;
+        
+        // 使用 _getStockCodes 來處理文本
+        const { codes, matchedStocks, stockCounts } = this._getStockCodes(textValue, inputValue);
+        
+        // 記錄找到的股票代碼數量
+        window.console.log('找到的股票代碼', { 
+            總數量: codes.length,
+            代碼列表: codes,
+            來源: source,
+            當前輸入值: inputValue
+        });
+        
+        // 自動填入最常出現的股票代碼（僅在文本區域觸發時）
+        if (source === 'textarea' && codes.length > 0 && !inputValue) {
+            window.console.log('符合自動填入條件', {
+                來源是否為文本區域: source === 'textarea',
+                是否有找到代碼: codes.length > 0,
+                輸入框是否為空: !inputValue
+            });
+            
+            if (codes[0]) { // codes 已經是按出現次數排序的了
+                const mostFrequentCode = codes[0];
+                window.console.log('選擇最常出現的股票代碼', {
+                    代碼: mostFrequentCode,
+                    出現次數: stockCounts.get(mostFrequentCode),
+                    所有代碼出現次數: Object.fromEntries(stockCounts),
+                    檢查範圍: '全文'
+                });
+                
+                elements.input.value = mostFrequentCode;
+                elements.input.dispatchEvent(new Event('input', { bubbles: true }));
+                elements.input.focus();
+                setTimeout(() => elements.input.blur(), 10);
+            }
+        }
+        
+        this._updateStockButtons(codes, matchedStocks, elements);
+      };
+
+      // 監聽文本區域變化
+      elements.textarea.addEventListener('input', () => {
+        requestAnimationFrame(() => updateUI('textarea'));
+      });
+
+      // 監聽股票代號輸入框變化
+      elements.input.addEventListener('input', () => {
+        requestAnimationFrame(() => updateUI('input'));
+      });
+      
+      // 初始更新
       requestAnimationFrame(() => updateUI('textarea'));
     });
-
-    // 監聽股票代號輸入框變化
-    elements.input.addEventListener('input', () => {
-      requestAnimationFrame(() => updateUI('input'));
-    });
-    
-    // 初始更新
-    requestAnimationFrame(() => updateUI('textarea'));
   },
 
   /** 獲取或創建按鈕容器 */
@@ -464,7 +517,7 @@ const UIManager = {
   _getStockCodes(text, inputCode = '') {
     const first100Chars = text.substring(0, 100);
     
-    if (!window.stockList) {
+    if (!window.stockListFromSettings) {
         window.console.warn('[股票代碼提取] 未找到股票列表');
         return { codes: [], matchedStocks: new Map(), stockCounts: new Map() };
     }
@@ -494,7 +547,7 @@ const UIManager = {
     };
     
     // 只在前100字中搜尋可能的股票
-    const potentialStocks = window.stockList.filter(stock => {
+    const potentialStocks = window.stockListFromSettings.filter(stock => {
         // 如果是輸入的代碼，直接加入（不區分大小寫）
         if (stock.code.toLowerCase() === inputCode.toLowerCase()) {
             matchedStocks.set(stock.code, stock.name);

@@ -54,6 +54,9 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 高亮功能
   const highlightWordsInput = document.getElementById('highlight-words');
 
+  // 股票功能
+  const stockListInput = document.getElementById('stock-list-input');
+
   // 獲取新增的元素
   const reflectModelSelect = document.getElementById('reflectModel');
   const optimizeModelSelect = document.getElementById('optimizeModel');
@@ -82,64 +85,80 @@ document.addEventListener('DOMContentLoaded', async function() {
   let settings = await GlobalSettings.loadSettings();
   console.log('載入儲存的設置:', settings);
   
-  // 如果首次載入，則應用預設設定
-  if (settings.firstRun === true && typeof DefaultSettings !== 'undefined') {
-    console.log('首次載入，應用預設設定');
-    settings = { ...DefaultSettings };  // 使用預設設定
+  // 只在真正的首次載入（沒有任何用戶設定）時才應用預設設定
+  // 檢查是否有任何實際的用戶設定存在
+  const hasUserSettings = settings.instruction || settings.translateInstruction || 
+                          settings.stockList || settings.zhEnMapping ||
+                          settings.summaryInstruction || settings.reflectInstruction ||
+                          settings.optimizeInstruction || settings.generateInstruction ||
+                          settings.backgroundKnowledge ||
+                          Object.keys(settings.apiKeys || {}).length > 0;
+  
+  if (!hasUserSettings && typeof DefaultSettings !== 'undefined') {
+    console.log('檢測到首次使用（無用戶設定），應用預設設定');
+    // 只設定沒有值的屬性，不覆蓋已有設定
+    Object.keys(DefaultSettings).forEach(key => {
+      if (settings[key] === undefined || settings[key] === '') {
+        settings[key] = DefaultSettings[key];
+      }
+    });
     await GlobalSettings.saveSettings(settings);
   } else {
-    console.log('非首次載入，應用已保存的設定');
-    // API 相關
-    apiKeys = settings.apiKeys || {};
-    
-    // 改寫相關
-    instructionInput.value = settings.instruction || '';
-    shortInstructionInput.value = settings.shortInstruction || '';
-    autoRewritePatternsInput.value = settings.autoRewritePatterns || '';
-    fullRewriteModelSelect.value = settings.fullRewriteModel || '';
-    shortRewriteModelSelect.value = settings.shortRewriteModel || '';
-    autoRewriteModelSelect.value = settings.autoRewriteModel || '';
-    
-    // 翻譯相關
-    translateModelSelect.value = settings.translateModel || '';
-    translateInstructionInput.value = settings.translateInstruction || '';
-    removeHashCheckbox.checked = settings.removeHash !== undefined ? settings.removeHash : true;
-    removeStarCheckbox.checked = settings.removeStar !== undefined ? settings.removeStar : true;
-    
-    // 生成相關
-    generateModelSelect.value = settings.generateModel || '';
-    generateInstructionInput.value = settings.generateInstruction || '';
-    reflect1ModelSelect.value = settings.reflect1Model || '';
-    reflect1InstructionInput.value = settings.reflect1Instruction || '';
-    generationOptimize_1_ModelSelect.value = settings.generationOptimize_1_Model || '';
-    generationOptimize_1_InstructionInput.value = settings.generationOptimize_1_Instruction || '';
-    reflect2ModelSelect.value = settings.reflect2Model || '';
-    reflect2InstructionInput.value = settings.reflect2Instruction || '';
-    generationOptimize_2_ModelSelect.value = settings.generationOptimize_2_Model || '';
-    generationOptimize_2_InstructionInput.value = settings.generationOptimize_2_Instruction || '';
-    reflect3ModelSelect.value = settings.reflect3Model || '';
-    reflect3InstructionInput.value = settings.reflect3Instruction || '';
-    generationOptimize_3_ModelSelect.value = settings.generationOptimize_3_Model || '';
-    generationOptimize_3_InstructionInput.value = settings.generationOptimize_3_Instruction || '';
-    backgroundKnowledgeInput.value = settings.backgroundKnowledge || '';
-    
-    // 反思相關
-    reflectModelSelect.value = settings.reflectModel || '';
-    reflectInstructionInput.value = settings.reflectInstruction || '';
-    
-    // 優化相關
-    optimizeModelSelect.value = settings.optimizeModel || '';
-    optimizeInstructionInput.value = settings.optimizeInstruction || '';
-    
-    // 關鍵要點相關
-    summaryModelSelect.value = settings.summaryModel || '';
-    summaryInstructionInput.value = settings.summaryInstruction || '';
-
-    // 載入中英對照表
-    if (settings.zhEnMapping) {
-      zhEnMappingInput.value = settings.zhEnMapping;
-    }
+    console.log('載入已保存的設定，用戶設定存在:', hasUserSettings);
   }
+  
+  // 載入設定到 UI 元素
+  // API 相關
+  apiKeys = settings.apiKeys || {};
+  
+  // 改寫相關
+  instructionInput.value = settings.instruction || '';
+  shortInstructionInput.value = settings.shortInstruction || '';
+  autoRewritePatternsInput.value = settings.autoRewritePatterns || '';
+  fullRewriteModelSelect.value = settings.fullRewriteModel || '';
+  shortRewriteModelSelect.value = settings.shortRewriteModel || '';
+  autoRewriteModelSelect.value = settings.autoRewriteModel || '';
+  
+  // 翻譯相關
+  translateModelSelect.value = settings.translateModel || '';
+  translateInstructionInput.value = settings.translateInstruction || '';
+  removeHashCheckbox.checked = settings.removeHash !== undefined ? settings.removeHash : true;
+  removeStarCheckbox.checked = settings.removeStar !== undefined ? settings.removeStar : true;
+  
+  // 生成相關
+  generateModelSelect.value = settings.generateModel || '';
+  generateInstructionInput.value = settings.generateInstruction || '';
+  reflect1ModelSelect.value = settings.reflect1Model || '';
+  reflect1InstructionInput.value = settings.reflect1Instruction || '';
+  generationOptimize_1_ModelSelect.value = settings.generationOptimize_1_Model || '';
+  generationOptimize_1_InstructionInput.value = settings.generationOptimize_1_Instruction || '';
+  reflect2ModelSelect.value = settings.reflect2Model || '';
+  reflect2InstructionInput.value = settings.reflect2Instruction || '';
+  generationOptimize_2_ModelSelect.value = settings.generationOptimize_2_Model || '';
+  generationOptimize_2_InstructionInput.value = settings.generationOptimize_2_Instruction || '';
+  reflect3ModelSelect.value = settings.reflect3Model || '';
+  reflect3InstructionInput.value = settings.reflect3Instruction || '';
+  generationOptimize_3_ModelSelect.value = settings.generationOptimize_3_Model || '';
+  generationOptimize_3_InstructionInput.value = settings.generationOptimize_3_Instruction || '';
+  backgroundKnowledgeInput.value = settings.backgroundKnowledge || '';
+  
+  // 反思相關
+  reflectModelSelect.value = settings.reflectModel || '';
+  reflectInstructionInput.value = settings.reflectInstruction || '';
+  
+  // 優化相關
+  optimizeModelSelect.value = settings.optimizeModel || '';
+  optimizeInstructionInput.value = settings.optimizeInstruction || '';
+  
+  // 關鍵要點相關
+  summaryModelSelect.value = settings.summaryModel || '';
+  summaryInstructionInput.value = settings.summaryInstruction || '';
+
+  // 載入中英對照表
+  zhEnMappingInput.value = settings.zhEnMapping || '';
+
+  // 載入股票清單
+  stockListInput.value = settings.stockList || '';
   
   updateApiKeyInput();
 
@@ -251,7 +270,19 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // 4-8. 統一的事件處理配置
   const eventHandlerConfig = {
-    // 指令輸入配置
+    // 指令輸入配置（與生成設定組合相關）
+    generationInstructions: {
+      'generateInstruction': { type: 'input', element: generateInstructionInput },
+      'reflect1Instruction': { type: 'input', element: reflect1InstructionInput },
+      'generationOptimize_1_Instruction': { type: 'input', element: generationOptimize_1_InstructionInput },
+      'reflect2Instruction': { type: 'input', element: reflect2InstructionInput },
+      'generationOptimize_2_Instruction': { type: 'input', element: generationOptimize_2_InstructionInput },
+      'reflect3Instruction': { type: 'input', element: reflect3InstructionInput },
+      'generationOptimize_3_Instruction': { type: 'input', element: generationOptimize_3_InstructionInput },
+      'backgroundKnowledge': { type: 'input', element: backgroundKnowledgeInput }
+    },
+    
+    // 一般指令輸入配置（與生成設定組合無關）
     instructions: {
       'instruction': { type: 'input', element: instructionInput },
       'shortInstruction': { type: 'input', element: shortInstructionInput },
@@ -261,33 +292,34 @@ document.addEventListener('DOMContentLoaded', async function() {
         callback: sendAutoRewritePatternsUpdate 
       },
       'translateInstruction': { type: 'input', element: translateInstructionInput },
-      'generateInstruction': { type: 'input', element: generateInstructionInput },
-      'reflect1Instruction': { type: 'input', element: reflect1InstructionInput },
-      'generationOptimize_1_Instruction': { type: 'input', element: generationOptimize_1_InstructionInput },
-      'reflect2Instruction': { type: 'input', element: reflect2InstructionInput },
-      'generationOptimize_2_Instruction': { type: 'input', element: generationOptimize_2_InstructionInput },
-      'reflect3Instruction': { type: 'input', element: reflect3InstructionInput },
-      'generationOptimize_3_Instruction': { type: 'input', element: generationOptimize_3_InstructionInput },
-      'backgroundKnowledge': { type: 'input', element: backgroundKnowledgeInput },
       'summaryInstruction': { type: 'input', element: summaryInstructionInput },
       'zhEnMapping': { type: 'input', element: zhEnMappingInput },
+      'stockList': { 
+        type: 'input', 
+        element: stockListInput,
+        callback: updateStockListSettings 
+      },
       'reflectInstruction': { type: 'input', element: reflectInstructionInput },
       'optimizeInstruction': { type: 'input', element: optimizeInstructionInput }
     },
     
-    // 模型選擇配置
-    models: {
-      'fullRewriteModel': { type: 'model', element: fullRewriteModelSelect },
-      'shortRewriteModel': { type: 'model', element: shortRewriteModelSelect },
-      'autoRewriteModel': { type: 'model', element: autoRewriteModelSelect },
-      'translateModel': { type: 'model', element: translateModelSelect },
+    // 生成相關模型選擇配置
+    generationModels: {
       'generateModel': { type: 'model', element: generateModelSelect },
       'reflect1Model': { type: 'model', element: reflect1ModelSelect },
       'generationOptimize_1_Model': { type: 'model', element: generationOptimize_1_ModelSelect },
       'reflect2Model': { type: 'model', element: reflect2ModelSelect },
       'generationOptimize_2_Model': { type: 'model', element: generationOptimize_2_ModelSelect },
       'reflect3Model': { type: 'model', element: reflect3ModelSelect },
-      'generationOptimize_3_Model': { type: 'model', element: generationOptimize_3_ModelSelect },
+      'generationOptimize_3_Model': { type: 'model', element: generationOptimize_3_ModelSelect }
+    },
+    
+    // 一般模型選擇配置
+    models: {
+      'fullRewriteModel': { type: 'model', element: fullRewriteModelSelect },
+      'shortRewriteModel': { type: 'model', element: shortRewriteModelSelect },
+      'autoRewriteModel': { type: 'model', element: autoRewriteModelSelect },
+      'translateModel': { type: 'model', element: translateModelSelect },
       'summaryModel': { type: 'model', element: summaryModelSelect },
       'reflectModel': { type: 'model', element: reflectModelSelect },
       'optimizeModel': { type: 'model', element: optimizeModelSelect }
@@ -310,8 +342,8 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // 統一的事件處理器設置函數
   function setupEventHandlers() {
-    // 設置指令輸入事件
-    Object.entries(eventHandlerConfig.instructions).forEach(([key, config]) => {
+    // 設置生成相關指令輸入事件（與設定組合相關）
+    Object.entries(eventHandlerConfig.generationInstructions).forEach(([key, config]) => {
       if (!config.element) {
         console.warn(`找不到元素: ${key}`);
         return;
@@ -343,8 +375,26 @@ document.addEventListener('DOMContentLoaded', async function() {
       });
     });
 
-    // 設置模型選擇事件
-    Object.entries(eventHandlerConfig.models).forEach(([key, config]) => {
+    // 設置一般指令輸入事件（與設定組合無關）
+    Object.entries(eventHandlerConfig.instructions).forEach(([key, config]) => {
+      if (!config.element) {
+        console.warn(`找不到元素: ${key}`);
+        return;
+      }
+      
+      config.element.addEventListener('input', async function() {
+        // 只保存到全局設定，不與生成設定組合關聯
+        await GlobalSettings.saveSingleSetting(key, this.value);
+        
+        if (config.callback) {
+          config.callback();
+        }
+        throttledUpdateContentScript();
+      });
+    });
+
+    // 設置生成相關模型選擇事件（與設定組合相關）
+    Object.entries(eventHandlerConfig.generationModels).forEach(([key, config]) => {
       if (!config.element) {
         console.warn(`找不到元素: ${key}`);
         return;
@@ -369,6 +419,20 @@ document.addEventListener('DOMContentLoaded', async function() {
           }
         }
         
+        throttledUpdateContentScript();
+      });
+    });
+
+    // 設置一般模型選擇事件（與設定組合無關）
+    Object.entries(eventHandlerConfig.models).forEach(([key, config]) => {
+      if (!config.element) {
+        console.warn(`找不到元素: ${key}`);
+        return;
+      }
+      
+      config.element.addEventListener('change', async function() {
+        // 只保存到全局設定，不與生成設定組合關聯
+        await GlobalSettings.saveModelSelection(key, this.value);
         throttledUpdateContentScript();
       });
     });
@@ -572,6 +636,22 @@ document.addEventListener('DOMContentLoaded', async function() {
           console.log('自動改寫匹配模式已更新');
         } else {
           console.error('更新自動改寫匹配模式失敗');
+        }
+      });
+    });
+  }
+
+  function updateStockListSettings() {
+    // 通知 content script 更新股票清單
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: "updateStockList",
+        stockList: stockListInput.value
+      }, function(response) {
+        if (response && response.success) {
+          console.log('股票清單已更新');
+        } else {
+          console.log('股票清單設置已保存，將在頁面重新載入時應用');
         }
       });
     });

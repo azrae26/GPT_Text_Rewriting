@@ -328,6 +328,32 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
       sendResponse({success: true});
       break;
+    case "updateStockList":
+      // 更新股票清單
+      if (request.stockList !== undefined) {
+        // 重新載入股票清單並更新UI
+        if (window.UIManager && window.UIManager._loadStockListFromSettings) {
+          // 保存到設定中
+          window.GlobalSettings.saveSingleSetting('stockList', request.stockList)
+            .then(() => {
+              // 重新載入股票清單
+              return window.UIManager._loadStockListFromSettings();
+            })
+            .then(() => {
+              // 重新初始化股票代碼功能以應用新的清單
+              window.UIManager.removeStockCodeFeature();
+              window.UIManager.initializeStockCodeFeature();
+              sendResponse({success: true});
+            })
+            .catch(error => {
+              console.error('更新股票清單失敗:', error);
+              sendResponse({success: false, error: error.message});
+            });
+          return true; // 表示我們會異步發送回應
+        }
+      }
+      sendResponse({success: true});
+      break;
   }
 });
 

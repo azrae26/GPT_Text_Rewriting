@@ -13,6 +13,7 @@
     <div class="main-tab" data-tab="multiple-generation">多重生成</div>
     <div class="main-tab" data-tab="highlight">高亮</div>
     <div class="main-tab" data-tab="auto-replace">替換</div>
+    <div class="main-tab" data-tab="stock">股票</div>
     <div class="main-tab" data-tab="settings">設定</div>
   </div>
 
@@ -255,6 +256,19 @@
       <div class="auto-replace-container">
         <!-- 自動替換組會在這裡動態生成 -->
       </div>
+    </div>
+  </div>
+
+  <!-- 股票 -->
+  <div id="stock-tab" class="main-tab-content">
+    <div class="content">
+      <textarea id="stock-list-input" placeholder="請輸入股票清單，格式如下：
+代碼,公司名稱,匹配模式(可選)
+例如：
+1101,台泥
+1303,南亞,(?<!東)南亞
+2330,台積電
+2454,聯發科"></textarea>
     </div>
   </div>
 

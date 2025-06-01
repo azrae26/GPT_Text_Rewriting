@@ -90,8 +90,12 @@ const GlobalSettings = {
   backgroundKnowledge: '',
   /** 摘要模型名稱。 */
   summaryModel: '',
+  /** 關鍵要點指令。 */
+  summaryInstruction: '',
   /** 中英對照表。 */
   zhEnMapping: '',
+  /** 股票清單。 */
+  stockList: '',
 
   /** 生成設定組合 */
   generationSettingsGroups: {},
@@ -123,7 +127,8 @@ const GlobalSettings = {
             'generationOptimize_2_Instruction',
             'reflect3Instruction',
             'generationOptimize_3_Instruction',
-            'backgroundKnowledge'
+            'backgroundKnowledge',
+            'stockList'
           ], (items) => resolve(items));
         })
       ]);
@@ -202,6 +207,7 @@ const GlobalSettings = {
       this.summaryModel = syncResult.summaryModel || '';
       this.summaryInstruction = localResult.summaryInstruction || '';
       this.zhEnMapping = localResult.zhEnMapping || ''; // 載入中英對照表
+      this.stockList = localResult.stockList || ''; // 載入股票清單
       
       // 使用 DefaultSettings 中的預設值
       this.confirmModel = syncResult.confirmModel === undefined ? window.DefaultSettings?.confirmModel : syncResult.confirmModel;
@@ -366,6 +372,7 @@ const GlobalSettings = {
             optimizeInstruction: this.optimizeInstruction,
             summaryInstruction: this.summaryInstruction,
             zhEnMapping: this.zhEnMapping,  // 加入中英對照表到本地儲存
+            stockList: this.stockList,  // 加入股票清單到本地儲存
             generateInstruction: this.generateInstruction,
             reflect1Instruction: this.reflect1Instruction,
             generationOptimize_1_Instruction: this.generationOptimize_1_Instruction,
@@ -663,8 +670,27 @@ const GlobalSettings = {
 
   // 檢查是否為需要使用 local storage 的設定
   isLocalStorageKey(key) {
+    // 明確列出需要使用 local storage 的鍵值
+    const localStorageKeys = [
+      'translateInstruction',
+      'summaryInstruction', 
+      'zhEnMapping',
+      'reflectInstruction',
+      'optimizeInstruction',
+      'generateInstruction',
+      'reflect1Instruction',
+      'generationOptimize_1_Instruction',
+      'reflect2Instruction',
+      'generationOptimize_2_Instruction',
+      'reflect3Instruction',
+      'generationOptimize_3_Instruction',
+      'backgroundKnowledge',
+      'stockList'
+    ];
+    
     // 檢查是否為需要使用 local storage 的大型設定
     return (
+      localStorageKeys.includes(key) ||
       // 檢查所有替換規則相關的鍵
       key.startsWith('replace_') ||
       key === 'autoReplaceRules' ||
