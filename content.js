@@ -254,39 +254,61 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       break;
     case "updateSettings":
       // 更新設定
-      if (request.settings.apiKeys) {
-        window.GlobalSettings.apiKeys = request.settings.apiKeys;
+      if (request.settings && typeof request.settings === 'object') {
+        if (request.settings.apiKeys) {
+          window.GlobalSettings.apiKeys = request.settings.apiKeys;
+        }
+        if (request.settings.fullRewriteModel) {
+          window.GlobalSettings.fullRewriteModel = request.settings.fullRewriteModel;
+        }
+        if (request.settings.shortRewriteModel) {
+          window.GlobalSettings.shortRewriteModel = request.settings.shortRewriteModel;
+        }
+        if (request.settings.autoRewriteModel) {
+          window.GlobalSettings.autoRewriteModel = request.settings.autoRewriteModel;
+        }
+        if (request.settings.translateModel) {
+          window.GlobalSettings.translateModel = request.settings.translateModel;
+        }
+        if (request.settings.translateInstruction) {
+          window.GlobalSettings.translateInstruction = request.settings.translateInstruction;
+        }
+        if (request.settings.removeHash !== undefined) {
+          window.GlobalSettings.removeHash = request.settings.removeHash;
+        }
+        if (request.settings.removeStar !== undefined) {
+          window.GlobalSettings.removeStar = request.settings.removeStar;
+        }
+        
+        // 處理股票清單更新
+        if (request.settings.stockList !== undefined && window.UIManager && window.UIManager._loadStockListFromSettings) {
+          console.log('檢測到股票清單更新，重新初始化股票功能');
+          // 重新載入股票清單並更新UI
+          window.UIManager._loadStockListFromSettings()
+            .then(() => {
+              // 重新初始化股票代碼功能以應用新的清單
+              window.UIManager.removeStockCodeFeature();
+              window.UIManager.initializeStockCodeFeature();
+              console.log('股票清單已通過 updateSettings 成功更新');
+            })
+            .catch(error => {
+              console.error('通過 updateSettings 更新股票清單失敗:', error);
+            });
+        }
+        
+        console.log('更新的設置:', {
+          fullRewriteModel: window.GlobalSettings.fullRewriteModel,
+          shortRewriteModel: window.GlobalSettings.shortRewriteModel,
+          autoRewriteModel: window.GlobalSettings.autoRewriteModel,
+          translateModel: window.GlobalSettings.translateModel,
+          apiKeys: window.GlobalSettings.apiKeys,
+          removeHash: window.GlobalSettings.removeHash,
+          removeStar: window.GlobalSettings.removeStar,
+          stockListUpdated: request.settings.stockList !== undefined
+        });
+      } else {
+        console.warn('updateSettings 收到無效的 settings 參數:', request.settings);
       }
-      if (request.settings.fullRewriteModel) {
-        window.GlobalSettings.fullRewriteModel = request.settings.fullRewriteModel;
-      }
-      if (request.settings.shortRewriteModel) {
-        window.GlobalSettings.shortRewriteModel = request.settings.shortRewriteModel;
-      }
-      if (request.settings.autoRewriteModel) {
-        window.GlobalSettings.autoRewriteModel = request.settings.autoRewriteModel;
-      }
-      if (request.settings.translateModel) {
-        window.GlobalSettings.translateModel = request.settings.translateModel;
-      }
-      if (request.settings.translateInstruction) {
-        window.GlobalSettings.translateInstruction = request.settings.translateInstruction;
-      }
-      if (request.settings.removeHash !== undefined) {
-        window.GlobalSettings.removeHash = request.settings.removeHash;
-      }
-      if (request.settings.removeStar !== undefined) {
-        window.GlobalSettings.removeStar = request.settings.removeStar;
-      }
-      console.log('更新的設置:', {
-        fullRewriteModel: window.GlobalSettings.fullRewriteModel,
-        shortRewriteModel: window.GlobalSettings.shortRewriteModel,
-        autoRewriteModel: window.GlobalSettings.autoRewriteModel,
-        translateModel: window.GlobalSettings.translateModel,
-        apiKeys: window.GlobalSettings.apiKeys,
-        removeHash: window.GlobalSettings.removeHash,
-        removeStar: window.GlobalSettings.removeStar
-      });
       sendResponse({success: true});
       break;
     case "generateSummary":

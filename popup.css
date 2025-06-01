@@ -1102,6 +1102,16 @@ input.form-input {
   background-color: #da190b;
 }
 
+/* 爬蟲按鈕處理中狀態樣式 */
+.crawler-button.processing {
+  background-color: #ff9800;
+  cursor: not-allowed;
+}
+
+.crawler-button.processing:hover {
+  background-color: #ff9800;
+}
+
 /* 爬蟲狀態顯示區域 */
 .crawler-status {
   margin-top: 10px;

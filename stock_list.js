@@ -1,6 +1,6 @@
 // 將股票代號和名稱列表定義為全局變量
 window.stockList = [
-    { code: "1101", name: "台泥" },
+    { code: "1101", name: "台泥", pattern: "(?<!王)台泥" },
     { code: "1102", name: "亞泥" },
     { code: "1103", name: "嘉泥" },
     { code: "1104", name: "環泥" },

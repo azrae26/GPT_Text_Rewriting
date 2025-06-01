@@ -114,6 +114,11 @@ const BackgroundStockCrawlerManager = {
   async _startScheduledCrawl(intervalMinutes, runImmediately = false) {
     console.log(`啟動定時爬取，間隔 ${intervalMinutes} 分鐘`);
     
+    // 驗證參數
+    if (!intervalMinutes || isNaN(intervalMinutes) || intervalMinutes <= 0) {
+      throw new Error(`無效的間隔時間: ${intervalMinutes}`);
+    }
+    
     // 清除現有定時器
     this._clearTimers();
     
@@ -156,7 +161,9 @@ const BackgroundStockCrawlerManager = {
       intervalMinutes: 0 
     });
     
-    this._notifyStatusChange('stopped');
+    this._notifyStatusChange('scheduledStopped', { 
+      status: '已停止自動爬取' 
+    });
   },
 
   /**
@@ -216,6 +223,7 @@ const BackgroundStockCrawlerManager = {
         console.log(`[${i + 1}/${totalUrls}] 開始爬取: ${industryName}`);
         
         const progressPercent = Math.round((i / totalUrls) * 90);
+        this.currentProgress = progressPercent;  // 更新當前進度
         this._notifyStatusChange('running', { 
           status: `正在爬取 ${industryName} (${i + 1}/${totalUrls})`, 
           progress: progressPercent 
@@ -247,6 +255,7 @@ const BackgroundStockCrawlerManager = {
       
       if (this.running) {
         console.log(`所有網頁爬取完成，共獲得 ${allStocks.size} 支股票`);
+        this.currentProgress = 95;  // 更新進度到 95%
         this._notifyStatusChange('running', { 
           status: '正在更新股票清單...', 
           progress: 95 
@@ -255,6 +264,10 @@ const BackgroundStockCrawlerManager = {
         // 更新股票清單
         const updateResult = await this._updateStockList(allStocks);
         console.log('股票清單更新結果:', updateResult);
+        
+        // 先設置 running 為 false，再發送 completed 狀態
+        this.running = false;
+        this.currentProgress = 100;  // 設置最終進度為 100%
         
         const statusMsg = `爬取完成！新增 ${updateResult.added} 支，刪除 ${updateResult.removed} 支股票，總計 ${updateResult.total} 支`;
         this._notifyStatusChange('completed', { 
@@ -270,6 +283,7 @@ const BackgroundStockCrawlerManager = {
       console.error('背景爬取過程發生錯誤:', error);
       this._notifyStatusChange('error', { 
         status: `爬取失敗: ${error.message}`, 
+        progress: 0,  // 確保錯誤狀態也包含進度資料
         error: error.message 
       });
     } finally {
@@ -317,8 +331,6 @@ const BackgroundStockCrawlerManager = {
         const rowHtml = trMatch[2]; // 第二個捕獲組是行內容
         const cells = [];
         
-        console.log(`處理第 ${rowCount} 行數據...`);
-        
         // 提取每個 td 的內容
         const tempTdRegex = /<td[^>]*>(.*?)<\/td>/gi;
         let tdMatch;
@@ -333,18 +345,11 @@ const BackgroundStockCrawlerManager = {
           cells.push(cellContent);
         }
         
-        console.log(`第 ${rowCount} 行解析到 ${cells.length} 個欄位`);
-        if (cells.length > 0) {
-          console.log('前 3 個欄位:', cells.slice(0, 3));
-        }
-        
         // MOPS格式：第1欄是股票代號，第3欄是公司簡稱
         if (cells.length >= 3) {
           const stockCode = cells[0].trim(); // 第一欄：股票代號
           const fullName = cells[1].trim();  // 第二欄：公司全名
           const shortName = cells[2].trim(); // 第三欄：公司簡稱
-          
-          console.log(`檢查股票: 代號="${stockCode}", 簡稱="${shortName}"`);
           
           // 檢查是否為有效的股票代號（純數字，4-6位）
           if (stockCode && /^\d{4,6}$/.test(stockCode) && shortName) {
@@ -355,12 +360,7 @@ const BackgroundStockCrawlerManager = {
             };
             
             stocks.push(stock);
-            console.log(`✅ 成功添加股票: ${stockCode} (${shortName})`);
-          } else {
-            console.log(`❌ 跳過無效數據: 代號="${stockCode}" (格式檢查: ${/^\d{4,6}$/.test(stockCode)}), 簡稱="${shortName}"`);
           }
-        } else {
-          console.log(`❌ 欄位不足，跳過此行 (需要至少3欄，實際 ${cells.length} 欄)`);
         }
       }
       
@@ -613,13 +613,17 @@ const BackgroundStockCrawlerManager = {
   stopCrawl() {
     console.log('停止爬取');
     this.running = false;
+    this.currentProgress = 0;  // 重置進度
     
     if (this.crawlTimer) {
       clearTimeout(this.crawlTimer);
       this.crawlTimer = null;
     }
     
-    this._notifyStatusChange('stopped', { status: '已停止爬取' });
+    this._notifyStatusChange('singleStopped', { 
+      status: '已停止爬取',
+      progress: 0  // 確保停止時進度重置
+    });
   }
 };
 
@@ -692,7 +696,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return true;
         
       case 'startScheduled':
-        BackgroundStockCrawlerManager._startScheduledCrawl(request.intervalMinutes, false)
+        BackgroundStockCrawlerManager._startScheduledCrawl(request.intervalMinutes)
           .then(() => sendResponse({ success: true }))
           .catch(error => sendResponse({ success: false, error: error.message }));
         return true;

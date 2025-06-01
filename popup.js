@@ -268,7 +268,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   apiKeyInput.addEventListener('input', async function() {
     apiKeys[modelSelect.value] = this.value;
     await GlobalSettings.saveSingleSetting('apiKeys', apiKeys);
-    throttledUpdateContentScript();
+    triggerContentScriptUpdate();
   });
 
   // API 模型選擇
@@ -381,7 +381,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (config.callback) {
           config.callback();
         }
-        throttledUpdateContentScript();
+        triggerContentScriptUpdate();
       });
     });
 
@@ -399,7 +399,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (config.callback) {
           config.callback();
         }
-        throttledUpdateContentScript();
+        triggerContentScriptUpdate();
       });
     });
 
@@ -429,7 +429,7 @@ document.addEventListener('DOMContentLoaded', async function() {
           }
         }
         
-        throttledUpdateContentScript();
+        triggerContentScriptUpdate();
       });
     });
 
@@ -443,7 +443,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       config.element.addEventListener('change', async function() {
         // 只保存到全局設定，不與生成設定組合關聯
         await GlobalSettings.saveModelSelection(key, this.value);
-        throttledUpdateContentScript();
+        triggerContentScriptUpdate();
       });
     });
 
@@ -476,7 +476,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (config.logMessage) {
           console.log(config.logMessage, this.checked);
         }
-        throttledUpdateContentScript();
+        triggerContentScriptUpdate();
       });
     });
   }
@@ -651,8 +651,26 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
   }
 
-  function updateStockListSettings() {
-    GlobalSettings.saveSingleSetting('stockList', stockListInput.value);
+  async function updateStockListSettings() {
+    await GlobalSettings.saveSingleSetting('stockList', stockListInput.value);
+    
+    // 立即通知 content script 更新股票清單
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      if (tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          action: "updateStockList",
+          stockList: stockListInput.value
+        }, function(response) {
+          if (chrome.runtime.lastError) {
+            console.log('content script 未載入，股票清單將在下次載入時應用');
+          } else if (response && response.success) {
+            console.log('股票清單已立即更新');
+          } else {
+            console.error('更新股票清單失敗:', response?.error || '未知錯誤');
+          }
+        });
+      }
+    });
   }
 
   // 股票爬蟲控制器
@@ -665,11 +683,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     progressFill: document.getElementById('progress-fill'),
     progressText: document.getElementById('progress-text'),
     
-    // 狀態
+    // 狀態追蹤
     isRunning: false,
     isScheduled: false,
     savedStockListValue: '',
-    statusListener: null,
+    initialized: false, // 添加初始化標誌
     
     // 初始化
     init() {
@@ -683,6 +701,10 @@ document.addEventListener('DOMContentLoaded', async function() {
       
       // 設置狀態監聽器
       this.setupStatusListener();
+      
+      // 標記為已初始化
+      this.initialized = true;
+      console.log('StockCrawlerController 初始化完成');
     },
     
     // 綁定事件
@@ -727,6 +749,13 @@ document.addEventListener('DOMContentLoaded', async function() {
         action: 'stockCrawler',
         command: 'getStatus'
       }, (response) => {
+        // 檢查 chrome.runtime.lastError
+        if (chrome.runtime.lastError) {
+          console.log('查詢狀態時通信錯誤:', chrome.runtime.lastError.message);
+          this.updateStatus('無法連接到背景腳本', 'error');
+          return;
+        }
+        
         if (response && response.success) {
           const status = response.status;
           this.isRunning = status.isRunning;
@@ -744,6 +773,8 @@ document.addEventListener('DOMContentLoaded', async function() {
           } else {
             this.updateStatus('點擊按鈕開始爬取股票清單');
           }
+        } else {
+          this.updateStatus('無法獲取爬蟲狀態', 'error');
         }
       });
     },
@@ -768,6 +799,12 @@ document.addEventListener('DOMContentLoaded', async function() {
         action: 'stockCrawler',
         command: 'addListener'
       }, (response) => {
+        // 檢查 chrome.runtime.lastError
+        if (chrome.runtime.lastError) {
+          console.log('設置狀態監聽器時通信錯誤:', chrome.runtime.lastError.message);
+          return;
+        }
+        
         if (response && response.type === 'stockCrawlerStatus') {
           this.handleStatusUpdate(response);
         }
@@ -784,12 +821,17 @@ document.addEventListener('DOMContentLoaded', async function() {
       switch (message.status) {
         case 'running':
           this.updateStatus(message.data.status, 'running');
+          // 先顯示進度條，再更新進度值
+          if (this.progressContainer.style.display !== 'flex') {
+            this.showProgress();
+          }
           this.updateProgress(message.data.progress || 0);
           this.updateStartButtonState(true);
-          this.showProgress();
           break;
           
         case 'completed':
+          // 確保狀態正確設置為非運行中
+          this.isRunning = false;
           this.updateStatus(message.data.status, 'success');
           this.updateProgress(100);
           this.updateStartButtonState(false);
@@ -798,22 +840,50 @@ document.addEventListener('DOMContentLoaded', async function() {
           break;
           
         case 'error':
+          // 確保狀態正確設置為非運行中
+          this.isRunning = false;
           this.updateStatus(message.data.status, 'error');
+          this.updateProgress(message.data.progress || 0);  // 重置進度條
           this.updateStartButtonState(false);
           this.hideProgress();
           break;
           
         case 'scheduled':
-          // 只通過狀態更新來處理scheduled狀態，避免競態條件
-          this.isScheduled = true;
-          this.updateAutoToggleButtonState(true);
           this.updateStatus(`已啟動自動爬取，每 ${message.data.intervalMinutes} 分鐘執行一次`);
+          // 延遲更新按鈕狀態以避免閃爍
+          setTimeout(() => {
+            this.updateAutoToggleButtonState(true);
+          }, 300);
+          break;
+          
+        case 'singleStopped':
+          // 只處理單次爬取的停止狀態
+          this.isRunning = false;
+          this.updateStartButtonState(false);
+          this.updateProgress(message.data.progress || 0);
+          this.updateStatus(message.data.status || '已停止爬取');
+          this.hideProgress();
+          break;
+          
+        case 'scheduledStopped':
+          // 只處理自動爬取的停止狀態
+          this.isScheduled = false;
+          this.updateStatus('已停止自動爬取');
+          // 延遲更新按鈕狀態以避免閃爍
+          setTimeout(() => {
+            this.updateAutoToggleButtonState(false);
+          }, 300);
           break;
           
         case 'stopped':
+          // 保留原有的通用停止處理（向後兼容）
+          this.isRunning = false;
           this.isScheduled = false;
           this.updateAutoToggleButtonState(false);
-          this.updateStatus('已停止自動爬取');
+          this.updateStartButtonState(false);
+          this.updateProgress(message.data.progress || 0);
+          this.updateStatus('已停止');
+          this.hideProgress();
           break;
       }
     },
@@ -824,6 +894,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       this.updateStatus('請求開始爬取...', 'running');
       this.updateStartButtonState(true);
       this.showProgress();
+      this.updateProgress(0);  // 確保開始時進度為0
       
       // 保存當前股票清單內容
       this.savedStockListValue = stockListInput.value;
@@ -833,12 +904,19 @@ document.addEventListener('DOMContentLoaded', async function() {
         action: 'stockCrawler',
         command: 'startSingle'
       }, (response) => {
+        // 檢查 chrome.runtime.lastError
+        if (chrome.runtime.lastError) {
+          this.updateStatus('通信錯誤: ' + chrome.runtime.lastError.message, 'error');
+          this.updateStartButtonState(false);
+          this.hideProgress();
+          return;
+        }
+        
         if (!response || !response.success) {
           this.updateStatus('啟動爬取失敗: ' + (response?.error || '未知錯誤'), 'error');
           this.updateStartButtonState(false);
           this.hideProgress();
         }
-        // 成功的狀態會通過 handleStatusUpdate 處理，不在這裡更新
       });
     },
     
@@ -851,6 +929,12 @@ document.addEventListener('DOMContentLoaded', async function() {
         action: 'stockCrawler',
         command: 'stopCrawl'
       }, (response) => {
+        // 檢查 chrome.runtime.lastError
+        if (chrome.runtime.lastError) {
+          this.updateStatus('通信錯誤: ' + chrome.runtime.lastError.message, 'error');
+          return;
+        }
+        
         if (response && response.success) {
           this.updateStatus('已停止爬取');
           this.updateStartButtonState(false);
@@ -863,44 +947,127 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     // 開始定時爬取
     startScheduledCrawl() {
+      // 檢查是否已初始化
+      if (!this.initialized) {
+        console.log('StockCrawlerController 尚未初始化完成，等待...');
+        setTimeout(() => this.startScheduledCrawl(), 50);
+        return;
+      }
+      
       const interval = parseInt(this.intervalInput.value) || 30;
       
-      console.log(`請求開始定時股票爬取，間隔 ${interval} 分鐘`);
-      this.updateStatus('正在啟動自動爬取...', 'info');
+      // 驗證間隔時間
+      if (interval <= 0 || interval > 9999) {
+        this.updateStatus('無效的間隔時間，請輸入1-9999之間的數字', 'error');
+        return;
+      }
+      
+      // 開始啟動流程，顯示"啟動中"狀態
+      this._attemptStartScheduled(interval, 0);
+    },
+    
+    // 嘗試啟動定時爬取（帶重試）
+    _attemptStartScheduled(interval, retryCount = 0) {
+      const maxRetries = 6;
+      
+      console.log(`請求開始定時股票爬取，間隔 ${interval} 分鐘 (嘗試 ${retryCount + 1}/${maxRetries + 1})`);
+      
+      // 更新狀態為啟動中
+      if (retryCount === 0) {
+        this.updateStatus('正在啟動自動爬取...', 'info');
+        this.updateAutoToggleButtonState('starting'); // 設置為啟動中狀態
+      } else {
+        this.updateStatus(`啟動中... (重試 ${retryCount}/${maxRetries})`, 'info');
+      }
       
       chrome.runtime.sendMessage({
         action: 'stockCrawler',
         command: 'startScheduled',
         intervalMinutes: interval
       }, (response) => {
-        // 移除這裡的狀態更新，完全依賴 handleStatusUpdate 來處理
-        // 只處理錯誤情況
-        if (!response || !response.success) {
-          this.updateStatus('啟動自動爬取失敗: ' + (response?.error || '未知錯誤'), 'error');
-          // 確保按鈕狀態保持未啟動狀態
-          this.isScheduled = false;
-          this.updateAutoToggleButtonState(false);
+        // 檢查 chrome.runtime.lastError
+        if (chrome.runtime.lastError) {
+          console.log(`嘗試 ${retryCount + 1} 通信錯誤:`, chrome.runtime.lastError.message);
+          this._handleStartScheduledFailure(interval, retryCount, maxRetries, `通信錯誤: ${chrome.runtime.lastError.message}`);
+          return;
         }
-        // 成功的狀態會通過 handleStatusUpdate 的 'scheduled' 案例處理
+        
+        if (response && response.success) {
+          // 成功：更新狀態和按鈕
+          this.isScheduled = true;
+          this.updateStatus(`已啟動自動爬取，每 ${interval} 分鐘執行一次`);
+          console.log('定時爬取啟動成功');
+          // 延遲更新按鈕狀態以避免閃爍
+          setTimeout(() => {
+            this.updateAutoToggleButtonState(true); // 設置為已啟動狀態
+          }, 300);
+        } else {
+          const errorMsg = response?.error || '未知錯誤';
+          console.log(`嘗試 ${retryCount + 1} 啟動失敗:`, errorMsg);
+          this._handleStartScheduledFailure(interval, retryCount, maxRetries, errorMsg);
+        }
       });
+    },
+    
+    // 處理啟動失敗
+    _handleStartScheduledFailure(interval, retryCount, maxRetries, errorMsg) {
+      if (retryCount < maxRetries) {
+        // 繼續重試
+        console.log(`1秒後進行第 ${retryCount + 2} 次嘗試...`);
+        setTimeout(() => {
+          this._attemptStartScheduled(interval, retryCount + 1);
+        }, 1000);
+      } else {
+        // 重試次數用盡，恢復原狀態
+        console.log('重試次數用盡，啟動失敗');
+        this.updateStatus('啟動自動爬取失敗: ' + errorMsg, 'error');
+        // 延遲恢復按鈕狀態以避免閃爍
+        setTimeout(() => {
+          this.updateAutoToggleButtonState(false); // 恢復為未啟動狀態
+        }, 300);
+      }
     },
     
     // 停止定時爬取
     stopScheduledCrawl() {
+      // 檢查是否已初始化
+      if (!this.initialized) {
+        console.log('StockCrawlerController 尚未初始化完成，等待...');
+        setTimeout(() => this.stopScheduledCrawl(), 50);
+        return;
+      }
+      
       console.log('請求停止定時股票爬取');
       this.updateStatus('正在停止自動爬取...', 'info');
+      this.updateAutoToggleButtonState('stopping'); // 設置為停止中狀態
       
       chrome.runtime.sendMessage({
         action: 'stockCrawler',
         command: 'stopScheduled'
       }, (response) => {
-        // 移除這裡的狀態更新，完全依賴 handleStatusUpdate 來處理
-        // 只處理錯誤情況
-        if (!response || !response.success) {
-          this.updateStatus('停止自動爬取失敗: ' + (response?.error || '未知錯誤'), 'error');
-          // 保持當前按鈕狀態不變
+        // 檢查 chrome.runtime.lastError
+        if (chrome.runtime.lastError) {
+          console.log('停止定時爬取通信錯誤:', chrome.runtime.lastError.message);
+          this.updateStatus('通信錯誤: ' + chrome.runtime.lastError.message, 'error');
+          // 延遲恢復按鈕狀態以避免閃爍
+          setTimeout(() => {
+            this.updateAutoToggleButtonState(true); // 恢復為啟動狀態
+          }, 300);
+          return;
         }
-        // 成功的狀態會通過 handleStatusUpdate 的 'stopped' 案例處理
+        
+        if (response && response.success) {
+          console.log('停止定時爬取請求成功，等待狀態更新...');
+          // 不在這裡更新狀態，讓 handleStatusUpdate 處理
+          // 這樣避免重複更新導致的閃爍
+        } else {
+          console.log('停止定時爬取請求失敗:', response?.error || '未知錯誤');
+          this.updateStatus('停止自動爬取失敗: ' + (response?.error || '未知錯誤'), 'error');
+          // 延遲恢復按鈕狀態以避免閃爍
+          setTimeout(() => {
+            this.updateAutoToggleButtonState(true); // 恢復為啟動狀態
+          }, 300);
+        }
       });
     },
     
@@ -912,6 +1079,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     // 更新進度顯示
     updateProgress(progress) {
+      console.log('更新進度:', progress);
       this.progressFill.style.width = `${progress}%`;
       this.progressText.textContent = `${progress}%`;
     },
@@ -919,7 +1087,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 顯示進度條
     showProgress() {
       this.progressContainer.style.display = 'flex';
-      this.updateProgress(0);
+      // 移除自動重置進度為0，讓實際進度值顯示
+      // this.updateProgress(0);
     },
     
     // 隱藏進度條
@@ -939,13 +1108,26 @@ document.addEventListener('DOMContentLoaded', async function() {
     },
     
     // 更新自動爬取切換按鈕狀態
-    updateAutoToggleButtonState(isScheduled) {
-      if (isScheduled) {
+    updateAutoToggleButtonState(state) {
+      if (state === 'starting') {
+        this.autoToggleButton.textContent = '啟動中...';
+        this.autoToggleButton.classList.add('processing');
+        this.autoToggleButton.classList.remove('running');
+        this.autoToggleButton.disabled = true;
+      } else if (state === 'stopping') {
+        this.autoToggleButton.textContent = '停止中...';
+        this.autoToggleButton.classList.add('processing');
+        this.autoToggleButton.classList.remove('running');
+        this.autoToggleButton.disabled = true;
+      } else if (state === true || state === 'running') {
         this.autoToggleButton.textContent = '停止自動爬取';
         this.autoToggleButton.classList.add('running');
+        this.autoToggleButton.classList.remove('processing');
+        this.autoToggleButton.disabled = false;
       } else {
         this.autoToggleButton.textContent = '啟動自動爬取';
-        this.autoToggleButton.classList.remove('running');
+        this.autoToggleButton.classList.remove('running', 'processing');
+        this.autoToggleButton.disabled = false;
       }
     },
     
@@ -969,7 +1151,7 @@ document.addEventListener('DOMContentLoaded', async function() {
           console.log('股票清單已更新');
           
           // 觸發內容腳本更新
-          throttledUpdateContentScript();
+          triggerContentScriptUpdate();
         }
       } catch (error) {
         console.error('重新載入股票清單失敗:', error);
@@ -2106,7 +2288,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       console.error('❌ 初始化 CustomModelManager 時發生錯誤:', error);
     }
     
-    // 初始化股票爬蟲控制器
+    // 初始化股票爬蟲控制器 - 立即執行，不再延遲
     console.log('🚀 開始初始化 StockCrawlerController');
     try {
       if (typeof StockCrawlerController !== 'undefined') {
@@ -2118,5 +2300,15 @@ document.addEventListener('DOMContentLoaded', async function() {
     } catch (error) {
       console.error('❌ 初始化 StockCrawlerController 時發生錯誤:', error);
     }
-  }, 100);
+  }, 0); // 改為立即執行
+
+  // 創建一個輔助函數來獲取當前設定並調用 throttledUpdateContentScript
+  async function triggerContentScriptUpdate() {
+    try {
+      const currentSettings = await GlobalSettings.loadSettings();
+      throttledUpdateContentScript(currentSettings);
+    } catch (error) {
+      console.warn('獲取設定時發生錯誤:', error);
+    }
+  }
 });
