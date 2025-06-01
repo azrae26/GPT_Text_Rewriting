@@ -10,7 +10,7 @@
 
 const StockCrawlerManager = {
   /** 爬蟲狀態 */
-  isRunning: false,
+  running: false,
   
   /** 當前爬取進度 */
   currentProgress: 0,
@@ -59,7 +59,7 @@ const StockCrawlerManager = {
     
     // 設置定時器
     this.intervalTimer = setInterval(() => {
-      if (!this.isRunning) {
+      if (!this.running) {
         this.startCrawl();
       }
     }, intervalMinutes * 60 * 1000);
@@ -80,43 +80,69 @@ const StockCrawlerManager = {
   },
 
   /**
-   * 開始爬取
+   * 開始爬取股票清單
+   * @returns {Promise<void>}
    */
   async startCrawl() {
-    if (this.isRunning) {
-      console.log('爬蟲已在運行中');
+    console.log('=== 開始爬取股票清單 ===');
+    console.log('當前運行狀態:', this.running);
+    
+    if (this.running) {
+      console.log('爬蟲已在運行中，跳過此次請求');
       return;
     }
     
-    console.log('開始爬取股票清單');
-    this.isRunning = true;
+    console.log('設置運行狀態為 true');
+    this.running = true;
     this.currentProgress = 0;
     
-    this._updateStatus('開始爬取股票清單...');
+    this._updateStatus('初始化爬取程序...');
+    console.log('已設置運行狀態，當前狀態:', this.running);
     
     try {
+      console.log('獲取爬取網址列表...');
+      
+      // 檢查 StockCrawlerUrls 是否載入
+      if (!window.StockCrawlerUrls) {
+        throw new Error('StockCrawlerUrls 未載入');
+      }
+      
+      console.log('StockCrawlerUrls 已載入，正在獲取網址...');
       const urls = window.StockCrawlerUrls.getAllUrls();
       const totalUrls = urls.length;
       const allStocks = new Map(); // 儲存所有爬取到的股票
       
-      console.log(`共需爬取 ${totalUrls} 個頁面`);
+      if (totalUrls === 0) {
+        throw new Error('沒有找到任何爬取網址');
+      }
+      
+      console.log(`共需爬取 ${totalUrls} 個頁面:`, urls);
+      this._updateStatus(`共需爬取 ${totalUrls} 個頁面`);
       
       // 依序爬取每個網址
-      for (let i = 0; i < urls.length && this.isRunning; i++) {
+      for (let i = 0; i < urls.length && this.running; i++) {
         const url = urls[i];
         const industryName = window.StockCrawlerUrls.getIndustryName(url);
         
+        console.log(`[${i + 1}/${totalUrls}] 開始爬取: ${industryName}`);
+        console.log(`爬取網址: ${url}`);
+        
         this._updateStatus(`正在爬取 ${industryName} (${i + 1}/${totalUrls})`);
-        this._updateProgress(Math.round((i / totalUrls) * 100));
+        const progressPercent = Math.round((i / totalUrls) * 90); // 留10%給最後的更新處理
+        this._updateProgress(progressPercent);
+        console.log(`更新進度: ${progressPercent}%`);
         
         try {
+          console.log(`開始爬取 ${industryName} 的數據...`);
           const stocks = await this._fetchStockData(url);
-          console.log(`${industryName} 爬取到 ${stocks.length} 支股票`);
+          console.log(`${industryName} 爬取完成，獲得 ${stocks.length} 支股票:`, stocks.slice(0, 3).map(s => `${s.code}(${s.name})`));
           
           // 將股票加入總列表
           stocks.forEach(stock => {
             allStocks.set(stock.code, stock);
           });
+          
+          console.log(`目前總共收集到 ${allStocks.size} 支股票`);
           
         } catch (error) {
           console.error(`爬取 ${industryName} 失敗:`, error);
@@ -124,31 +150,44 @@ const StockCrawlerManager = {
         }
         
         // 等待 10 秒再爬取下一個（避免過於頻繁的請求）
-        if (i < urls.length - 1 && this.isRunning) {
+        if (i < urls.length - 1 && this.running) {
+          console.log('等待 10 秒後繼續下一個網頁...');
+          this._updateStatus(`等待 10 秒後繼續下一個網頁... (${i + 1}/${totalUrls})`);
           await this._delay(10000);
+          console.log('等待結束，繼續爬取');
         }
       }
       
-      if (this.isRunning) {
-        console.log(`爬取完成，共獲得 ${allStocks.size} 支股票`);
+      if (this.running) {
+        console.log(`所有網頁爬取完成，共獲得 ${allStocks.size} 支股票`);
         this._updateStatus('正在更新股票清單...');
+        this._updateProgress(95);
         
         // 更新股票清單
+        console.log('開始更新股票清單到設定中...');
         const updateResult = await this._updateStockList(allStocks);
+        console.log('股票清單更新結果:', updateResult);
         
         this._updateProgress(100);
-        this._updateStatus(`爬取完成！新增 ${updateResult.added} 支，刪除 ${updateResult.removed} 支股票`);
+        const statusMsg = `爬取完成！新增 ${updateResult.added} 支，刪除 ${updateResult.removed} 支股票，總計 ${updateResult.total} 支`;
+        this._updateStatus(statusMsg);
+        console.log('=== 爬取流程完成 ===');
         
         if (this.completeCallback) {
+          console.log('調用完成回調函數');
           this.completeCallback(updateResult);
         }
+      } else {
+        console.log('爬取過程中被中斷');
       }
       
     } catch (error) {
       console.error('爬取過程發生錯誤:', error);
       this._updateStatus(`爬取失敗: ${error.message}`);
     } finally {
-      this.isRunning = false;
+      console.log('重置運行狀態為 false');
+      this.running = false;
+      console.log('=== 爬取流程結束 ===');
     }
   },
 
@@ -157,7 +196,7 @@ const StockCrawlerManager = {
    */
   stopCrawl() {
     console.log('停止爬取');
-    this.isRunning = false;
+    this.running = false;
     
     if (this.crawlTimer) {
       clearTimeout(this.crawlTimer);
@@ -173,27 +212,48 @@ const StockCrawlerManager = {
    * @returns {Promise<Array>} 股票數據陣列
    */
   async _fetchStockData(url) {
+    console.log(`開始爬取網頁: ${url}`);
+    
     try {
+      console.log('發送跨域請求到 background script...');
+      
       // 使用 background script 來處理跨域請求
       const response = await new Promise((resolve, reject) => {
+        console.log('正在發送 chrome.runtime.sendMessage...');
         chrome.runtime.sendMessage({
           action: 'fetchUrl',
           url: url
         }, (response) => {
+          console.log('收到 background script 回應:', response);
+          
           if (chrome.runtime.lastError) {
+            console.error('Chrome runtime 錯誤:', chrome.runtime.lastError);
             reject(new Error(chrome.runtime.lastError.message));
+          } else if (!response) {
+            console.error('收到空回應');
+            reject(new Error('收到空回應'));
           } else if (response.error) {
+            console.error('Background script 回報錯誤:', response.error);
             reject(new Error(response.error));
+          } else if (!response.success) {
+            console.error('請求失敗，無成功標記');
+            reject(new Error('請求失敗'));
           } else {
+            console.log('請求成功，數據長度:', response.data ? response.data.length : 0);
             resolve(response);
           }
         });
       });
       
-      return this._parseStockData(response.data);
+      console.log('開始解析 HTML 數據...');
+      const stocks = this._parseStockData(response.data);
+      console.log(`HTML 解析完成，提取到 ${stocks.length} 支股票`);
+      
+      return stocks;
       
     } catch (error) {
-      console.error('爬取網頁失敗:', error);
+      console.error('爬取網頁失敗，詳細錯誤:', error);
+      console.error('錯誤堆疊:', error.stack);
       throw error;
     }
   },
@@ -204,17 +264,24 @@ const StockCrawlerManager = {
    * @returns {Array} 股票數據陣列
    */
   _parseStockData(html) {
+    console.log('開始解析 HTML，內容長度:', html ? html.length : 0);
     const stocks = [];
     
     try {
       // 創建 DOM 解析器
+      console.log('創建 DOM 解析器...');
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
+      console.log('DOM 解析完成');
       
       // 尋找股票資料的表格行
+      console.log('尋找股票資料表格行...');
       const rows = doc.querySelectorAll('tr[id^="hrow"], tr[id^="row"]');
+      console.log(`找到 ${rows.length} 個潛在的股票行`);
       
-      rows.forEach(row => {
+      let validStockCount = 0;
+      
+      rows.forEach((row, index) => {
         try {
           const cells = row.querySelectorAll('td');
           if (cells.length >= 2) {
@@ -233,12 +300,26 @@ const StockCrawlerManager = {
                 code: code,
                 name: name
               });
+              validStockCount++;
+              if (validStockCount <= 3) {
+                console.log(`找到股票 ${validStockCount}: ${code} ${name}`);
+              }
+            } else {
+              if (index < 5) {
+                console.log(`第 ${index + 1} 行不符合股票格式: code="${code}", name="${name}"`);
+              }
+            }
+          } else {
+            if (index < 5) {
+              console.log(`第 ${index + 1} 行列數不足: ${cells.length} 列`);
             }
           }
         } catch (error) {
-          console.warn('解析股票行失敗:', error);
+          console.warn(`解析第 ${index + 1} 行股票失敗:`, error);
         }
       });
+      
+      console.log(`解析完成，總共找到 ${stocks.length} 支有效股票`);
       
     } catch (error) {
       console.error('解析 HTML 失敗:', error);
@@ -402,7 +483,7 @@ const StockCrawlerManager = {
    * @returns {boolean}
    */
   isRunning() {
-    return this.isRunning;
+    return this.running;
   },
 
   /**
