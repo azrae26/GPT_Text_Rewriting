@@ -1,25 +1,6 @@
 /**
- * popup.js - 擴充功能彈出視窗的主要腳本（入口點）
- * 功能：統一管理 API 金鑰、改寫設置、模型選擇、高亮功能、自動替換等配置項目
- * 職責：
- * - 作為彈出視窗的主要入口點，協調各功能模組
- * - 管理 API 金鑰和模型配置
- * - 處理改寫、翻譯、生成相關的 UI 和設定
- * - 整合高亮文字和自動替換功能
- * - 統一事件處理和設定同步
- * - 整合股票功能控制器（StockManager 和 StockCrawlerController）
- * 
- * 依賴：
- * - GlobalSettings：全局設定管理
- * - CustomModelManager：自定義模型管理
- * - StockManager：股票功能管理（來自 popup/stock-controller.js）
- * - AutoReplaceManager：自動替換管理
- * - Chrome Extensions API：storage, tabs, runtime
- * 
- * 模組化設計：
- * - 股票相關功能已獨立為 popup/stock-controller.js
- * - 通過 StockManager 接口與股票控制器交互
- * - 保持功能完整性和代碼關聯性
+ * popup.js - 擴充功能彈出視窗的主要腳本
+ * 功能：管理 API 金鑰、改寫設置、模型選擇等配置項目
  */
 
 document.addEventListener('DOMContentLoaded', async function() {

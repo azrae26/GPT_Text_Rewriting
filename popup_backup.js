@@ -1,25 +1,6 @@
 /**
- * popup.js - 擴充功能彈出視窗的主要腳本（入口點）
- * 功能：統一管理 API 金鑰、改寫設置、模型選擇、高亮功能、自動替換等配置項目
- * 職責：
- * - 作為彈出視窗的主要入口點，協調各功能模組
- * - 管理 API 金鑰和模型配置
- * - 處理改寫、翻譯、生成相關的 UI 和設定
- * - 整合高亮文字和自動替換功能
- * - 統一事件處理和設定同步
- * - 整合股票功能控制器（StockManager 和 StockCrawlerController）
- * 
- * 依賴：
- * - GlobalSettings：全局設定管理
- * - CustomModelManager：自定義模型管理
- * - StockManager：股票功能管理（來自 popup/stock-controller.js）
- * - AutoReplaceManager：自動替換管理
- * - Chrome Extensions API：storage, tabs, runtime
- * 
- * 模組化設計：
- * - 股票相關功能已獨立為 popup/stock-controller.js
- * - 通過 StockManager 接口與股票控制器交互
- * - 保持功能完整性和代碼關聯性
+ * popup.js - 擴充功能彈出視窗的主要腳本
+ * 功能：管理 API 金鑰、改寫設置、模型選擇等配置項目
  */
 
 document.addEventListener('DOMContentLoaded', async function() {
@@ -98,6 +79,9 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 2. 初始化設定
   let apiKeys = {};
 
+  // 初始化股票管理器
+  const stockManager = new StockManager();
+
   // Initialize CustomModelManager (將在 CustomModelManager 定義後進行初始化)
 
   // 載入使用者設定，如果沒有設定，則使用預設設定
@@ -175,15 +159,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // 載入中英對照表
   zhEnMappingInput.value = settings.zhEnMapping || '';
-
-  // 載入股票清單
-  stockListInput.value = settings.stockList || '';
-  
-  // 載入爬蟲間隔
-  const crawlerIntervalInput = document.getElementById('crawler-interval');
-  if (crawlerIntervalInput) {
-    crawlerIntervalInput.value = settings.crawlerInterval || 30;
-  }
   
   updateApiKeyInput();
 
@@ -293,32 +268,6 @@ document.addEventListener('DOMContentLoaded', async function() {
   // API 模型選擇
   modelSelect.addEventListener('change', updateApiKeyInput);
 
-  // 創建一個輔助函數來獲取當前設定並調用 throttledUpdateContentScript
-  async function triggerContentScriptUpdate() {
-    try {
-      const currentSettings = await GlobalSettings.loadSettings();
-      throttledUpdateContentScript(currentSettings);
-    } catch (error) {
-      console.warn('獲取設定時發生錯誤:', error);
-    }
-  }
-
-  // 10. 輔助功能
-  function sendAutoRewritePatternsUpdate() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "updateAutoRewritePatterns",
-        patterns: autoRewritePatternsInput.value
-      }, function(response) {
-        if (response && response.success) {
-          console.log('自動改寫匹配模式已更新');
-        } else {
-          console.error('更新自動改寫匹配模式失敗');
-        }
-      });
-    });
-  }
-
   // 4-8. 統一的事件處理配置
   const eventHandlerConfig = {
     // 指令輸入配置（與生成設定組合相關）
@@ -345,12 +294,10 @@ document.addEventListener('DOMContentLoaded', async function() {
       'translateInstruction': { type: 'input', element: translateInstructionInput },
       'summaryInstruction': { type: 'input', element: summaryInstructionInput },
       'zhEnMapping': { type: 'input', element: zhEnMappingInput },
-      'crawlerInterval': { 
-        type: 'input', 
-        element: document.getElementById('crawler-interval')
-      },
       'reflectInstruction': { type: 'input', element: reflectInstructionInput },
-      'optimizeInstruction': { type: 'input', element: optimizeInstructionInput }
+      'optimizeInstruction': { type: 'input', element: optimizeInstructionInput },
+      'stockList': { type: 'input', element: stockListInput },
+      'backgroundKnowledge': { type: 'input', element: backgroundKnowledgeInput }
     },
     
     // 生成相關模型選擇配置
@@ -392,6 +339,10 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // 統一的事件處理器設置函數
   function setupEventHandlers() {
+    // 合併股票管理器的事件處理配置
+    const stockEventConfig = stockManager.getEventHandlerConfig();
+    const mergedInstructions = { ...eventHandlerConfig.instructions, ...stockEventConfig.instructions };
+
     // 設置生成相關指令輸入事件（與設定組合相關）
     Object.entries(eventHandlerConfig.generationInstructions).forEach(([key, config]) => {
       if (!config.element) {
@@ -425,8 +376,8 @@ document.addEventListener('DOMContentLoaded', async function() {
       });
     });
 
-    // 設置一般指令輸入事件（與設定組合無關）
-    Object.entries(eventHandlerConfig.instructions).forEach(([key, config]) => {
+    // 設置一般指令輸入事件（與設定組合無關），包括股票相關事件
+    Object.entries(mergedInstructions).forEach(([key, config]) => {
       if (!config.element) {
         console.warn(`找不到元素: ${key}`);
         return;
@@ -675,18 +626,49 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
   });
 
-  // 初始化股票功能管理器
-  if (typeof StockManager !== 'undefined') {
-    // 將 stockList 從 eventHandlerConfig.instructions 中移除，交給 StockManager 處理
-    const stockConfig = StockManager.getEventHandlerConfig();
-    Object.assign(eventHandlerConfig.instructions, stockConfig);
-    
-    // 初始化股票管理器
-    StockManager.init(stockListInput, triggerContentScriptUpdate);
-    console.log('股票功能管理器已初始化');
-  } else {
-    console.warn('StockManager 未載入，股票功能可能無法正常運作');
+  // 10. 輔助功能
+  function sendAutoRewritePatternsUpdate() {
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      chrome.tabs.sendMessage(tabs[0].id, {
+        action: "updateAutoRewritePatterns",
+        patterns: autoRewritePatternsInput.value
+      }, function(response) {
+        if (response && response.success) {
+          console.log('自動改寫匹配模式已更新');
+        } else {
+          console.error('更新自動改寫匹配模式失敗');
+        }
+      });
+    });
   }
+
+  async function updateStockListSettings() {
+    await GlobalSettings.saveSingleSetting('stockList', stockListInput.value);
+    
+    // 立即通知 content script 更新股票清單
+    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+      if (tabs[0]) {
+        chrome.tabs.sendMessage(tabs[0].id, {
+          action: "updateStockList",
+          stockList: stockListInput.value
+        }, function(response) {
+          if (chrome.runtime.lastError) {
+            console.log('content script 未載入，股票清單將在下次載入時應用');
+          } else if (response && response.success) {
+            console.log('股票清單已立即更新');
+          } else {
+            console.error('更新股票清單失敗:', response?.error || '未知錯誤');
+          }
+        });
+      }
+    });
+  }
+
+  // 初始化股票管理器
+  stockManager.init({
+    triggerContentScriptUpdate: triggerContentScriptUpdate,
+    settings: settings
+  });
 
   // 添加節流函數
   const throttle = (func, limit) => {
@@ -1007,7 +989,13 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
   });
 
-  // 生成設定組合管理功能
+  // 初始化自動替換功能
+  const autoReplaceContainer = document.querySelector('#auto-replace-tab .auto-replace-container');
+  if (autoReplaceContainer) {
+    // 直接使用已載入的 AutoReplaceManager
+    AutoReplaceManager.initializeAutoReplaceGroups(autoReplaceContainer, document.createElement('textarea'));
+  }
+
   // 更新設定組合下拉選單
   function updateGenerationSettingsSelect() {
     generationSettingsSelect.innerHTML = '<option value="">選擇設定組合</option>';
@@ -1415,6 +1403,103 @@ document.addEventListener('DOMContentLoaded', async function() {
       }
     },
 
+    // 測試自動識別功能（開發用）
+    testAutoDetection() {
+      const modelNameTests = [
+        // OpenAI 模型測試用例
+        { name: 'gpt-4', expected: 'openai' },
+        { name: 'gpt-4-1-mini', expected: 'openai' },
+        { name: 'gpt-3.5-turbo', expected: 'openai' },
+        { name: 'text-davinci-003', expected: 'openai' },
+        { name: 'o1-preview', expected: 'openai' },
+        { name: 'code-davinci-002', expected: 'openai' },
+        
+        // Gemini 模型測試用例
+        { name: 'gemini-pro', expected: 'gemini' },
+        { name: 'gemini-1.5-flash', expected: 'gemini' },
+        { name: 'palm-2', expected: 'gemini' },
+        { name: 'bard', expected: 'gemini' },
+        
+        // 邊界情況
+        { name: 'my-custom-gpt-model', expected: 'openai' },
+        { name: 'google-gemini-advanced', expected: 'gemini' }
+      ];
+
+      const displayNameTests = [
+        // OpenAI 顯示名稱測試
+        { name: 'GPT-4 智能模型', expected: 'openai' },
+        { name: 'OpenAI GPT 3.5 Turbo', expected: 'openai' },
+        { name: '最新 GPT-4o 版本', expected: 'openai' },
+        { name: 'ChatGPT 模型', expected: 'openai' },
+        { name: 'O1 Preview 模型', expected: 'openai' },
+        { name: 'GPT Mini 版本', expected: 'openai' },
+        
+        // Gemini 顯示名稱測試
+        { name: 'Gemini Pro 高級版', expected: 'gemini' },
+        { name: 'Google Gemini Flash 模型', expected: 'gemini' },
+        { name: 'Gemini 1.5 Advanced AI', expected: 'gemini' },
+        { name: 'PaLM 2 最新版本', expected: 'gemini' },
+        { name: 'Google Bard 模型', expected: 'gemini' },
+        { name: 'Gemini Flash 智能版', expected: 'gemini' },
+        
+        // 混合情況
+        { name: '企業級 GPT 解決方案', expected: 'openai' },
+        { name: 'Google AI Gemini 服務', expected: 'gemini' }
+      ];
+      
+      console.log('🧪 開始測試模型名稱自動識別功能...');
+      modelNameTests.forEach(testCase => {
+        const detected = this.getDetectedApiType(testCase.name, 'modelName');
+        const passed = detected === testCase.expected;
+        console.log(`${passed ? '✅' : '❌'} 模型名稱: ${testCase.name} → ${detected} (期望: ${testCase.expected})`);
+      });
+
+      console.log('\n🧪 開始測試顯示名稱自動識別功能...');
+      displayNameTests.forEach(testCase => {
+        const detected = this.getDetectedApiType(testCase.name, 'displayName');
+        const passed = detected === testCase.expected;
+        console.log(`${passed ? '✅' : '❌'} 顯示名稱: ${testCase.name} → ${detected} (期望: ${testCase.expected})`);
+      });
+      
+      console.log('🧪 測試完成');
+    },
+
+    // 獲取模型的 API 類型（不更新UI，僅用於測試）
+    getDetectedApiType(inputText, type = 'modelName') {
+      if (!inputText) return 'gemini';
+      
+      // 根據輸入類型決定處理方式
+      let textToAnalyze = inputText.toLowerCase();
+      
+      if (type === 'displayName') {
+        // 如果是顯示名稱，嘗試從中提取模型名稱
+        textToAnalyze = textToAnalyze
+          .replace(/\s*(api|模型|model|版本|version|最新|latest|pro|advanced|mini|小型|大型|智能|ai)\s*/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      }
+      
+      const openaiPatterns = [
+        /gpt[\s\-]?4/, /gpt[\s\-]?3\.?5?/, /gpt[\s\-]?o/, /\bgpt\b/, 
+        /text[\s\-]?davinci/, /davinci/, /curie/, /babbage/, /ada\b/, 
+        /o1[\s\-]?(preview|mini)?/, /o3[\s\-]/, /code[\s\-]?davinci/, /codex/,
+        /openai/, /chatgpt/, /turbo\b/, /instruct\b/, /\bmini\b.*gpt/, /\bpro\b.*gpt/
+      ];
+      
+      const geminiPatterns = [
+        /gemini/, /palm[\s\-]?2?/, /bard/, /google/, /claude/, 
+        /lamda/, /minerva/, /pathways/, /flash\b/, /\bpro\b.*gemini/, /gemini.*\bpro\b/
+      ];
+      
+      if (openaiPatterns.some(pattern => pattern.test(textToAnalyze))) {
+        return 'openai';
+      } else if (geminiPatterns.some(pattern => pattern.test(textToAnalyze))) {
+        return 'gemini';
+      }
+      
+      return 'gemini'; // 預設
+    },
+
     // 新增自定義模型
     async addCustomModel() {
       try {
@@ -1669,13 +1754,6 @@ document.addEventListener('DOMContentLoaded', async function() {
   window.CustomModelManager = CustomModelManager;
   console.log('CustomModelManager 已暴露到全局作用域');
 
-  // 初始化自動替換功能
-  const autoReplaceContainer = document.querySelector('#auto-replace-tab .auto-replace-container');
-  if (autoReplaceContainer) {
-    // 直接使用已載入的 AutoReplaceManager
-    AutoReplaceManager.initializeAutoReplaceGroups(autoReplaceContainer, document.createElement('textarea'));
-  }
-
   // 立即初始化 CustomModelManager 和 StockCrawlerController
   setTimeout(async () => {
     console.log('🚀 開始初始化 CustomModelManager');
@@ -1721,18 +1799,23 @@ document.addEventListener('DOMContentLoaded', async function() {
       console.error('❌ 初始化 CustomModelManager 時發生錯誤:', error);
     }
     
-    // 初始化股票爬蟲控制器 - 立即執行，不再延遲
+    // 初始化股票爬蟲控制器 - 通過股票管理器
     console.log('🚀 開始初始化 StockCrawlerController');
     try {
-      if (typeof StockCrawlerController !== 'undefined') {
-        StockCrawlerController.init();
-        console.log('✅ StockCrawlerController 初始化完成');
-      } else {
-        console.warn('⚠️ StockCrawlerController 未定義');
-      }
+      stockManager.startStockCrawlerController();
+      console.log('✅ StockCrawlerController 初始化完成');
     } catch (error) {
       console.error('❌ 初始化 StockCrawlerController 時發生錯誤:', error);
     }
   }, 0); // 改為立即執行
 
-}); 
+  // 創建一個輔助函數來獲取當前設定並調用 throttledUpdateContentScript
+  async function triggerContentScriptUpdate() {
+    try {
+      const currentSettings = await GlobalSettings.loadSettings();
+      throttledUpdateContentScript(currentSettings);
+    } catch (error) {
+      console.warn('獲取設定時發生錯誤:', error);
+    }
+  }
+});

@@ -53,6 +53,37 @@ AI 文章改寫助手是一個 Chrome 擴展，專為提升文章寫作效率而
    - 爬取控制：支援隨時停止和重新開始
    - 網頁延遲：每個網頁間隔5秒爬取，避免過於頻繁請求
 
+## 代碼架構與重構
+
+### 最新重構 (2024-12-XX)
+
+**股票功能模組化重構**
+- **目標**：將 popup.js 中的股票相關功能獨立為可維護的模組
+- **成果**：成功將 2315 行的巨大檔案重構為 1719 行的入口點 + 549 行的股票控制器
+- **改進**：提升代碼可維護性，降低單一檔案複雜度，實現功能模組化
+
+**檔案結構**：
+- `popup.js` (1719 行) - 主要入口點，協調各功能模組
+- `popup/stock-controller.js` (549 行) - 股票功能專用控制器
+  - `StockManager` - 股票清單管理和事件配置
+  - `StockCrawlerController` - 背景爬蟲控制和狀態管理
+
+**重構原則**：
+- ✅ 無功能變更 - 保持所有原有功能完整
+- ✅ 無代碼增減 - 純粹移動，不修改邏輯
+- ✅ 保留調試訊息 - 所有 console.log 完整保留
+- ✅ 維護關聯性 - 與其他檔案的依賴關係正確維護
+
+**整合方式**：
+- popup.js 通過 StockManager 接口與股票控制器交互
+- 事件處理配置通過 `StockManager.getEventHandlerConfig()` 整合
+- 保持與 GlobalSettings、background.js、content.js 的完整兼容性
+
+**開發者注意事項**：
+- 修改股票功能時，請編輯 `popup/stock-controller.js`
+- StockManager 和 StockCrawlerController 已暴露為全局變數
+- popup.html 已正確引入股票控制器腳本
+
 ## 系統要求
 
 - Chrome 瀏覽器 88.0 或更高版本
