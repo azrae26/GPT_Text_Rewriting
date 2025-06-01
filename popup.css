@@ -1003,6 +1003,7 @@ input.form-input {
 /* 股票清單輸入框特殊樣式 */
 #stock-list-input {
   height: 390px;
+  border: 1px solid #ddd;
 }
 
 /* 股票爬蟲控制區域樣式 */
@@ -1011,7 +1012,7 @@ input.form-input {
   align-items: center;
   justify-content: space-between;
   margin-top: 10px;
-  padding: 10px;
+  padding: 8px;
   background-color: #f9f9f9;
   border: 1px solid #e0e0e0;
   border-radius: 4px;
@@ -1024,7 +1025,7 @@ input.form-input {
 }
 
 .crawler-interval-container label {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: #333;
   white-space: nowrap;
@@ -1042,8 +1043,7 @@ input.form-input {
   padding: 4px 6px;
   border: 1px solid #ccc;
   border-radius: 3px;
-  font-size: 13px;
-  text-align: center;
+  font-size: 14px;
   height: 30px;
 }
 

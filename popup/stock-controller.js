@@ -339,11 +339,11 @@ const StockCrawlerController = {
       return;
     }
     
-    const interval = parseInt(this.intervalInput.value) || 30;
+    const interval = parseFloat(this.intervalInput.value) || 30;
     
     // 驗證間隔時間
-    if (interval <= 0 || interval > 9999) {
-      this.updateStatus('無效的間隔時間，請輸入1-9999之間的數字', 'error');
+    if (interval < 0.1 || interval > 9999) {
+      this.updateStatus('無效的間隔時間，請輸入0.1-9999之間的數字', 'error');
       return;
     }
     

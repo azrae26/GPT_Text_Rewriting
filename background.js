@@ -115,7 +115,7 @@ const BackgroundStockCrawlerManager = {
     console.log(`啟動定時爬取，間隔 ${intervalMinutes} 分鐘`);
     
     // 驗證參數
-    if (!intervalMinutes || isNaN(intervalMinutes) || intervalMinutes <= 0) {
+    if (!intervalMinutes || isNaN(intervalMinutes) || intervalMinutes < 0.1) {
       throw new Error(`無效的間隔時間: ${intervalMinutes}`);
     }
     
