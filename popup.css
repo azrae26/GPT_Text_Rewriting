@@ -55,7 +55,7 @@ input, button, select {
   font-size: 14px;
   border-radius: 4px;
   border: 1px solid #ddd;
-  height: 36px;
+  height: 35px;
 }
 
 /* 表單元素焦點狀態 */
@@ -1002,8 +1002,7 @@ input.form-input {
 
 /* 股票清單輸入框特殊樣式 */
 #stock-list-input {
-  min-height: 200px;
-  height: 200px;
+  height: 390px;
 }
 
 /* 股票爬蟲控制區域樣式 */
@@ -1045,6 +1044,7 @@ input.form-input {
   border-radius: 3px;
   font-size: 13px;
   text-align: center;
+  height: 30px;
 }
 
 .interval-input:focus {
@@ -1079,7 +1079,7 @@ input.form-input {
 /* 自動爬取切換按鈕樣式 */
 .crawler-button.auto-toggle {
   background-color: #2196F3;
-  min-width: 100px;
+  min-width: 110px;
 }
 
 .crawler-button.auto-toggle:hover {

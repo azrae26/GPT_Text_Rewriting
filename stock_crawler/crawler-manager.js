@@ -8,6 +8,9 @@
  * 依賴：StockCrawlerUrls, GlobalSettings
  */
 
+// 配置常數
+const CRAWL_DELAY_SECONDS = 0.3; // 每個網頁之間的等待秒數
+
 const StockCrawlerManager = {
   /** 爬蟲狀態 */
   running: false,
@@ -135,7 +138,7 @@ const StockCrawlerManager = {
         try {
           console.log(`開始爬取 ${industryName} 的數據...`);
           const stocks = await this._fetchStockData(url);
-          console.log(`${industryName} 爬取完成，獲得 ${stocks.length} 支股票:`, stocks.slice(0, 3).map(s => `${s.code}(${s.name})`));
+          console.log(`${industryName} 爬取完成，獲得 ${stocks.length} 支股票:`, stocks.map(s => `${s.code}(${s.name})`));
           
           // 將股票加入總列表
           stocks.forEach(stock => {
@@ -149,11 +152,11 @@ const StockCrawlerManager = {
           this._updateStatus(`爬取 ${industryName} 失敗: ${error.message}`);
         }
         
-        // 等待 10 秒再爬取下一個（避免過於頻繁的請求）
+        // 等待指定秒數再爬取下一個（避免過於頻繁的請求）
         if (i < urls.length - 1 && this.running) {
-          console.log('等待 10 秒後繼續下一個網頁...');
-          this._updateStatus(`等待 10 秒後繼續下一個網頁... (${i + 1}/${totalUrls})`);
-          await this._delay(10000);
+          console.log(`等待 ${CRAWL_DELAY_SECONDS} 秒後繼續下一個網頁...`);
+          this._updateStatus(`等待 ${CRAWL_DELAY_SECONDS} 秒後繼續下一個網頁... (${i + 1}/${totalUrls})`);
+          await this._delay(CRAWL_DELAY_SECONDS * 1000);
           console.log('等待結束，繼續爬取');
         }
       }
@@ -259,73 +262,64 @@ const StockCrawlerManager = {
   },
 
   /**
-   * 解析 HTML 獲取股票數據
-   * @param {string} html - 網頁 HTML 內容
-   * @returns {Array} 股票數據陣列
+   * 解析股票資料
+   * @param {string} html - HTML 內容
+   * @returns {Array} 解析出的股票陣列
    */
   _parseStockData(html) {
-    console.log('開始解析 HTML，內容長度:', html ? html.length : 0);
+    console.log('開始解析 MOPS 股票資料');
     const stocks = [];
     
     try {
-      // 創建 DOM 解析器
-      console.log('創建 DOM 解析器...');
+      // 建立暫時的 DOM 元素來解析 HTML
       const parser = new DOMParser();
       const doc = parser.parseFromString(html, 'text/html');
-      console.log('DOM 解析完成');
       
-      // 尋找股票資料的表格行
-      console.log('尋找股票資料表格行...');
-      const rows = doc.querySelectorAll('tr[id^="hrow"], tr[id^="row"]');
-      console.log(`找到 ${rows.length} 個潛在的股票行`);
-      
-      let validStockCount = 0;
+      // 查找所有表格行
+      const rows = doc.querySelectorAll('tr');
+      console.log(`找到 ${rows.length} 個表格行`);
       
       rows.forEach((row, index) => {
         try {
           const cells = row.querySelectorAll('td');
-          if (cells.length >= 2) {
-            // 第一個 td 包含股票代號
+          
+          // MOPS格式至少需要有足夠的欄位
+          if (cells.length >= 3) {
+            // 第一欄：股票代號（去除空白字符）
             const codeCell = cells[0];
-            const codeLink = codeCell.querySelector('a');
-            const code = codeLink ? codeLink.textContent.trim() : '';
+            const stockCode = codeCell ? codeCell.textContent.trim().replace(/&nbsp;/g, '').replace(/\s+/g, '') : '';
             
-            // 第二個 td 包含公司名稱
-            const nameCell = cells[1];
-            const nameLink = nameCell.querySelector('a');
-            const name = nameLink ? nameLink.textContent.trim() : '';
+            // 第二欄：公司全名
+            const fullNameCell = cells[1];
+            const fullName = fullNameCell ? fullNameCell.textContent.trim() : '';
             
-            if (code && name && /^\d{4}$/.test(code)) {
-              stocks.push({
-                code: code,
-                name: name
-              });
-              validStockCount++;
-              if (validStockCount <= 3) {
-                console.log(`找到股票 ${validStockCount}: ${code} ${name}`);
-              }
-            } else {
-              if (index < 5) {
-                console.log(`第 ${index + 1} 行不符合股票格式: code="${code}", name="${name}"`);
-              }
-            }
-          } else {
-            if (index < 5) {
-              console.log(`第 ${index + 1} 行列數不足: ${cells.length} 列`);
+            // 第三欄：公司簡稱
+            const shortNameCell = cells[2];
+            const shortName = shortNameCell ? shortNameCell.textContent.trim() : '';
+            
+            // 檢查是否為有效的股票代號（數字開頭，4-6位）
+            if (stockCode && /^\d{4,6}$/.test(stockCode) && shortName) {
+              const stock = {
+                code: stockCode,
+                name: shortName,  // 使用公司簡稱
+                fullName: fullName  // 保留完整公司名稱作為參考
+              };
+              
+              stocks.push(stock);
             }
           }
         } catch (error) {
-          console.warn(`解析第 ${index + 1} 行股票失敗:`, error);
+          // 跳過單個行的解析錯誤
         }
       });
       
-      console.log(`解析完成，總共找到 ${stocks.length} 支有效股票`);
+      console.log(`MOPS 解析完成，共找到 ${stocks.length} 支股票`);
+      return stocks;
       
     } catch (error) {
-      console.error('解析 HTML 失敗:', error);
+      console.error('解析 MOPS 股票資料時發生錯誤:', error);
+      return [];
     }
-    
-    return stocks;
   },
 
   /**

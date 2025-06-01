@@ -6,6 +6,597 @@ let pendingRewriteRequest = null;
 // 用於追踪每個標籤頁的內容腳本狀態
 const tabContentScriptStatus = new Map();
 
+// === 股票爬蟲相關代碼 ===
+
+/**
+ * 股票爬蟲網址配置
+ * 資料來源：台灣證券交易所 MOPS 系統
+ */
+const StockCrawlerUrls = {
+  // MOPS 系統股票清單網址
+  urls: [
+    {
+      name: '上市股票',
+      url: 'https://mopsov.twse.com.tw/mops/web/ajax_t51sb01?parameters=32b138d25ee38c00fbf70ec5a53724971d1df89c34d9a0ef54fddd0eca765118e1d5d55f2907af83df59ae82756caca30645f4a87baa01551cc98a6ff0816cbaad9c5c8c6df699b1ac8bf50f27c999868a65d5f5dd71b407c4d61b426833ab8c'
+    },
+    {
+      name: '上櫃股票',
+      url: 'https://mopsov.twse.com.tw/mops/web/ajax_t51sb01?parameters=32b138d25ee38c00fbf70ec5a53724971d1df89c34d9a0ef54fddd0eca7651189431092059e57ec5acce2508557bbb820645f4a87baa01551cc98a6ff0816cbaad9c5c8c6df699b1ac8bf50f27c999868a65d5f5dd71b407c4d61b426833ab8c'
+    },
+    {
+      name: '興櫃股票', 
+      url: 'https://mopsov.twse.com.tw/mops/web/ajax_t51sb01?parameters=32b138d25ee38c00fbf70ec5a53724971d1df89c34d9a0ef54fddd0eca765118150b1250f6b0d18c5da95b58aafad725152f445b9d55dd4c51df9e26ea7918af4de96261009bdfefb47812fc6ed9b9145701ed44236616fb09e84fed0c84caa6'
+    }
+  ],
+
+  getAllUrls() {
+    return this.urls.map(item => item.url);
+  },
+
+  getIndustryName(url) {
+    const item = this.urls.find(item => item.url === url);
+    return item ? item.name : '未知市場';
+  }
+};
+
+/**
+ * 背景股票爬蟲管理器
+ * 功能：在背景運行，支援狀態持久化，避免重複執行
+ */
+const BackgroundStockCrawlerManager = {
+  /** 爬蟲狀態 */
+  running: false,
+  
+  /** 當前爬取進度 */
+  currentProgress: 0,
+  
+  /** 定時器 ID */
+  intervalTimer: null,
+  
+  /** 爬取定時器 */
+  crawlTimer: null,
+  
+  /** 定時間隔（分鐘） */
+  intervalMinutes: 0,
+  
+  /** 狀態更新監聽器 */
+  statusListeners: new Set(),
+
+  /**
+   * 初始化爬蟲管理器，恢復持久化狀態
+   */
+  async init() {
+    console.log('初始化背景股票爬蟲管理器');
+    try {
+      const result = await chrome.storage.local.get(['stockCrawlerState']);
+      const state = result.stockCrawlerState || {};
+      
+      if (state.isScheduled && state.intervalMinutes) {
+        console.log(`恢復定時爬取，間隔 ${state.intervalMinutes} 分鐘`);
+        this.intervalMinutes = state.intervalMinutes;
+        this._startScheduledCrawl(state.intervalMinutes, false); // false = 不立即執行
+      }
+      
+      console.log('背景股票爬蟲管理器初始化完成');
+    } catch (error) {
+      console.error('初始化背景股票爬蟲管理器失敗:', error);
+    }
+  },
+
+  /**
+   * 啟動定時爬取
+   * @param {number} intervalMinutes - 間隔分鐘數
+   * @param {boolean} runImmediately - 是否立即執行一次
+   */
+  async _startScheduledCrawl(intervalMinutes, runImmediately = false) {
+    console.log(`啟動定時爬取，間隔 ${intervalMinutes} 分鐘`);
+    
+    // 清除現有定時器
+    this._clearTimers();
+    
+    this.intervalMinutes = intervalMinutes;
+    
+    // 保存狀態
+    await this._saveState({ 
+      isScheduled: true, 
+      intervalMinutes: intervalMinutes,
+      lastStartTime: Date.now()
+    });
+    
+    // 立即執行一次（如果需要）
+    if (runImmediately) {
+      this.startCrawl();
+    }
+    
+    // 設置定時器
+    this.intervalTimer = setInterval(() => {
+      if (!this.running) {
+        this.startCrawl();
+      }
+    }, intervalMinutes * 60 * 1000);
+    
+    this._notifyStatusChange('scheduled', { intervalMinutes });
+  },
+
+  /**
+   * 停止定時爬取
+   */
+  async stopScheduledCrawl() {
+    console.log('停止定時爬取');
+    
+    this._clearTimers();
+    this.intervalMinutes = 0;
+    
+    // 保存狀態
+    await this._saveState({ 
+      isScheduled: false, 
+      intervalMinutes: 0 
+    });
+    
+    this._notifyStatusChange('stopped');
+  },
+
+  /**
+   * 清除所有定時器
+   */
+  _clearTimers() {
+    if (this.intervalTimer) {
+      clearInterval(this.intervalTimer);
+      this.intervalTimer = null;
+    }
+    
+    if (this.crawlTimer) {
+      clearTimeout(this.crawlTimer);
+      this.crawlTimer = null;
+    }
+  },
+
+  /**
+   * 開始爬取股票清單
+   */
+  async startCrawl() {
+    console.log('=== 開始背景爬取股票清單 ===');
+    
+    if (this.running) {
+      console.log('爬蟲已在運行中，跳過此次請求');
+      return;
+    }
+    
+    this.running = true;
+    this.currentProgress = 0;
+    
+    this._notifyStatusChange('running', { 
+      status: '初始化爬取程序...', 
+      progress: 0 
+    });
+    
+    try {
+      const urls = StockCrawlerUrls.getAllUrls();
+      const totalUrls = urls.length;
+      const allStocks = new Map();
+      
+      if (totalUrls === 0) {
+        throw new Error('沒有找到任何爬取網址');
+      }
+      
+      console.log(`共需爬取 ${totalUrls} 個頁面`);
+      this._notifyStatusChange('running', { 
+        status: `共需爬取 ${totalUrls} 個頁面`, 
+        progress: 0 
+      });
+      
+      // 依序爬取每個網址
+      for (let i = 0; i < urls.length && this.running; i++) {
+        const url = urls[i];
+        const industryName = StockCrawlerUrls.getIndustryName(url);
+        
+        console.log(`[${i + 1}/${totalUrls}] 開始爬取: ${industryName}`);
+        
+        const progressPercent = Math.round((i / totalUrls) * 90);
+        this._notifyStatusChange('running', { 
+          status: `正在爬取 ${industryName} (${i + 1}/${totalUrls})`, 
+          progress: progressPercent 
+        });
+        
+        try {
+          const stocks = await this._fetchStockData(url);
+          console.log(`${industryName} 爬取完成，獲得 ${stocks.length} 支股票`);
+          
+          // 將股票加入總列表
+          stocks.forEach(stock => {
+            allStocks.set(stock.code, stock);
+          });
+          
+        } catch (error) {
+          console.error(`爬取 ${industryName} 失敗:`, error);
+          this._notifyStatusChange('running', { 
+            status: `爬取 ${industryName} 失敗: ${error.message}`, 
+            progress: progressPercent 
+          });
+        }
+        
+        // 等待指定時間
+        if (i < urls.length - 1 && this.running) {
+          console.log('等待 0.3 秒後繼續下一個網頁...');
+          await this._delay(300);
+        }
+      }
+      
+      if (this.running) {
+        console.log(`所有網頁爬取完成，共獲得 ${allStocks.size} 支股票`);
+        this._notifyStatusChange('running', { 
+          status: '正在更新股票清單...', 
+          progress: 95 
+        });
+        
+        // 更新股票清單
+        const updateResult = await this._updateStockList(allStocks);
+        console.log('股票清單更新結果:', updateResult);
+        
+        const statusMsg = `爬取完成！新增 ${updateResult.added} 支，刪除 ${updateResult.removed} 支股票，總計 ${updateResult.total} 支`;
+        this._notifyStatusChange('completed', { 
+          status: statusMsg, 
+          progress: 100,
+          result: updateResult
+        });
+        
+        console.log('=== 背景爬取流程完成 ===');
+      }
+      
+    } catch (error) {
+      console.error('背景爬取過程發生錯誤:', error);
+      this._notifyStatusChange('error', { 
+        status: `爬取失敗: ${error.message}`, 
+        error: error.message 
+      });
+    } finally {
+      this.running = false;
+    }
+  },
+
+  /**
+   * 爬取單個網頁的股票數據
+   */
+  async _fetchStockData(url) {
+    try {
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+      const data = await response.text();
+      return this._parseStockData(data);
+    } catch (error) {
+      console.error('爬取網頁失敗:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * 解析股票資料
+   */
+  _parseStockData(html) {
+    const stocks = [];
+    
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(html, 'text/html');
+      const rows = doc.querySelectorAll('tr');
+      
+      rows.forEach((row) => {
+        try {
+          const cells = row.querySelectorAll('td');
+          
+          if (cells.length >= 3) {
+            const codeCell = cells[0];
+            const stockCode = codeCell ? codeCell.textContent.trim().replace(/&nbsp;/g, '').replace(/\s+/g, '') : '';
+            
+            const fullNameCell = cells[1];
+            const fullName = fullNameCell ? fullNameCell.textContent.trim() : '';
+            
+            const shortNameCell = cells[2];
+            const shortName = shortNameCell ? shortNameCell.textContent.trim() : '';
+            
+            if (stockCode && /^\d{4,6}$/.test(stockCode) && shortName) {
+              const stock = {
+                code: stockCode,
+                name: shortName,
+                fullName: fullName
+              };
+              
+              stocks.push(stock);
+            }
+          }
+        } catch (error) {
+          // 跳過單個行的解析錯誤
+        }
+      });
+      
+      return stocks;
+      
+    } catch (error) {
+      console.error('解析股票資料時發生錯誤:', error);
+      return [];
+    }
+  },
+
+  /**
+   * 更新股票清單
+   */
+  async _updateStockList(crawledStocks) {
+    try {
+      // 獲取現有股票清單
+      const result = await chrome.storage.local.get(['stockList']);
+      const currentStockList = result.stockList || '';
+      
+      // 解析現有清單
+      const existingStocks = this._parseStockList(currentStockList);
+      console.log(`現有股票清單包含 ${existingStocks.size} 支股票`);
+      
+      // 比對和合併
+      const mergedStocks = new Map();
+      let addedCount = 0;
+      let removedCount = 0;
+      
+      // 添加爬取到的股票
+      crawledStocks.forEach((stock, code) => {
+        const existing = existingStocks.get(code);
+        if (existing) {
+          // 保留現有的匹配規則
+          mergedStocks.set(code, {
+            code: code,
+            name: stock.name,
+            pattern: existing.pattern
+          });
+        } else {
+          // 新股票
+          mergedStocks.set(code, {
+            code: code,
+            name: stock.name
+          });
+          addedCount++;
+        }
+      });
+      
+      // 檢查被刪除的股票
+      existingStocks.forEach((existing, code) => {
+        if (!crawledStocks.has(code)) {
+          removedCount++;
+          console.log(`股票已消失: ${code} ${existing.name}`);
+        }
+      });
+      
+      // 按股票代號排序
+      const sortedStocks = Array.from(mergedStocks.values()).sort((a, b) => {
+        return parseInt(a.code) - parseInt(b.code);
+      });
+      
+      // 格式化為文字
+      const newStockListText = sortedStocks.map(stock => {
+        if (stock.pattern) {
+          return `${stock.code},${stock.name},${stock.pattern}`;
+        } else {
+          return `${stock.code},${stock.name}`;
+        }
+      }).join('\n');
+      
+      // 儲存更新後的清單
+      await chrome.storage.local.set({ stockList: newStockListText });
+      
+      console.log(`股票清單更新完成: 新增 ${addedCount} 支，刪除 ${removedCount} 支`);
+      
+      return {
+        added: addedCount,
+        removed: removedCount,
+        total: sortedStocks.length
+      };
+      
+    } catch (error) {
+      console.error('更新股票清單失敗:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * 解析股票清單文字
+   */
+  _parseStockList(stockListText) {
+    const stocks = new Map();
+    
+    if (!stockListText || typeof stockListText !== 'string') {
+      return stocks;
+    }
+
+    const lines = stockListText.split('\n');
+    
+    for (const line of lines) {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) continue;
+
+      const parts = trimmedLine.split(',').map(part => part.trim());
+      
+      if (parts.length >= 2) {
+        const stock = {
+          code: parts[0],
+          name: parts[1]
+        };
+        
+        if (parts.length >= 3 && parts[2]) {
+          stock.pattern = parts[2];
+        }
+        
+        stocks.set(stock.code, stock);
+      }
+    }
+
+    return stocks;
+  },
+
+  /**
+   * 延遲函數
+   */
+  _delay(ms) {
+    return new Promise(resolve => {
+      this.crawlTimer = setTimeout(resolve, ms);
+    });
+  },
+
+  /**
+   * 保存狀態到儲存空間
+   */
+  async _saveState(state) {
+    try {
+      await chrome.storage.local.set({ stockCrawlerState: state });
+    } catch (error) {
+      console.error('保存爬蟲狀態失敗:', error);
+    }
+  },
+
+  /**
+   * 通知狀態變化
+   */
+  _notifyStatusChange(type, data = {}) {
+    const message = {
+      type: 'stockCrawlerStatus',
+      status: type,
+      data: data,
+      isRunning: this.running,
+      intervalMinutes: this.intervalMinutes
+    };
+    
+    console.log('發送爬蟲狀態更新:', message);
+    
+    // 發送給所有監聽的 popup
+    this.statusListeners.forEach(sendResponse => {
+      try {
+        sendResponse(message);
+      } catch (error) {
+        console.log('監聽器已失效，移除:', error.message);
+        this.statusListeners.delete(sendResponse);
+      }
+    });
+  },
+
+  /**
+   * 添加狀態監聽器
+   */
+  addStatusListener(sendResponse) {
+    console.log('添加狀態監聽器');
+    this.statusListeners.add(sendResponse);
+    
+    // 立即發送當前狀態
+    const currentStatus = {
+      type: 'stockCrawlerStatus',
+      status: this.running ? 'running' : (this.intervalTimer ? 'scheduled' : 'idle'),
+      data: {
+        status: this.running ? '正在爬取中...' : '等待中',
+        progress: this.currentProgress
+      },
+      isRunning: this.running,
+      intervalMinutes: this.intervalMinutes
+    };
+    
+    try {
+      sendResponse(currentStatus);
+    } catch (error) {
+      console.log('發送初始狀態失敗:', error.message);
+      this.statusListeners.delete(sendResponse);
+    }
+  },
+
+  /**
+   * 移除狀態監聽器
+   */
+  removeStatusListener(sendResponse) {
+    this.statusListeners.delete(sendResponse);
+  },
+
+  /**
+   * 獲取當前狀態
+   */
+  getCurrentStatus() {
+    return {
+      isRunning: this.running,
+      progress: this.currentProgress,
+      intervalMinutes: this.intervalMinutes,
+      isScheduled: this.intervalTimer !== null
+    };
+  },
+
+  /**
+   * 執行單次爬取（不啟動定時器）
+   */
+  async startSingleCrawl() {
+    console.log('開始單次爬取');
+    return await this.startCrawl();
+  },
+
+  /**
+   * 停止爬取
+   */
+  stopCrawl() {
+    console.log('停止爬取');
+    this.running = false;
+    
+    if (this.crawlTimer) {
+      clearTimeout(this.crawlTimer);
+      this.crawlTimer = null;
+    }
+    
+    this._notifyStatusChange('stopped', { status: '已停止爬取' });
+  }
+};
+
+// 初始化背景爬蟲管理器
+BackgroundStockCrawlerManager.init();
+
+// 處理來自 popup 的長連接
+chrome.runtime.onConnect.addListener((port) => {
+  console.log('建立連接:', port.name);
+  
+  if (port.name === 'stockCrawlerStatus') {
+    // 將 port 添加到狀態監聽器
+    const portListener = (message) => {
+      try {
+        port.postMessage(message);
+      } catch (error) {
+        console.log('端口連接已失效:', error.message);
+        BackgroundStockCrawlerManager.statusListeners.delete(portListener);
+      }
+    };
+    
+    BackgroundStockCrawlerManager.statusListeners.add(portListener);
+    
+    // 立即發送當前狀態
+    const currentStatus = BackgroundStockCrawlerManager.getCurrentStatus();
+    const statusMessage = {
+      type: 'stockCrawlerStatus',
+      status: currentStatus.isRunning ? 'running' : (currentStatus.isScheduled ? 'scheduled' : 'idle'),
+      data: {
+        status: currentStatus.isRunning ? '正在背景爬取中...' : 
+                currentStatus.isScheduled ? `自動爬取已啟用，間隔 ${currentStatus.intervalMinutes} 分鐘` : 
+                '點擊按鈕開始爬取股票清單',
+        progress: currentStatus.progress || 0
+      },
+      isRunning: currentStatus.isRunning,
+      intervalMinutes: currentStatus.intervalMinutes
+    };
+    
+    try {
+      port.postMessage(statusMessage);
+    } catch (error) {
+      console.log('發送初始狀態失敗:', error.message);
+    }
+    
+    // 監聽端口斷開
+    port.onDisconnect.addListener(() => {
+      console.log('端口連接已斷開');
+      BackgroundStockCrawlerManager.statusListeners.delete(portListener);
+    });
+  }
+});
+
+// === 原有的訊息處理邏輯 ===
+
 // 監聽標籤頁關閉事件
 chrome.tabs.onRemoved.addListener((tabId) => {
     tabContentScriptStatus.delete(tabId);
@@ -13,7 +604,50 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 // 監聽來自其他部分的消息
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  // 處理股票爬蟲的 URL 爬取請求
+  // 處理股票爬蟲相關請求
+  if (request.action === 'stockCrawler') {
+    switch (request.command) {
+      case 'startSingle':
+        BackgroundStockCrawlerManager.startSingleCrawl()
+          .then(() => sendResponse({ success: true }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+        
+      case 'startScheduled':
+        BackgroundStockCrawlerManager._startScheduledCrawl(request.intervalMinutes)
+          .then(() => sendResponse({ success: true }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+        
+      case 'stopScheduled':
+        BackgroundStockCrawlerManager.stopScheduledCrawl()
+          .then(() => sendResponse({ success: true }))
+          .catch(error => sendResponse({ success: false, error: error.message }));
+        return true;
+        
+      case 'stopCrawl':
+        BackgroundStockCrawlerManager.stopCrawl();
+        sendResponse({ success: true });
+        return false;
+        
+      case 'getStatus':
+        sendResponse({ 
+          success: true, 
+          status: BackgroundStockCrawlerManager.getCurrentStatus() 
+        });
+        return false;
+        
+      case 'addListener':
+        BackgroundStockCrawlerManager.addStatusListener(sendResponse);
+        return true; // 保持連接開啟
+        
+      default:
+        sendResponse({ success: false, error: '未知命令' });
+        return false;
+    }
+  }
+
+  // 處理原有的 URL 爬取請求（保持向後兼容）
   if (request.action === 'fetchUrl') {
     const { url } = request;
     
