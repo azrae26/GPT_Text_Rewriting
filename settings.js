@@ -111,6 +111,9 @@ const GlobalSettings = {
    */
   async loadSettings() {
     try {
+      // 首次執行清理殭屍項目
+      await this.cleanupZombieSettings();
+      
       // 改用 chrome.storage.local 來儲存大型文本
       const [syncResult, localResult] = await Promise.all([
         new Promise((resolve) => {
@@ -703,8 +706,6 @@ const GlobalSettings = {
       'stockListData',
       'stockCrawlerState',
       'stockNames',
-      'scraperConfigs',
-      'siteConfigs',
       'processedStocks',
       'failedStocks',
       'retryRecords',
@@ -735,14 +736,6 @@ const GlobalSettings = {
       key.startsWith('custom_') ||
       key.startsWith('template_') ||
       key.startsWith('history_') ||
-      key === 'chatHistory' ||
-      key === 'defaultInstructions' ||
-      key === 'allInstructions' ||
-      key === 'recentInstructions' ||
-      key === 'defaultBackground' ||
-      key === 'allBackgrounds' ||
-      key === 'recentBackgrounds' ||
-      key === 'customInstructionGroups' ||
       // 檢查是否包含大型文字的關鍵詞
       key.includes('Content') ||
       key.includes('Templates') ||
@@ -813,6 +806,59 @@ const GlobalSettings = {
         value !== undefined && value !== null && value !== ''
       )
     );
+  },
+
+  // 清理殭屍項目
+  async cleanupZombieSettings() {
+    try {
+      console.log('開始清理殭屍項目...');
+      
+      // 定義所有殭屍項目
+      const zombieKeys = [
+        // 完全過時的功能
+        'backgroundKnowledgeGroups',
+        'instructionGroups',
+        'cleaningRules',
+        'scraperConfigs', 
+        'siteConfigs',
+        // 未使用的歷史項目
+        'chatHistory',
+        'defaultInstructions',
+        'allInstructions', 
+        'recentInstructions',
+        'defaultBackground',
+        'allBackgrounds',
+        'recentBackgrounds',
+        'customInstructionGroups',
+        // 代碼變數名（非設定項目）
+        'currentRetries',
+        'extraManualGroups',
+        'manualGroups',
+        'replaceGroups'
+      ];
+      
+      // 從 sync storage 清理
+      await new Promise((resolve) => {
+        chrome.storage.sync.remove(zombieKeys, () => {
+          console.log('已從 sync storage 清理殭屍項目');
+          resolve();
+        });
+      });
+      
+      // 從 local storage 清理
+      await new Promise((resolve) => {
+        chrome.storage.local.remove(zombieKeys, () => {
+          console.log('已從 local storage 清理殭屍項目');
+          resolve();
+        });
+      });
+      
+      console.log('殭屍項目清理完成');
+      return true;
+    } catch (error) {
+      console.error('清理殭屍項目失敗:', error);
+      return false;
+    }
   },
 
   // 取得所有設定

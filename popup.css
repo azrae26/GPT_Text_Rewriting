@@ -677,6 +677,15 @@ input[type="checkbox"] {
   background-color: #2980b9;  /* 使用與改寫按鈕相同的懸停顏色 */
 }
 
+/* 清理按鈕特殊樣式 */
+.cleanup-button {
+  background-color: #e74c3c !important;  /* 警告色：紅色 */
+}
+
+.cleanup-button:hover {
+  background-color: #c0392b !important;  /* 懸停時的深紅色 */
+}
+
 /* 多重生成設定選擇器樣式 */
 #multiple-generation-tab .input-group {
   display: flex;

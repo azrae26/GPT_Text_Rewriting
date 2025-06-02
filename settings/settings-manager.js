@@ -20,6 +20,7 @@ class SettingsFileManager {
     this.ui.bindExportButton(() => this.exportSettings());
     this.ui.bindImportButton(() => this.triggerImportDialog());
     this.ui.bindImportFileInput((event) => this.handleImport(event));
+    this.ui.bindCleanupButton(() => this.cleanupZombieSettings());
   }
 
   // 處理匯出設定事件
@@ -188,7 +189,6 @@ class SettingsFileManager {
     // 檢查是否為基本設定或核心設定模式
     const isAdvancedMode = excludeKeys.includes('generationSettingsGroups') || 
                           excludeKeys.includes('stockListData') ||
-                          excludeKeys.includes('cleaningRules') ||
                           excludeKeys.includes('lastMainTab');
     
     if (isAdvancedMode) {
@@ -238,13 +238,8 @@ class SettingsFileManager {
   // 獲取所有指令相關的鍵值列表
   getAllInstructionKeys() {
     return [
-      ...this.getLargeTextKeys(),
-      // 添加其他可能的大型內容
-      'chatHistory',
-      'defaultInstructions',
-      'allInstructions',
-      'recentInstructions',
-      'customInstructionGroups'
+      ...this.getLargeTextKeys()
+      // 其他可能的大型內容已移除，因為它們不再被使用
     ];
   }
 
@@ -263,17 +258,9 @@ class SettingsFileManager {
       'stockListData',
       'stockCrawlerState',
       'stockNames',
-      'scraperConfigs',
-      'siteConfigs',
       'processedStocks',
       'failedStocks',
       'retryRecords',
-      // 排除生成相關的大型設定組合數據
-      'currentRetries',
-      'extraManualGroups',
-      'manualGroups',
-      'replaceGroups',
-      'cleaningRules',
       // 排除手動替換值
       'manualReplaceValues_0',
       'manualReplaceValues_1', 
@@ -335,16 +322,9 @@ class SettingsFileManager {
       'stockListData': '• 股票數據',
       'stockCrawlerState': '• 股票爬蟲狀態',
       'stockNames': '• 股票名稱',
-      'scraperConfigs': '• 爬蟲配置',
-      'siteConfigs': '• 站點配置',
       'processedStocks': '• 處理的股票',
       'failedStocks': '• 失敗的股票',
       'retryRecords': '• 重試記錄',
-      'currentRetries': '• 當前重試',
-      'extraManualGroups': '• 額外手動組合',
-      'manualGroups': '• 手動組合',
-      'replaceGroups': '• 替換組合',
-      'cleaningRules': '• 清理規則',
       'manualReplaceValues_0': '• 手動替換值0',
       'manualReplaceValues_1': '• 手動替換值1',
       'manualReplaceValues_2': '• 手動替換值2',
@@ -425,6 +405,29 @@ class SettingsFileManager {
       'finalOptimizeModel'
     ];
   }
+
+  // 清理殭屍項目
+  async cleanupZombieSettings() {
+    try {
+      if (!confirm('確定要清理過時的設定項目嗎？\n\n這將移除：\n• cleaningRules\n• scraperConfigs\n• siteConfigs\n• backgroundKnowledgeGroups\n• instructionGroups\n等過時項目')) {
+        return;
+      }
+      
+      sendLog('info', '開始清理殭屍項目...');
+      const result = await this.settings.cleanupZombieSettings();
+      
+      if (result) {
+        this.ui.showSuccess('殭屍項目清理完成！建議重新載入頁面。');
+        sendLog('success', '殭屍項目清理成功');
+      } else {
+        this.ui.showError('清理過程中發生錯誤');
+        sendLog('error', '殭屍項目清理失敗');
+      }
+    } catch (error) {
+      sendLog('error', '清理殭屍項目時發生錯誤', error);
+      ErrorHandler.handle(error);
+    }
+  }
 }
 
 // UI 管理器
@@ -447,6 +450,10 @@ class SettingsUI {
 
   bindImportFileInput(callback) {
     this.#getElement('import-file')?.addEventListener('change', callback);
+  }
+
+  bindCleanupButton(callback) {
+    this.#getElement('cleanup-settings')?.addEventListener('click', callback);
   }
 
   openImportDialog() {
