@@ -1,0 +1,112 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+# GPT Text Rewriting Chrome Extension Development Rules
+
+## Storage Management Guidelines
+
+### NEW STORAGE STRATEGY (2025-01-02) - IMPORTANT
+**新功能儲存策略:**
+- **所有新功能的資料儲存都必須使用 Local Storage**
+- **已開發成功的功能保持現狀，不需修改**
+- **目的**: 避免 Sync Storage 8KB/100KB 限制問題
+
+**Implementation Rules for New Features:**
+1. 所有新的輸入框、文本區域 → Local Storage
+2. 所有新的設定組合、規則集 → Local Storage  
+3. 只有 API 金鑰、模型選擇等小型核心設定 → Sync Storage
+
+**Code Pattern for New Features:**
+```javascript
+// settings.js - 新功能都用 Local Storage
+newFeatureData: '',  // 屬性初始化
+'newFeatureData',   // 加入 isLocalStorageKey 方法
+this.newFeatureData = localResult.newFeatureData || '';  // 從 local 載入
+newFeatureData: this.newFeatureData,  // 儲存到 local
+```
+
+### Settings Storage and Loading Issues - UPDATED
+**Root Causes:**
+1. **載入邏輯缺失**: settings.js 中 loadSettings() 方法缺少某些設定項的載入邏輯
+2. **儲存邏輯缺失**: saveSettings() 方法中缺少某些設定項
+3. **isLocalStorageKey 方法缺陷**: 沒有正確識別所有需要 local storage 的鍵值
+4. **儲存容量限制**: 大型資料超過 sync storage 限制
+
+**Complete Prevention Checklist for New Input Fields:**
+
+**A. 屬性初始化 (settings.js)**
+```javascript
+propertyName: '',
+```
+
+**B. 載入邏輯 (settings.js loadSettings方法)**
+```javascript
+this.propertyName = localResult.propertyName || '';  // 新功能用 local
+```
+
+**C. 儲存邏輯 (settings.js saveSettings方法)**
+```javascript
+propertyName: this.propertyName,  // 加入 localSettings 區塊
+```
+
+**D. Local Storage 鍵值識別 (settings.js isLocalStorageKey方法)**
+```javascript
+'propertyName',  // 新功能都加入此陣列
+```
+
+**E. UI 載入 (popup.js)**
+```javascript
+inputElement.value = settings.propertyName || '';
+```
+
+**F. 事件處理 (popup.js eventHandlerConfig)**
+```javascript
+'propertyName': { type: 'input', element: inputElement },
+```
+
+**Storage Type Decision Rules:**
+- **Sync Storage (8KB 限制)**: 
+  - API 金鑰、模型選擇、簡單開關狀態
+  - **注意**: 僅限已存在的核心設定，新功能避免使用
+- **Local Storage (10MB 限制)**: 
+  - **所有新功能的資料 (預設選擇)**
+  - 大型文本內容、指令、背景知識、替換規則、股票清單
+
+**Testing Checklist:**
+1. 輸入內容後關閉彈出視窗，重新開啟檢查是否保存
+2. 確認首次安裝時預設值正常載入
+3. 確認非首次使用時不會覆蓋用戶設定
+4. 確認設定的匯入匯出功能正常
+5. **新功能測試**: 確認新功能資料正確儲存到 Local Storage
+
+## Settings Management Architecture
+
+### File Responsibilities
+- **Core settings logic**: Unified management in settings.js
+- **File operations**: Handled in settings-manager.js  
+- **UI interaction logic**: Separated from core logic
+
+### Design Patterns
+- **Singleton pattern**: For global settings management
+- **Strategy pattern**: For handling different setting types
+
+## Error Handling and Data Validation
+
+### Core Principles
+- Check storage operation results
+- Handle chrome.runtime.lastError
+- Validate setting data integrity before save/load
+
+## Git Best Practices
+
+### Commit Message Standards
+- Use concise titles (within 20 characters) describing main changes
+- Use [Type] prefix to indicate change type
+
+### Push Strategy
+- Execute git pull before pushing to sync remote updates
+- Break large changes into multiple small commits
+
+

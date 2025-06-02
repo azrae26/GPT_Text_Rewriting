@@ -36,5 +36,3 @@ coverage/
 google_translator/*.json
 *.json 
 
-# 規則
-*.mdc

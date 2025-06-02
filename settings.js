@@ -118,6 +118,9 @@ const GlobalSettings = {
         }),
         new Promise((resolve) => {
           chrome.storage.local.get([
+            'instruction',          // 新增：全文改寫指令
+            'shortInstruction',     // 新增：10字內改寫指令
+            'autoRewritePatterns',  // 新增：雙擊改寫匹配模式
             'translateInstruction', 
             'summaryInstruction', 
             'zhEnMapping',
@@ -181,8 +184,8 @@ const GlobalSettings = {
 
       // 一般設定使用 sync
       this.model = syncResult.model || '';
-      this.instruction = syncResult.instruction || '';
-      this.shortInstruction = syncResult.shortInstruction || '';
+      this.instruction = localResult.instruction || '';           // 修改：從 local storage 載入
+      this.shortInstruction = localResult.shortInstruction || ''; // 修改：從 local storage 載入
       this.fullRewriteModel = syncResult.fullRewriteModel || '';
       this.shortRewriteModel = syncResult.shortRewriteModel || '';
       this.autoRewriteModel = syncResult.autoRewriteModel || '';
@@ -219,8 +222,11 @@ const GlobalSettings = {
       this.removeHash = syncResult.removeHash === undefined ? window.DefaultSettings?.removeHash : syncResult.removeHash;
       this.removeStar = syncResult.removeStar === undefined ? window.DefaultSettings?.removeStar : syncResult.removeStar;
 
-      // 更新自動改寫模式
-      if (syncResult.autoRewritePatterns) {
+      // 更新自動改寫模式 - 修改：從 local storage 載入
+      if (localResult.autoRewritePatterns) {
+        this.updateAutoRewritePatterns(localResult.autoRewritePatterns);
+      } else if (syncResult.autoRewritePatterns) {
+        // 向後兼容：如果 local storage 沒有，檢查 sync storage
         this.updateAutoRewritePatterns(syncResult.autoRewritePatterns);
       } else if (window.DefaultSettings?.autoRewritePatterns) {
         this.updateAutoRewritePatterns(window.DefaultSettings.autoRewritePatterns);
@@ -341,9 +347,6 @@ const GlobalSettings = {
           const syncSettings = {
             apiKeys: this.apiKeys,
             model: this.model,
-            instruction: this.instruction,
-            shortInstruction: this.shortInstruction,
-            autoRewritePatterns: this.autoRewritePatterns.map(pattern => pattern.source),
             fullRewriteModel: this.fullRewriteModel,
             shortRewriteModel: this.shortRewriteModel,
             autoRewriteModel: this.autoRewriteModel,
@@ -366,12 +369,14 @@ const GlobalSettings = {
             currentGenerationSettings: this.currentGenerationSettings,
             crawlerInterval: this.crawlerInterval
           };
-          // 移除 translateInstruction，因為它會存在 local storage
           chrome.storage.sync.set(syncSettings, resolve);
         }),
         // 長文本使用 local
         new Promise((resolve) => {
           chrome.storage.local.set({
+            instruction: this.instruction,                          // 新增：全文改寫指令
+            shortInstruction: this.shortInstruction,              // 新增：10字內改寫指令
+            autoRewritePatterns: this.autoRewritePatterns,        // 新增：雙擊改寫匹配模式
             translateInstruction: this.translateInstruction,
             reflectInstruction: this.reflectInstruction,
             optimizeInstruction: this.optimizeInstruction,
@@ -677,6 +682,9 @@ const GlobalSettings = {
   isLocalStorageKey(key) {
     // 明確列出需要使用 local storage 的鍵值
     const localStorageKeys = [
+      'instruction',          // 新增：全文改寫指令
+      'shortInstruction',     // 新增：10字內改寫指令
+      'autoRewritePatterns',  // 新增：雙擊改寫匹配模式
       'translateInstruction',
       'summaryInstruction', 
       'zhEnMapping',
@@ -690,7 +698,23 @@ const GlobalSettings = {
       'reflect3Instruction',
       'generationOptimize_3_Instruction',
       'backgroundKnowledge',
-      'stockList'
+      'stockList',
+      // 新增：股票相關的大型數據
+      'stockListData',
+      'stockCrawlerState',
+      'stockNames',
+      'scraperConfigs',
+      'siteConfigs',
+      'processedStocks',
+      'failedStocks',
+      'retryRecords',
+      // 新增：替換和確認相關的大型內容
+      'replaceContent',
+      'confirmContent',
+      // 新增：手動替換值
+      'manualReplaceValues_0',
+      'manualReplaceValues_1',
+      'manualReplaceValues_2'
     ];
     
     // 檢查是否為需要使用 local storage 的大型設定
@@ -700,6 +724,10 @@ const GlobalSettings = {
       key.startsWith('replace_') ||
       key === 'autoReplaceRules' ||
       key === 'manualReplaceRules' ||
+      
+      // 新增：檢查動態生成的大型設定
+      key.startsWith('generation_') ||
+      key.startsWith('instructions_') ||
       
       // 檢查其他大型文字內容
       key.startsWith('instruction_') ||
@@ -980,12 +1008,25 @@ const GlobalSettings = {
         Object.fromEntries(Object.entries(data).map(([key, value]) => [`${prefix}${key}`, value])) :
         data;
       
+      // 計算資料大小
+      const dataSize = new TextEncoder().encode(JSON.stringify(prefixedData)).length;
+      console.log(`嘗試儲存到 ${type} storage，資料大小: ${dataSize} bytes`);
+      
       storage.set(prefixedData, () => {
         if (chrome.runtime.lastError) {
+          const errorMessage = chrome.runtime.lastError.message;
           console.error(`儲存資料到 ${type} storage 時發生錯誤:`, chrome.runtime.lastError);
-          reject(chrome.runtime.lastError);
+          
+          // 提供更詳細的錯誤信息
+          if (errorMessage.includes('QUOTA_BYTES_PER_ITEM')) {
+            reject(new Error(`單一項目大小超過限制 (${type === 'sync' ? '8KB' : '10MB'})。資料大小: ${dataSize} bytes`));
+          } else if (errorMessage.includes('QUOTA_BYTES')) {
+            reject(new Error(`總儲存空間超過限制 (${type === 'sync' ? '100KB' : '10MB'})。當前資料大小: ${dataSize} bytes`));
+          } else {
+            reject(new Error(`儲存到 ${type} storage 失敗: ${errorMessage}`));
+          }
         } else {
-          console.log(`成功儲存資料到 ${type} storage`);
+          console.log(`成功儲存資料到 ${type} storage，大小: ${dataSize} bytes`);
           resolve();
         }
       });
