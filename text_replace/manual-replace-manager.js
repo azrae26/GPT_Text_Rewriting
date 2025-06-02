@@ -22,6 +22,7 @@ const ManualReplaceManager = {
   CONFIG: {
     MIN_WIDTH: 80,
     MAX_WIDTH: 600,
+    MAIN_GROUP_MAX_WIDTH: 330, // 主組輸入框最大寬度
     PADDING: 24,
     MANUAL_REPLACE_KEY: 'manualReplaceRules',
     MAX_PREVIEWS: 1000, // 最大預覽數量
@@ -43,15 +44,6 @@ const ManualReplaceManager = {
   },
 
   /** 規則管理方法 */
-  _getActiveRules() {
-    const rules = [];
-    if (this._rules.mainGroup?.from?.trim()) {
-      rules.push(this._rules.mainGroup);
-    }
-    rules.push(...this._rules.extraGroups.filter(r => r.from?.trim()));
-    return rules;
-  },
-
   _updateRule(rule, index, isMainGroup = false) {
     if (isMainGroup) {
       this._rules.mainGroup = rule;
@@ -232,10 +224,9 @@ const ManualReplaceManager = {
       
       container.appendChild(removeButton);
 
-      // 存儲拖移按鈕和索引，以便稍後設置拖曳事件
+      // 存儲拖移按鈕，以便稍後設置拖曳事件
       if (groupIndex !== null) {
         container.sortButton = sortButton;
-        container.groupIndex = groupIndex;
       }
 
       return container;
@@ -449,36 +440,19 @@ const ManualReplaceManager = {
   /** 預覽相關方法 */
   PreviewHighlight: {
     container: null,
-    highlightGroups: new Map(),
     virtualScrollData: {
       allPositions: new Map(),  // groupIndex -> positions[]
       visibleHighlights: new Map(), // groupIndex -> Map(key -> highlight)
       lastScrollTop: 0,     // 上次滾動位置
       bufferSize: 200,      // 緩衝區大小（像素）
       lastText: '',     // 記錄上次的文本
-      lineInfo: null,   // 行信息引用
       positionCache: new Map(), // 位置快取
-      lastLogTime: null, // 效能計算用
       observedElements: new Map() // 追踪已被觀察的元素
     },
     observer: null, // IntersectionObserver 實例
 
-    // 添加效能計算日誌方法
-    _logWithDiff(message, startTime) {
-      const endTime = performance.now();
-      const timeDiff = endTime - startTime;
-      
-      // 只保留初始化相關的日誌
-      if (message.includes('開始初始化替換預覽') || 
-          message.includes('替換預覽初始化完成')) {
-        console.log(`${message} (耗時: ${timeDiff.toFixed(2)}ms)`);
-      }
-    },
-
     initialize(textArea) {
       if (!textArea) return;
-      
-      this._logWithDiff('開始初始化替換預覽', performance.now());
       
       this.container = document.createElement('div');
       this.container.id = ManualReplaceManager.CONFIG.PREVIEW_CONTAINER_ID;
@@ -512,11 +486,6 @@ const ManualReplaceManager = {
       );
       
       this._setupResizeObserver(textArea);
-      
-      // 初始化行信息引用
-      this.virtualScrollData.lineInfo = TextHighlight.PositionCalculator.cache.lineInfo;
-      
-      this._logWithDiff('替換預覽初始化完成', performance.now());
     },
 
     // 新增方法：初始化 IntersectionObserver
@@ -581,7 +550,6 @@ const ManualReplaceManager = {
       
       // 創建文檔片段，減少DOM操作
       const fragment = document.createDocumentFragment();
-      const newElements = [];
       
       // 更新每個組的可見性
       this.virtualScrollData.allPositions.forEach((positions, groupIndex) => {
@@ -621,7 +589,7 @@ const ManualReplaceManager = {
               top: ${relativeTop}px;
               width: ${pos.width + 3}px;
               height: ${pos.lineHeight - 1}px;
-              border: 0px solid ${pos.color}; // 改為 0px 不要動他
+              border: 0px solid ${pos.color};
               border-radius: 2px;
               will-change: transform;
               z-index: 1001;
@@ -638,7 +606,6 @@ const ManualReplaceManager = {
             
             // 將新元素添加到文檔片段
             fragment.appendChild(highlight);
-            newElements.push(highlight);
             
             // 將元素添加到映射中
             this.virtualScrollData.observedElements.set(key, highlight);
@@ -662,15 +629,9 @@ const ManualReplaceManager = {
       // 一次性將所有新元素添加到DOM
       if (fragment.childNodes.length > 0) {
         this.container.appendChild(fragment);
-        
-        // 不再需要將元素添加到 IntersectionObserver
-        // newElements.forEach(highlight => {
-        //   this.observer.observe(highlight);
-        // });
       }
       
       // 處理不再需要的元素
-      // 找出所有不再位於 allPositions 中的元素並停止觀察
       this._cleanupUnusedHighlights();
       
       // 記錄當前滾動位置
@@ -757,8 +718,6 @@ const ManualReplaceManager = {
 
         // 收集所有位置信息
         const positions = [];
-        let cacheHits = 0;
-        let cacheMisses = 0;
         
         for (const match of matches) {
           // 檢查快取
@@ -767,7 +726,6 @@ const ManualReplaceManager = {
           
           // 如果快取未命中或需要重新計算
           if (!positionList || textChanged) {
-            cacheMisses++;
             positionList = TextHighlight.PositionCalculator.calculatePosition(
               textArea,
               match.index,
@@ -782,12 +740,9 @@ const ManualReplaceManager = {
                 ...pos,
                 text: match[0],
                 color,
-                lineHeight: styles.lineHeight,
-                originalTop: pos.top
+                lineHeight: styles.lineHeight
               })));
             }
-          } else {
-            cacheHits++;
           }
           
           if (positionList) {
@@ -796,14 +751,11 @@ const ManualReplaceManager = {
                 ...position,
                 text: match[0],
                 color,
-                lineHeight: styles.lineHeight,
-                originalTop: position.top
+                lineHeight: styles.lineHeight
               });
             });
           }
         }
-
-        this._logWithDiff(`收集到 ${positions.length} 個位置信息`, performance.now());
 
         // 更新虛擬滾動數據
         this.virtualScrollData.allPositions.set(groupIndex, positions);
@@ -931,20 +883,6 @@ const ManualReplaceManager = {
     );
   },
 
-  _loadRules(callback) {
-    const storageKey = 'replace_' + this.CONFIG.MANUAL_REPLACE_KEY;
-    
-    // 使用 StorageHelper 加載
-    window.ReplaceManager.StorageHelper.loadRules(
-      storageKey,
-      [{ from: '', to: '' }],
-      (rules) => {
-        this._rules.extraGroups = rules;
-        if (callback) callback();
-      }
-    );
-  },
-
   /** 初始化方法 */
   initializeManualGroups(mainContainer, otherContainer, textArea) {
     // 初始化預覽
@@ -1027,9 +965,13 @@ const ManualReplaceManager = {
     span.textContent = text;
     document.body.appendChild(span);
 
+    // 為主組輸入框設定較小的最大寬度
+    const isMainGroup = input.closest('.replace-main-group');
+    const maxWidth = isMainGroup ? this.CONFIG.MAIN_GROUP_MAX_WIDTH : this.CONFIG.MAX_WIDTH;
+
     const width = Math.min(
       Math.max(this.CONFIG.MIN_WIDTH, span.offsetWidth + this.CONFIG.PADDING),
-      this.CONFIG.MAX_WIDTH
+      maxWidth
     );
     input.style.cssText = `width: ${width}px !important;`;
 
@@ -1038,7 +980,6 @@ const ManualReplaceManager = {
 
   /** 檢查並強制更新高亮 */
   checkAndForceUpdateHighlights() {
-    console.log('[高亮檢查] 開始檢查高亮顯示狀態');
     const highlights = document.querySelectorAll('.replace-preview-highlight');
     const totalHighlights = highlights.length;
     const visibleHighlights = Array.from(highlights).filter(h => 
@@ -1046,22 +987,16 @@ const ManualReplaceManager = {
       parseFloat(h.style.width) > 0
     ).length;
 
-    console.log(`[高亮檢查] 總數: ${totalHighlights}, 可見: ${visibleHighlights}`);
-
     if (visibleHighlights === 0 && totalHighlights === 0) {
-      console.log('[高亮檢查] 未檢測到任何高亮，強制更新');
       const textArea = document.querySelector('textarea[name="content"]');
       if (textArea) {
         this._updatePreviews();
       }
-    } else {
-      console.log('[高亮檢查] 高亮顯示正常');
     }
   },
 
   /** 開始定期檢查高亮 */
   startHighlightCheck() {
-    console.log('[高亮檢查] 開始定期檢查.');
     // 在前幾秒多檢查
     const checkTimes = [100, 500, 1000, 2000];
     checkTimes.forEach(delay => {
@@ -1072,7 +1007,7 @@ const ManualReplaceManager = {
   },
 
   /** 設置排序拖移事件 */
-  _setupSortDragEvents(button, groupIndex) {
+  _setupSortDragEvents(button) {
     // 獲取組元素和容器
     const group = button.closest('.replace-extra-group');
     if (!group) return;
@@ -1119,8 +1054,8 @@ const ManualReplaceManager = {
     const containers = document.querySelectorAll('.manual-replace-container .replace-extra-group .replace-group-controls');
     
     containers.forEach(container => {
-      if (container.sortButton && container.groupIndex !== undefined) {
-        this._setupSortDragEvents(container.sortButton, container.groupIndex);
+      if (container.sortButton) {
+        this._setupSortDragEvents(container.sortButton);
       }
     });
   },
