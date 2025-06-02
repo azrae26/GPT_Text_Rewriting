@@ -20,6 +20,23 @@
 // - Fetch API for 跨域請求
 // - StockCrawlerUrls 配置
 
+// === 配置常數 ===
+const STOCK_CRAWLER_CONFIG = {
+  // 安全保護閾值：要刪除的股票數量達到此值時將跳過更新
+  SAFETY_DELETE_THRESHOLD: 5,
+  
+  // 爬蟲間隔時間限制（分鐘）
+  MIN_CRAWL_INTERVAL: 0.1,
+  
+  // 網頁爬取間隔（毫秒）
+  CRAWL_DELAY_MS: 300,
+  
+  // 進度更新百分比
+  PROGRESS_CRAWLING_MAX: 90,
+  PROGRESS_UPDATING: 95,
+  PROGRESS_COMPLETED: 100
+};
+
 // 用於追踪內容腳本是否已準備就緒的標誌
 let contentScriptReady = false;
 // 用於存儲待處理的改寫請求
@@ -115,8 +132,14 @@ const BackgroundStockCrawlerManager = {
     console.log(`啟動定時爬取，間隔 ${intervalMinutes} 分鐘`);
     
     // 驗證參數
-    if (!intervalMinutes || isNaN(intervalMinutes) || intervalMinutes < 0.1) {
+    if (!intervalMinutes || isNaN(intervalMinutes) || intervalMinutes < STOCK_CRAWLER_CONFIG.MIN_CRAWL_INTERVAL) {
       throw new Error(`無效的間隔時間: ${intervalMinutes}`);
+    }
+    
+    // 防止重複設置：如果已經有相同間隔的定時器在運行，直接返回
+    if (this.intervalTimer && this.intervalMinutes === intervalMinutes) {
+      console.log(`已存在相同間隔 ${intervalMinutes} 分鐘的定時器，跳過重複設置`);
+      return;
     }
     
     // 清除現有定時器
@@ -142,6 +165,8 @@ const BackgroundStockCrawlerManager = {
         this.startCrawl();
       }
     }, intervalMinutes * 60 * 1000);
+    
+    console.log(`新定時器已設置，間隔 ${intervalMinutes} 分鐘 (${intervalMinutes * 60 * 1000}ms)，定時器ID:`, this.intervalTimer);
     
     this._notifyStatusChange('scheduled', { intervalMinutes });
   },
@@ -171,13 +196,19 @@ const BackgroundStockCrawlerManager = {
    */
   _clearTimers() {
     if (this.intervalTimer) {
+      console.log('清除現有的間隔定時器 (ID:', this.intervalTimer, ')');
       clearInterval(this.intervalTimer);
       this.intervalTimer = null;
+      console.log('間隔定時器已清除');
+    } else {
+      console.log('沒有需要清除的間隔定時器');
     }
     
     if (this.crawlTimer) {
+      console.log('清除現有的爬取定時器 (ID:', this.crawlTimer, ')');
       clearTimeout(this.crawlTimer);
       this.crawlTimer = null;
+      console.log('爬取定時器已清除');
     }
   },
 
@@ -185,7 +216,8 @@ const BackgroundStockCrawlerManager = {
    * 開始爬取股票清單
    */
   async startCrawl() {
-    console.log('=== 開始背景爬取股票清單 ===');
+    const startTime = new Date().toLocaleString();
+    console.log(`=== 開始背景爬取股票清單 === [${startTime}]`);
     
     if (this.running) {
       console.log('爬蟲已在運行中，跳過此次請求');
@@ -222,7 +254,7 @@ const BackgroundStockCrawlerManager = {
         
         console.log(`[${i + 1}/${totalUrls}] 開始爬取: ${industryName}`);
         
-        const progressPercent = Math.round((i / totalUrls) * 90);
+        const progressPercent = Math.round((i / totalUrls) * STOCK_CRAWLER_CONFIG.PROGRESS_CRAWLING_MAX);
         this.currentProgress = progressPercent;  // 更新當前進度
         this._notifyStatusChange('running', { 
           status: `正在爬取 ${industryName} (${i + 1}/${totalUrls})`, 
@@ -248,35 +280,56 @@ const BackgroundStockCrawlerManager = {
         
         // 等待指定時間
         if (i < urls.length - 1 && this.running) {
-          console.log('等待 0.3 秒後繼續下一個網頁...');
-          await this._delay(300);
+          console.log(`等待 ${STOCK_CRAWLER_CONFIG.CRAWL_DELAY_MS / 1000} 秒後繼續下一個網頁...`);
+          await this._delay(STOCK_CRAWLER_CONFIG.CRAWL_DELAY_MS);
         }
       }
       
       if (this.running) {
         console.log(`所有網頁爬取完成，共獲得 ${allStocks.size} 支股票`);
-        this.currentProgress = 95;  // 更新進度到 95%
+        this.currentProgress = STOCK_CRAWLER_CONFIG.PROGRESS_UPDATING;  // 更新進度到 95%
         this._notifyStatusChange('running', { 
           status: '正在更新股票清單...', 
-          progress: 95 
+          progress: STOCK_CRAWLER_CONFIG.PROGRESS_UPDATING 
         });
         
-        // 更新股票清單
-        const updateResult = await this._updateStockList(allStocks);
-        console.log('股票清單更新結果:', updateResult);
+        // 更新股票清單 - 添加安全檢查處理
+        try {
+          const updateResult = await this._updateStockList(allStocks);
+          console.log('股票清單更新結果:', updateResult);
+          
+          // 先設置 running 為 false，再發送 completed 狀態
+          this.running = false;
+          this.currentProgress = STOCK_CRAWLER_CONFIG.PROGRESS_COMPLETED;  // 設置最終進度為 100%
+          
+          const statusMsg = `爬取完成！新增 ${updateResult.added} 支，刪除 ${updateResult.removed} 支股票，總計 ${updateResult.total} 支`;
+          this._notifyStatusChange('completed', { 
+            status: statusMsg, 
+            progress: STOCK_CRAWLER_CONFIG.PROGRESS_COMPLETED,
+            result: updateResult
+          });
+          
+        } catch (updateError) {
+          // 如果是安全檢查失敗，顯示警告但不讓整個流程失敗
+          console.error('股票清單更新被安全檢查阻止:', updateError.message);
+          
+          // 先設置 running 為 false
+          this.running = false;
+          this.currentProgress = STOCK_CRAWLER_CONFIG.PROGRESS_COMPLETED;  // 設置進度為 100%
+          
+          // 發送警告狀態（使用 completed 但帶有警告訊息）
+          const currentTime = new Date().toLocaleString();
+          const warningMsg = `[${currentTime}] 爬取完成但未更新：${updateError.message}`;
+          this._notifyStatusChange('warning', { 
+            status: warningMsg, 
+            progress: STOCK_CRAWLER_CONFIG.PROGRESS_COMPLETED,
+            warning: updateError.message,
+            crawledCount: allStocks.size
+          });
+        }
         
-        // 先設置 running 為 false，再發送 completed 狀態
-        this.running = false;
-        this.currentProgress = 100;  // 設置最終進度為 100%
-        
-        const statusMsg = `爬取完成！新增 ${updateResult.added} 支，刪除 ${updateResult.removed} 支股票，總計 ${updateResult.total} 支`;
-        this._notifyStatusChange('completed', { 
-          status: statusMsg, 
-          progress: 100,
-          result: updateResult
-        });
-        
-        console.log('=== 背景爬取流程完成 ===');
+        const endTime = new Date().toLocaleString();
+        console.log(`=== 背景爬取流程完成 === [${endTime}]`);
       }
       
     } catch (error) {
@@ -403,10 +456,30 @@ const BackgroundStockCrawlerManager = {
       const existingStocks = this._parseStockList(currentStockList);
       console.log(`現有股票清單包含 ${existingStocks.size} 支股票`);
       
+      const currentTime = new Date().toLocaleString();
+      
+      // 預先檢查要刪除的股票數量
+      let wouldBeRemovedCount = 0;
+      const wouldBeRemovedStocks = [];
+      existingStocks.forEach((existing, code) => {
+        if (!crawledStocks.has(code)) {
+          wouldBeRemovedCount++;
+          wouldBeRemovedStocks.push(`${code}(${existing.name})`);
+        }
+      });
+      
+      // 安全檢查：如果要刪除的股票數量達到安全閾值，則不執行更新
+      if (wouldBeRemovedCount >= STOCK_CRAWLER_CONFIG.SAFETY_DELETE_THRESHOLD) {
+        const errorMsg = `[${currentTime}] 檢測到將刪除 ${wouldBeRemovedCount} 檔股票，超過安全閾值(${STOCK_CRAWLER_CONFIG.SAFETY_DELETE_THRESHOLD}檔)，可能是來源網站有問題，已跳過更新以保護現有資料`;
+        console.error(errorMsg);
+        console.log('將被刪除的股票清單:', wouldBeRemovedStocks.slice(0, 10)); // 只顯示前10檔
+        throw new Error(`將刪除 ${wouldBeRemovedCount} 檔股票，超過安全閾值，已跳過更新以保護現有資料`);
+      }
+      
       // 比對和合併
       const mergedStocks = new Map();
       let addedCount = 0;
-      let removedCount = 0;
+      let removedCount = wouldBeRemovedCount;
       
       // 添加爬取到的股票
       crawledStocks.forEach((stock, code) => {
@@ -428,12 +501,9 @@ const BackgroundStockCrawlerManager = {
         }
       });
       
-      // 檢查被刪除的股票
-      existingStocks.forEach((existing, code) => {
-        if (!crawledStocks.has(code)) {
-          removedCount++;
-          console.log(`股票已消失: ${code} ${existing.name}`);
-        }
+      // 記錄被刪除的股票（在這裡記錄，因為已經通過安全檢查）
+      wouldBeRemovedStocks.forEach(stockInfo => {
+        console.log(`股票已消失: ${stockInfo}`);
       });
       
       // 按股票代號排序

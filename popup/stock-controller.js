@@ -4,6 +4,13 @@
  * 依賴：GlobalSettings, triggerContentScriptUpdate
  */
 
+// === 配置常數 ===
+const STOCK_CRAWLER_CONFIG = {
+  // 爬蟲間隔時間限制（分鐘）
+  MIN_CRAWL_INTERVAL: 0.1,
+  MAX_CRAWL_INTERVAL: 9999
+};
+
 // 股票功能管理器
 const StockManager = {
   // DOM 元素引用
@@ -76,6 +83,12 @@ const StockCrawlerController = {
   init() {
     console.log('初始化背景股票爬蟲控制器');
     
+    // 防止重複初始化
+    if (this.initialized) {
+      console.log('StockCrawlerController 已經初始化過，跳過重複初始化');
+      return;
+    }
+    
     // 綁定事件
     this.bindEvents();
     
@@ -114,8 +127,14 @@ const StockCrawlerController = {
     this.intervalInput.addEventListener('change', () => {
       // 如果當前有定時爬取，重新啟動以應用新間隔
       if (this.isScheduled) {
+        console.log('間隔時間已變更，重新啟動定時爬取...');
         this.stopScheduledCrawl();
-        setTimeout(() => this.startScheduledCrawl(), 100);
+        // 增加延遲時間確保停止操作完成
+        setTimeout(() => {
+          if (!this.isScheduled) { // 確保已成功停止
+            this.startScheduledCrawl();
+          }
+        }, 300);
       }
     });
     
@@ -222,6 +241,16 @@ const StockCrawlerController = {
         this.updateStartButtonState(false);
         this.hideProgress();
         this.onCrawlComplete(message.data.result);
+        break;
+        
+      case 'warning':
+        // 處理安全檢查警告狀態
+        this.isRunning = false;
+        this.updateStatus(message.data.status, 'warning');
+        this.updateProgress(100);
+        this.updateStartButtonState(false);
+        this.hideProgress();
+        // 不調用 onCrawlComplete，因為沒有實際更新股票清單
         break;
         
       case 'error':
@@ -342,8 +371,8 @@ const StockCrawlerController = {
     const interval = parseFloat(this.intervalInput.value) || 30;
     
     // 驗證間隔時間
-    if (interval < 0.1 || interval > 9999) {
-      this.updateStatus('無效的間隔時間，請輸入0.1-9999之間的數字', 'error');
+    if (interval < STOCK_CRAWLER_CONFIG.MIN_CRAWL_INTERVAL || interval > STOCK_CRAWLER_CONFIG.MAX_CRAWL_INTERVAL) {
+      this.updateStatus(`無效的間隔時間，請輸入${STOCK_CRAWLER_CONFIG.MIN_CRAWL_INTERVAL}-${STOCK_CRAWLER_CONFIG.MAX_CRAWL_INTERVAL}之間的數字`, 'error');
       return;
     }
     
