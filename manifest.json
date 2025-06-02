@@ -31,7 +31,6 @@
         "settings.js",
         "notification.js",
         "undo.js",
-        "stock_list.js",
         "text-processor.js",
         "translate.js",
         "multiple_generation/multiple-generation.js",
@@ -71,7 +70,6 @@
       "js": [
         "default.js",
         "settings.js",
-        "stock_list.js",
         "stock_report_helper/quick-copy.js",
         "stock_report_helper/stock-analyzer.js"
       ],

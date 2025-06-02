@@ -109,4 +109,38 @@ inputElement.value = settings.propertyName || '';
 - Execute git pull before pushing to sync remote updates
 - Break large changes into multiple small commits
 
+## UI Component Development Guidelines
+
+### Drag and Drop Sorting (2025-06-02)
+**常見問題與解決方案:**
+
+**問題1: 拖移時閃爍**
+- **原因**: 邊界判斷過於敏感，滑鼠微小移動導致條件頻繁切換
+- **解決**: 添加明確的移動標記 `shouldMove`，只有滿足條件才觸發移動
+
+**問題2: 無法拖移到最後位置**
+- **原因**: `nextSibling !== null` 檢查阻止了移動到末尾（`insertBefore(element, null)` 是合法的）
+- **解決**: 移除不必要的 null 檢查
+
+**問題3: 不該移動時也觸發移動**
+- **原因**: 邏輯中 `nextSibling` 預設為 `null`，即使不滿足移動條件也可能與當前位置不同
+- **解決**: 添加 `shouldMove` 標記確保只有明確滿足條件才移動
+
+**最佳實踐:**
+```javascript
+let nextSibling = null;
+let shouldMove = false; // 明確的移動標記
+
+// 只有滿足條件才設 shouldMove = true
+if (condition) {
+    nextSibling = targetElement;
+    shouldMove = true;
+}
+
+// 檢查移動時加入 shouldMove 條件
+if (placeholder && container.contains(placeholder) && shouldMove) {
+    // 執行移動邏輯
+}
+```
+
 

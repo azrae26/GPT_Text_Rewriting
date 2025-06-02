@@ -20,6 +20,8 @@
  * - 管理替換介面的位置和拖曳功能
  * - 處理大型輸入框的顯示
  * - 提供通用的存儲和事件處理邏輯
+ * - 自動清理空組：重新載入時過濾掉沒有內容的替換規則
+ * - 拖移排序功能：支持替換組的拖移重新排序（已修復閃爍和無法移動到最後位置的問題）
  */
 const ReplaceManager = {
   CONFIG: {
@@ -567,13 +569,6 @@ const ReplaceManager = {
     // 處理輸入事件
     const handleInput = debounce((input) => {
       try {
-        console.group('處理輸入事件');
-        console.log('輸入框值:', {
-          from: fromInputElement.value,
-          to: toInputElement.value,
-          checked: isButton ? undefined : checkboxOrButton?.checked
-        });
-
         // 更新按鈕狀態（手動替換）
         if (isManual) {
           updateButtonState();
@@ -599,10 +594,8 @@ const ReplaceManager = {
         if (window.location.pathname.endsWith('popup.html')) {
           this._sendMessageToContentScript(group, isManual);
         }
-        console.groupEnd();
       } catch (error) {
         console.error('處理輸入事件時出錯:', error);
-        console.groupEnd();
       }
     }, 300);
 
@@ -616,19 +609,16 @@ const ReplaceManager = {
       input.dataset.hasInputHandler = 'true';
       
       input.addEventListener('input', () => {
-        console.log('輸入事件觸發');
         handleInput(input);
       });
       
       // 失去焦點時也觸發更新
       input.addEventListener('blur', () => {
-        console.log('失去焦點事件觸發');
         handleInput(input);
       });
       
       // 同步自定義事件處理
       input.addEventListener('value-sync', (e) => {
-        console.log('值同步事件觸發');
         handleInput(input);
       });
     });
@@ -637,7 +627,6 @@ const ReplaceManager = {
     if (!isManual && checkboxOrButton && !checkboxOrButton.dataset.hasChangeHandler) {
       checkboxOrButton.dataset.hasChangeHandler = 'true';
       checkboxOrButton.addEventListener('change', () => {
-        console.log('複選框狀態改變:', checkboxOrButton.checked);
         handleInput(fromInputElement);
       });
     }
@@ -661,7 +650,6 @@ const ReplaceManager = {
   /** 發送消息到 content script */
   _sendMessageToContentScript(group, isManual) {
     try {
-      console.log('準備發送消息到 content script');
       chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
         if (!tabs[0]) {
           console.log('找不到活動標籤頁');
@@ -684,8 +672,6 @@ const ReplaceManager = {
             };
           });
 
-          console.log('準備發送的規則:', rules);
-
           // 發送完整的規則列表
           chrome.tabs.sendMessage(tabs[0].id, {
             action: isManual ? "updateManualReplaceRules" : "updateAutoReplaceRules",
@@ -694,7 +680,6 @@ const ReplaceManager = {
             if (chrome.runtime.lastError) {
               console.debug('Content script 正在載入中...');
             } else {
-              console.log('消息發送成功:', response);
               // 發送觸發替換的消息
               chrome.tabs.sendMessage(tabs[0].id, {
                 action: isManual ? "triggerManualReplace" : "triggerAutoReplace"
@@ -741,13 +726,15 @@ const ReplaceManager = {
       this.StorageHelper.loadRules(storageKey, [{ from: '', to: '' }], (rules) => {
         console.log('讀取到的規則:', rules);
         
-        // 如果沒有規則，添加一個空規則
-        if (rules.length === 0) {
-          rules.push({ from: '', to: '' });
-        }
+        // 新增：過濾掉空組（只有當 from 或 to 有內容時才保留）
+        const filteredRules = rules.filter(rule => rule.from?.trim() || rule.to?.trim());
+        console.log('過濾後的規則:', filteredRules);
         
-        // 創建組
-        rules.forEach((rule, index) => {
+        // 如果過濾後沒有規則，添加一個空規則作為預設
+        const finalRules = filteredRules.length > 0 ? filteredRules : [{ from: '', to: '' }];
+        
+        // 創建組（使用過濾後的規則）
+        finalRules.forEach((rule, index) => {
           manualContainer.appendChild(createGroupFn(textArea, false, rule, index));
         });
 
@@ -905,147 +892,8 @@ const ReplaceManager = {
     }
   },
 
-  // 統一的事件處理系統
-  _setupEventHandlers(elementMap, handlerMap) {
-    Object.entries(handlerMap).forEach(([eventType, handlers]) => {
-      Object.entries(handlers).forEach(([elementKey, handler]) => {
-        if (elementMap[elementKey]) {
-          elementMap[elementKey].addEventListener(eventType, handler);
-        }
-      });
-    });
-  },
-
   // 拖曳管理功能
   DragManager: {
-    setupDragSorting(element, options = {}) {
-      const {
-        container = element.parentElement,
-        selector = '.replace-extra-group',
-        handleSelector = '.replace-sort-button',
-        onComplete = null
-      } = options;
-      
-      const handle = element.querySelector(handleSelector);
-      if (!handle) return;
-      
-      let isDragging = false;
-      let startY = 0;
-      let startRect = null;
-      let placeholder = null;
-      let allItems = null;
-      
-      handle.addEventListener('mousedown', (e) => {
-        e.preventDefault();
-        isDragging = true;
-        startY = e.clientY;
-        startRect = element.getBoundingClientRect();
-        
-        allItems = Array.from(container.querySelectorAll(selector));
-        const startIndex = allItems.indexOf(element);
-        
-        // 創建佔位元素
-        placeholder = element.cloneNode(true);
-        placeholder.style.opacity = '0.3';
-        placeholder.style.pointerEvents = 'none';
-        
-        // 設置拖曳樣式
-        this._setDragStyles(element, startRect);
-        
-        // 插入佔位元素
-        container.insertBefore(placeholder, element);
-        
-        document.addEventListener('mousemove', handleMouseMove);
-        document.addEventListener('mouseup', handleMouseUp);
-      });
-      
-      const handleMouseMove = (e) => {
-        if (!isDragging) return;
-        
-        // 更新位置
-        element.style.top = `${startRect.top + (e.clientY - startY)}px`;
-        
-        // 計算目標位置
-        const containerRect = container.getBoundingClientRect();
-        const relativeY = e.clientY - containerRect.top;
-        
-        // 處理位置更新邏輯
-        this._updateItemPosition(container, element, placeholder, allItems, relativeY);
-      };
-      
-      const handleMouseUp = () => {
-        if (!isDragging) return;
-        isDragging = false;
-        
-        // 恢復樣式
-        this._resetDragStyles(element);
-        
-        // 移動到最終位置
-        container.insertBefore(element, placeholder);
-        placeholder.remove();
-        
-        // 完成回調
-        if (onComplete) onComplete(container);
-        
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-    },
-    
-    _setDragStyles(element, rect) {
-      element.style.position = 'fixed';
-      element.style.zIndex = '1000';
-      element.style.width = `${rect.width}px`;
-      element.style.left = `${rect.left}px`;
-      element.style.top = `${rect.top}px`;
-      element.style.backgroundColor = '#fff';
-      element.style.transform = 'scale(1.02)';
-      element.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
-    },
-    
-    _resetDragStyles(element) {
-      element.style.position = '';
-      element.style.zIndex = '';
-      element.style.width = '';
-      element.style.left = '';
-      element.style.top = '';
-      element.style.transform = '';
-      element.style.boxShadow = '';
-    },
-    
-    _updateItemPosition(container, element, placeholder, allItems, relativeY) {
-      let targetIndex = -1;
-      let minDistance = Infinity;
-      
-      allItems.forEach((item, index) => {
-        if (item === element || item === placeholder) return;
-        
-        const itemRect = item.getBoundingClientRect();
-        const containerRect = container.getBoundingClientRect();
-        const itemTop = itemRect.top - containerRect.top;
-        const distance = Math.abs(relativeY - itemTop);
-        
-        if (distance < minDistance && distance < itemRect.height) {
-          minDistance = distance;
-          targetIndex = index;
-        }
-      });
-      
-      if (targetIndex !== -1) {
-        const targetItem = allItems[targetIndex];
-        const shouldInsertBefore = relativeY < 
-          targetItem.getBoundingClientRect().top - container.getBoundingClientRect().top + 
-          (targetItem.offsetHeight * 0.5);
-        
-        placeholder.remove();
-        container.insertBefore(
-          placeholder, 
-          shouldInsertBefore ? targetItem : targetItem.nextSibling
-        );
-      }
-    },
-    
-    // 新增：統一的排序拖移處理函數
     setupSortDragEvents(button, options = {}) {
       const {
         groupSelector = '.replace-extra-group',  // 默認組選擇器
@@ -1180,90 +1028,107 @@ const ReplaceManager = {
         return { isInTopScrollZone: false, isInBottomScrollZone: false };
       }
       
-      // 取得佔位符與原始元素的相對位置
+      // 取得佔位符與拖移元素的相對位置
       const placeholderRect = placeholder.getBoundingClientRect();
       const groupRect = group.getBoundingClientRect();
       
       let nextSibling = null;
+      let shouldMove = false; // 添加明確的移動標記
       
-      // 判斷拖曳方向
+      // 用佔位符跟拖移元素相對位置來判斷方向
       if (placeholderRect.top < groupRect.top) {
-        // 佔位符在原始元素上方，往下拖
+        // 佔位符在拖移元素上方，往下移
+        console.log('拖移方向：往下');
         
-        // 只比較佔位符的下一列
         const nextElement = placeholder.nextElementSibling;
-        
-        // 檢查下一元素是否為拖曳元素
-        if (nextElement === group) {
-          const nextNextElement = group.nextElementSibling;
-          
-          if (nextNextElement && nextNextElement.id !== placeholderId) {
-            const nextElementRect = nextNextElement.getBoundingClientRect();
-            
-            // 如果滑鼠Y大於下下一列的頂邊界，把佔位符移到下下一列之前
-            if (e.clientY > nextElementRect.top) {
-              nextSibling = nextNextElement;
-            }
-          }
-        } else if (nextElement && nextElement.id !== placeholderId) {
+        if (nextElement && nextElement !== group && nextElement.id !== placeholderId) {
           const nextElementRect = nextElement.getBoundingClientRect();
+          const nextElementTop = nextElementRect.top;
           
-          // 如果滑鼠Y大於下一列的頂邊界，把佔位符移到下一列之後
-          if (e.clientY > nextElementRect.top) {
-            nextSibling = nextElement.nextElementSibling;
+          // 滑鼠位置比下個元素的頂部還大時，把佔位符插入到下個元素之後
+          if (e.clientY > nextElementTop) {
+            nextSibling = nextElement.nextElementSibling; // 插入到下個元素之後
+            shouldMove = true;
+            console.log('觸發往下移動：滑鼠超過下個元素頂部');
+          }
+        } else if (nextElement === group) {
+          // 如果下個元素是拖移元素本身，檢查再下一個元素
+          const nextNextElement = group.nextElementSibling;
+          if (nextNextElement && nextNextElement.id !== placeholderId) {
+            const nextNextElementRect = nextNextElement.getBoundingClientRect();
+            const nextNextElementTop = nextNextElementRect.top;
+            
+            if (e.clientY > nextNextElementTop) {
+              nextSibling = nextNextElement.nextElementSibling; // 插入到下下個元素之後
+              shouldMove = true;
+              console.log('觸發往下移動：滑鼠超過下下個元素頂部');
+            }
+          } else if (!nextNextElement) {
+            // 已經是最後一個元素，檢查是否要移到最後
+            const groupBottom = groupRect.bottom;
+            if (e.clientY > groupBottom) {
+              nextSibling = null; // 移到最後
+              shouldMove = true;
+              console.log('觸發移到最後：滑鼠超過拖移元素底部');
+            }
           }
         }
       } else {
-        // 佔位符在原始元素下方，往上拖
+        // 佔位符在拖移元素下方，往上移
+        console.log('拖移方向：往上');
         
-        // 找出佔位符的前一列
-        let prevElement = null;
-        // 安全獲取所有符合選擇器的元素
-        const siblings = Array.from(container.querySelectorAll(groupSelector) || []);
+        // 找到佔位符的前一個元素
+        const allSiblings = Array.from(container.querySelectorAll(groupSelector) || []);
+        const placeholderIndex = allSiblings.indexOf(placeholder);
         
-        for (let i = 0; i < siblings.length; i++) {
-          if (siblings[i] === placeholder && i > 0) {
-            prevElement = siblings[i-1];
-            break;
+        if (placeholderIndex > 0) {
+          const prevElement = allSiblings[placeholderIndex - 1];
+          if (prevElement && prevElement !== group && prevElement.id !== placeholderId) {
+            const prevElementRect = prevElement.getBoundingClientRect();
+            const prevElementBottom = prevElementRect.bottom;
+            
+            // 滑鼠位置比上個元素的底部還小時，把佔位符插入到上個元素之前
+            if (e.clientY < prevElementBottom) {
+              nextSibling = prevElement; // 插入到上個元素之前
+              shouldMove = true;
+              console.log(`觸發往上移動：滑鼠Y${e.clientY}低於上個元素底部Y${prevElementBottom}`);
+          }
+          } else if (prevElement === group) {
+            // 如果上個元素是拖移元素本身，檢查再上一個元素
+            if (placeholderIndex > 1) {
+              const prevPrevElement = allSiblings[placeholderIndex - 2];
+              if (prevPrevElement && prevPrevElement.id !== placeholderId) {
+                const prevPrevElementRect = prevPrevElement.getBoundingClientRect();
+                const prevPrevElementBottom = prevPrevElementRect.bottom;
+                
+                if (e.clientY < prevPrevElementBottom) {
+                  nextSibling = prevPrevElement; // 插入到上上個元素之前
+                  shouldMove = true;
+                  console.log('觸發往上移動：滑鼠低於上上個元素底部');
           }
         }
-        
-        // 檢查上一元素是否為拖曳元素
-        if (prevElement === group) {
-          // 尋找拖曳元素的前一個元素
-          for (let i = 0; i < siblings.length; i++) {
-            if (siblings[i] === group && i > 0) {
-              prevElement = siblings[i-1];
-              break;
+            } else {
+              // 已經是第一個元素，檢查是否要移到最前
+              const groupTop = groupRect.top;
+              if (e.clientY < groupTop) {
+                nextSibling = allSiblings[0]; // 移到最前
+                shouldMove = true;
+                console.log('觸發移到最前：滑鼠高於拖移元素頂部');
+              }
             }
-          }
-          
-          if (prevElement && prevElement.id !== placeholderId) {
-            const prevElementRect = prevElement.getBoundingClientRect();
-            
-            // 如果滑鼠Y小於上上一列的底邊界，把佔位符移到上上一列之前
-            if (e.clientY < prevElementRect.bottom) {
-              nextSibling = prevElement;
-            }
-          }
-        } else if (prevElement && prevElement.id !== placeholderId) {
-          const prevElementRect = prevElement.getBoundingClientRect();
-          
-          // 如果滑鼠Y小於上一列的底邊界，把佔位符移到上一列之前
-          if (e.clientY < prevElementRect.bottom) {
-            nextSibling = prevElement;
           }
         }
       }
       
-      // 如果需要移動佔位符
-      if (placeholder && container.contains(placeholder)) {
+      // 檢查是否需要移動佔位符
+      if (placeholder && container.contains(placeholder) && shouldMove) {
         const placeholderCurrentPosition = placeholder.nextSibling;
-        const needsMove = nextSibling !== null && 
-                         nextSibling !== placeholderCurrentPosition;
+        const needsMove = nextSibling !== placeholderCurrentPosition;
+        
         if (needsMove) {
           try {
             container.insertBefore(placeholder, nextSibling);
+            console.log('佔位符已移動到新位置');
           } catch (error) {
             console.error('移動佔位符失敗:', error);
           }
@@ -1337,396 +1202,6 @@ const ReplaceManager = {
       }
     }
   },
-
-  // 統一的 UI 元素創建工廠
-  UIFactory: {
-    /**
-     * 創建輸入框
-     * @param {Object} options - 配置項
-     * @param {string} options.placeholder - 提示文字
-     * @param {number} options.width - 寬度
-     * @param {boolean} options.isTextArea - 是否為多行文本框
-     * @param {boolean} options.isMainGroup - 是否為主組輸入框
-     * @returns {HTMLElement} - 創建的輸入框元素或容器
-     */
-    createInput(options = {}) {
-      const {
-        placeholder = '',
-        width = 80,
-        isTextArea = false,
-        isMainGroup = false
-      } = options;
-
-      if (isTextArea) {
-        // 創建容器
-        const container = document.createElement('div');
-        container.className = 'replace-input-container';
-        container.style.width = `${width}px`;
-        
-        // 創建輸入框
-        const input = document.createElement('textarea');
-        input.placeholder = placeholder;
-        input.className = 'replace-input';
-        input.rows = 1;
-        
-        // 將輸入框添加到容器中
-        container.appendChild(input);
-        
-        return container;
-      } else {
-        // 創建單行輸入框
-        const input = document.createElement('input');
-        input.type = 'text';
-        input.placeholder = placeholder;
-        input.className = 'replace-input';
-        input.style.cssText = `width: ${width}px !important;`;
-        
-        return input;
-      }
-    },
-
-    /**
-     * 創建替換按鈕
-     * @param {Object} options - 配置項
-     * @param {boolean} options.isMainGroup - 是否為主組按鈕
-     * @returns {HTMLElement} - 創建的按鈕元素
-     */
-    createReplaceButton(options = {}) {
-      const { isMainGroup = false } = options;
-      
-      const button = document.createElement('button');
-      button.className = 'replace-button disabled';
-      button.textContent = '替換';
-      
-      return button;
-    },
-
-    /**
-     * 創建控制按鈕組
-     * @param {Object} options - 配置項
-     * @param {Function} options.addCallback - 添加按鈕回調
-     * @param {Function} options.removeCallback - 刪除按鈕回調
-     * @param {number|null} options.groupIndex - 組索引
-     * @param {boolean} options.needSortButton - 是否需要排序按鈕
-     * @returns {HTMLElement} - 創建的控制按鈕容器
-     */
-    createControlButtons(options = {}) {
-      const {
-        addCallback,
-        removeCallback,
-        groupIndex = null,
-        needSortButton = true
-      } = options;
-      
-      const container = document.createElement('div');
-      container.className = 'replace-group-controls';
-
-      if (needSortButton) {
-        // 創建排序拖移按鈕
-        const sortButton = document.createElement('button');
-        sortButton.innerHTML = '<span>⋮⋮</span>';
-        sortButton.className = 'replace-sort-button';
-        sortButton.draggable = true;
-        sortButton.title = '拖移排序';
-        container.appendChild(sortButton);
-        
-        // 存儲拖移按鈕和索引，以便稍後設置拖曳事件
-        if (groupIndex !== null) {
-          container.sortButton = sortButton;
-          container.groupIndex = groupIndex;
-        }
-      }
-
-      // 創建添加按鈕
-      const addButton = document.createElement('button');
-      addButton.textContent = '+';
-      addButton.className = 'replace-control-button';
-      addButton.id = 'replace-add-button';
-      addButton.onclick = () => addCallback(groupIndex);
-      container.appendChild(addButton);
-
-      // 創建刪除按鈕
-      const removeButton = document.createElement('button');
-      removeButton.textContent = '-';
-      removeButton.className = 'replace-control-button';
-      removeButton.id = 'replace-remove-button';
-      
-      // 設置雙擊刪除
-      let lastClickTime = 0;
-      removeButton.addEventListener('click', () => {
-        const currentTime = new Date().getTime();
-        if (currentTime - lastClickTime < 300) {
-          removeCallback();
-        }
-        lastClickTime = currentTime;
-      });
-      
-      container.appendChild(removeButton);
-
-      return container;
-    },
-
-    /**
-     * 創建拖曳把手
-     * @returns {HTMLElement} - 創建的拖曳把手元素
-     */
-    createDragHandle() {
-      const handle = document.createElement('div');
-      handle.className = 'replace-drag-handle';
-      return handle;
-    },
-
-    /**
-     * 創建自動替換的勾選框
-     * @param {boolean} checked - 是否選中
-     * @returns {HTMLElement} - 創建的勾選框元素
-     */
-    createCheckbox(checked = false) {
-      const checkbox = document.createElement('input');
-      checkbox.type = 'checkbox';
-      checkbox.className = 'auto-replace-checkbox';
-      checkbox.checked = checked;
-      return checkbox;
-    }
-  },
-
-  // 統一的組管理模組
-  GroupManager: {
-    /**
-     * 添加新的替換組
-     * @param {Object} options - 配置項
-     * @param {HTMLElement} options.referenceGroup - 參考組元素
-     * @param {HTMLElement} options.container - 容器元素
-     * @param {Function} options.createGroupFn - 創建組的函數
-     * @param {HTMLElement} options.textArea - 文本區域元素
-     * @param {Function} options.onRulesSave - 保存規則的回調
-     * @param {boolean} options.isManual - 是否為手動替換
-     * @param {Function} options.setupDragEventsFn - 設置拖曳事件的函數
-     * @param {number} options.insertIndex - 插入位置索引
-     */
-    addGroup(options) {
-      const {
-        referenceGroup,
-        container,
-        createGroupFn,
-        textArea,
-        onRulesSave,
-        isManual = false,
-        setupDragEventsFn,
-        insertIndex = null
-      } = options;
-      
-      // 創建新組
-      const group = createGroupFn(textArea);
-      
-      // 在當前組的下一行插入新組，而不是添加到最後
-      if (referenceGroup && referenceGroup.nextSibling) {
-        container.insertBefore(group, referenceGroup.nextSibling);
-      } else {
-        // 如果當前組是最後一個，則直接添加到最後
-        container.appendChild(group);
-      }
-      
-      // 設置拖曳事件
-      if (setupDragEventsFn) {
-        requestAnimationFrame(() => {
-          setupDragEventsFn(group);
-        });
-      }
-      
-      // 保存規則
-      if (onRulesSave) {
-        onRulesSave(container);
-      }
-      
-      return group;
-    },
-
-    /**
-     * 移除替換組
-     * @param {Object} options - 配置項
-     * @param {HTMLElement} options.group - 要移除的組元素
-     * @param {HTMLElement} options.container - 容器元素
-     * @param {Function} options.onRulesSave - 保存規則的回調
-     * @param {Function} options.clearHighlightFn - 清除高亮的函數 (手動替換使用)
-     */
-    removeGroup(options) {
-      const {
-        group,
-        container,
-        onRulesSave,
-        clearHighlightFn
-      } = options;
-      
-      const groups = container.querySelectorAll(group.classList.contains('auto-replace-group') ? 
-                                               '.auto-replace-group' : '.replace-extra-group');
-      
-      // 獲取當前組的索引
-      const index = Array.from(groups).indexOf(group);
-      
-      if (groups.length === 1) {
-        // 如果是最後一個組，清空輸入框
-        const containers = Array.from(group.children).filter(el => 
-          el.classList.contains('replace-input-container') || 
-          el.classList.contains('replace-input')
-        );
-        
-        const fromInput = containers[0]?.classList.contains('replace-input') ? 
-                         containers[0] : containers[0]?.querySelector('.replace-input');
-        const toInput = containers[1]?.classList.contains('replace-input') ? 
-                       containers[1] : containers[1]?.querySelector('.replace-input');
-        
-        // 清空輸入值
-        if (fromInput) fromInput.value = '';
-        if (toInput) toInput.value = '';
-        
-        // 清除勾選框
-        const checkbox = group.querySelector('.auto-replace-checkbox');
-        if (checkbox) checkbox.checked = false;
-        
-        // 清除高亮
-        if (clearHighlightFn) {
-          clearHighlightFn(index);
-        }
-      } else {
-        // 移除組
-        group.remove();
-        
-        // 清除高亮
-        if (clearHighlightFn) {
-          clearHighlightFn(index);
-        }
-      }
-      
-      // 保存規則
-      if (onRulesSave) {
-        onRulesSave(container);
-      }
-    },
-    
-    /**
-     * 重新渲染所有組
-     * @param {Object} options - 配置項
-     * @param {Array} options.rules - 規則數組
-     * @param {HTMLElement} options.container - 容器元素
-     * @param {HTMLElement} options.textArea - 文本區域元素
-     * @param {Function} options.createGroupFn - 創建組的函數
-     * @param {Function} options.setupDragEventsFn - 設置拖曳事件的函數
-     * @param {Function} options.updatePreviewsFn - 更新預覽的函數
-     */
-    rerenderGroups(options) {
-      const {
-        rules,
-        container,
-        textArea,
-        createGroupFn,
-        setupDragEventsFn,
-        updatePreviewsFn
-      } = options;
-      
-      if (!textArea || !container) return;
-      
-      // 移除所有現有的組
-      const groupSelector = container.classList.contains('manual-replace-container') ? 
-                          '.replace-extra-group' : '.auto-replace-group';
-      const existingGroups = container.querySelectorAll(groupSelector);
-      existingGroups.forEach(group => group.remove());
-      
-      // 重新創建所有組
-      rules.forEach((rule, index) => {
-        const newGroup = createGroupFn(textArea, false, rule, index);
-        container.appendChild(newGroup);
-      });
-      
-      // 設置拖曳事件
-      if (setupDragEventsFn) {
-        requestAnimationFrame(() => {
-          setupDragEventsFn();
-        });
-      }
-      
-      // 更新預覽
-      if (updatePreviewsFn) {
-        updatePreviewsFn();
-      }
-    }
-  },
-
-  // 統一的組初始化模組
-  GroupInitializer: {
-    /**
-     * 初始化替換組
-     * @param {Object} options - 配置項
-     * @param {HTMLElement} options.container - 容器元素
-     * @param {HTMLElement} options.textArea - 文本區域元素
-     * @param {string} options.storageKey - 存儲鍵名
-     * @param {Function} options.createGroupFn - 創建組的函數
-     * @param {boolean} options.hasCheckbox - 是否有啟用勾選框
-     * @param {string} options.groupSelector - 組選擇器
-     * @param {Function} options.setupDragEventsFn - 設置拖曳事件的函數
-     * @param {Function} options.updateUIFn - 更新 UI 的函數 (例如更新預覽)
-     * @param {Function} options.onComplete - 初始化完成後的回調
-     */
-    initialize(options) {
-      const {
-        container,
-        textArea,
-        storageKey,
-        createGroupFn,
-        hasCheckbox = false,
-        groupSelector,
-        setupDragEventsFn,
-        updateUIFn,
-        onComplete
-      } = options;
-      
-      if (!container || !textArea || !createGroupFn) {
-        console.error('初始化組失敗：缺少必要參數');
-        return;
-      }
-      
-      // 步驟1: 從存儲加載規則
-      ReplaceManager.StorageHelper.loadRules(
-        storageKey,
-        hasCheckbox ? [{ enabled: false }] : [{}],
-        (rules) => {
-          // 步驟2: 過濾和準備規則
-          const filteredRules = rules.filter(rule => 
-            (rule.from?.trim() || rule.to?.trim()) || 
-            (hasCheckbox && rule.enabled)
-          );
-          
-          const finalRules = filteredRules.length > 0 ? filteredRules : [{}];
-          
-          // 步驟3: 創建和添加所有組
-          container.innerHTML = ''; // 清空容器
-          finalRules.forEach((rule, index) => {
-            const group = createGroupFn(textArea, false, rule, index);
-            container.appendChild(group);
-          });
-          
-          // 步驟4: 設置拖曳事件 (在所有組添加到 DOM 後)
-          if (setupDragEventsFn) {
-            requestAnimationFrame(() => {
-              setupDragEventsFn();
-            });
-          }
-          
-          // 步驟5: 更新 UI (如預覽等)
-          if (updateUIFn) {
-            requestAnimationFrame(() => {
-              updateUIFn();
-            });
-          }
-          
-          // 步驟6: 調用完成回調
-          if (onComplete) {
-            onComplete();
-          }
-        }
-      );
-    }
-  }
 };
 
 window.ReplaceManager = ReplaceManager; 

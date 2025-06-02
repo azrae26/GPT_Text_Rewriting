@@ -526,19 +526,9 @@ const ManualReplaceManager = {
         this.observer.disconnect();
       }
 
-      // 創建新的 IntersectionObserver
-      this.observer = new IntersectionObserver(entries => {
-        entries.forEach(entry => {
-          const highlight = entry.target;
-          // 當元素進入可視區域時顯示，離開時隱藏
-          highlight.style.display = entry.isIntersecting ? 'block' : 'none';
-        });
-      }, { 
-        root: this.container,
-        // 增加緩衝區，提前加載和延遲卸載
-        rootMargin: `${this.virtualScrollData.bufferSize}px 0px ${this.virtualScrollData.bufferSize}px 0px`,
-        threshold: 0
-      });
+      // 暫時禁用 IntersectionObserver，直接在虛擬滾動中控制顯示
+      // 這樣可以避免 IntersectionObserver 與虛擬滾動邏輯衝突
+      this.observer = null;
     },
 
     _setupResizeObserver(textArea) {
@@ -586,6 +576,8 @@ const ManualReplaceManager = {
 
     _updateVirtualScrolling(textArea) {
       const scrollTop = textArea.scrollTop;
+      const scrollBottom = scrollTop + textArea.clientHeight;
+      const bufferSize = this.virtualScrollData.bufferSize;
       
       // 創建文檔片段，減少DOM操作
       const fragment = document.createDocumentFragment();
@@ -607,6 +599,17 @@ const ManualReplaceManager = {
           
           const key = `${groupIndex}-${top}-${left}-${text}`;
           
+          // 計算相對於容器的位置（考慮滾動偏移）
+          const relativeTop = top - scrollTop;
+          
+          // 計算元素在文檔中的絕對位置
+          const absoluteTop = top;
+          const absoluteBottom = top + (pos.lineHeight || 20);
+          
+          // 判斷元素是否在可視區域內（加上緩衝區）
+          const isInViewport = (absoluteBottom >= scrollTop - bufferSize) && 
+                              (absoluteTop <= scrollBottom + bufferSize);
+          
           // 檢查元素是否已存在
           if (!this.virtualScrollData.observedElements.has(key)) {
             // 創建新元素
@@ -615,17 +618,17 @@ const ManualReplaceManager = {
             highlight.style.cssText = `
               position: absolute;
               left: ${left - 1}px;
-              top: 0;
+              top: ${relativeTop}px;
               width: ${pos.width + 3}px;
               height: ${pos.lineHeight - 1}px;
               border: 0px solid ${pos.color}; // 改為 0px 不要動他
               border-radius: 2px;
               will-change: transform;
               z-index: 1001;
-              transform: translate3d(0, ${top - scrollTop}px, 0);
               backface-visibility: hidden;
               -webkit-font-smoothing: antialiased;
               background: none;
+              display: ${isInViewport ? 'block' : 'none'};
             `;
             
             // 設置 data 屬性，用於識別元素
@@ -641,9 +644,12 @@ const ManualReplaceManager = {
             this.virtualScrollData.observedElements.set(key, highlight);
             groupHighlights.set(key, highlight);
           } else {
-            // 更新現有元素的位置
+            // 更新現有元素的位置和可見性
             const highlight = this.virtualScrollData.observedElements.get(key);
-            highlight.style.transform = `translate3d(0, ${top - scrollTop}px, 0)`;
+            // 更新元素位置，考慮滾動偏移
+            highlight.style.top = `${relativeTop}px`;
+            // 直接控制元素的顯示隱藏
+            highlight.style.display = isInViewport ? 'block' : 'none';
             
             // 確保該元素在當前組的可見高亮中
             if (!groupHighlights.has(key)) {
@@ -657,15 +663,18 @@ const ManualReplaceManager = {
       if (fragment.childNodes.length > 0) {
         this.container.appendChild(fragment);
         
-        // 將新元素添加到 IntersectionObserver 中觀察
-        newElements.forEach(highlight => {
-          this.observer.observe(highlight);
-        });
+        // 不再需要將元素添加到 IntersectionObserver
+        // newElements.forEach(highlight => {
+        //   this.observer.observe(highlight);
+        // });
       }
       
       // 處理不再需要的元素
       // 找出所有不再位於 allPositions 中的元素並停止觀察
       this._cleanupUnusedHighlights();
+      
+      // 記錄當前滾動位置
+      this.virtualScrollData.lastScrollTop = scrollTop;
     },
     
     // 新增方法：清理不再使用的高亮元素
@@ -687,7 +696,9 @@ const ManualReplaceManager = {
       this.virtualScrollData.observedElements.forEach((highlight, key) => {
         if (!validKeys.has(key)) {
           // 停止觀察此元素
-          this.observer.unobserve(highlight);
+          if (this.observer) {
+            this.observer.unobserve(highlight);
+          }
           // 從DOM中移除
           if (highlight.parentNode) {
             highlight.parentNode.removeChild(highlight);
@@ -979,6 +990,7 @@ const ManualReplaceManager = {
   /** 設置文本區域變化監聽器 */
   _setupTextAreaChangeListener(textArea) {
     let lastValue = textArea.value;
+    
     const checkValue = () => {
       if (textArea.value !== lastValue) {
         lastValue = textArea.value;
@@ -1028,13 +1040,16 @@ const ManualReplaceManager = {
   checkAndForceUpdateHighlights() {
     console.log('[高亮檢查] 開始檢查高亮顯示狀態');
     const highlights = document.querySelectorAll('.replace-preview-highlight');
-    const hasValidHighlights = Array.from(highlights).some(h => 
+    const totalHighlights = highlights.length;
+    const visibleHighlights = Array.from(highlights).filter(h => 
       h.style.display !== 'none' && 
       parseFloat(h.style.width) > 0
-    );
+    ).length;
 
-    if (!hasValidHighlights) {
-      console.log('[高亮檢查] 未檢測到有效高亮，強制更新');
+    console.log(`[高亮檢查] 總數: ${totalHighlights}, 可見: ${visibleHighlights}`);
+
+    if (visibleHighlights === 0 && totalHighlights === 0) {
+      console.log('[高亮檢查] 未檢測到任何高亮，強制更新');
       const textArea = document.querySelector('textarea[name="content"]');
       if (textArea) {
         this._updatePreviews();
