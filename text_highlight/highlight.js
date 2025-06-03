@@ -171,7 +171,7 @@ const TextHighlight = {
       // 設置外層容器樣式，使用 textarea 的實際尺寸
       outerContainer.style.cssText = `
         position: absolute;
-        top: ${TextHighlight.CONFIG.FIXED_OFFSET.TOP + 0}px; /* 增加 3px 來補償向上偏移 */
+        top: ${TextHighlight.CONFIG.FIXED_OFFSET.TOP + 0}px;
         left: 0;
         width: ${textArea.offsetWidth}px;
         height: ${textArea.offsetHeight}px;
@@ -846,7 +846,7 @@ const TextHighlight = {
       return {
         position: 'absolute',
         backgroundColor: color,
-        height: `${lineHeight}px`,
+        height: `${lineHeight - 1}px`, // 統一高度為 lineHeight - 1
         width: `${width}px`,
         left: `${position.left}px`,
         top: '0',
@@ -904,6 +904,13 @@ const TextHighlight = {
      * @returns {HTMLElement} 預覽高亮元素
      */
     createPreviewHighlight(position, width, lineHeight, color) {
+      // 創建帶左偏移的位置對象
+      const adjustedPosition = {
+        ...position,
+        left: position.left - 1.5, // 向左偏移 1.5px
+        top: 0 // top 設為 0，完全由 transform 控制
+      };
+      
       const customStyles = {
         border: `0px solid ${color}`,
         borderRadius: '2px',
@@ -914,9 +921,9 @@ const TextHighlight = {
       };
       
       return this.createHighlight(
-        { ...position, top: 0 }, // top 設為 0，完全由 transform 控制
+        adjustedPosition,
         width + 3, 
-        lineHeight - 1, 
+        lineHeight, // 高度已經在 getDefaultStyles 中統一為 lineHeight - 1
         'transparent', 
         'replace-preview-highlight', 
         customStyles
