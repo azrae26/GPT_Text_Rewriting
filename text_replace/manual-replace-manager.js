@@ -6,7 +6,8 @@
  *    - TextHighlight.CONFIG.FIXED_OFFSET：用於設置預覽容器的位置偏移
  *    - TextHighlight.PositionCalculator：用於計算文本位置和樣式
  *    - TextHighlight.ScrollHelper：用於處理滾動事件
- *    - TextHighlight.SharedVirtualScroll：用於優化虛擬滾動
+ *    - TextHighlight.SharedVirtualScroll：用於優化虛擬滾動和多組高亮管理
+ *    - TextHighlight.Renderer：用於創建預覽高亮元素
  * 
  * 2. regex_helper/regex-helper.js
  *    - RegexHelper.createRegex：用於創建替換用的正則表達式
@@ -378,6 +379,8 @@ const ManualReplaceManager = {
         // 清空時收合輸入框
         fromInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
         toInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+        // 清理主組的高亮預覽
+        this.PreviewHighlight.clearGroupHighlights(0);
         // 更新替換按鈕狀態
         updateButton();
       }
@@ -440,16 +443,9 @@ const ManualReplaceManager = {
   /** 預覽相關方法 */
   PreviewHighlight: {
     container: null,
-    virtualScrollData: {
-      allPositions: new Map(),  // groupIndex -> positions[]
-      visibleHighlights: new Map(), // groupIndex -> Map(key -> highlight)
-      lastScrollTop: 0,     // 上次滾動位置
-      bufferSize: 200,      // 緩衝區大小（像素）
-      lastText: '',     // 記錄上次的文本
-      positionCache: new Map(), // 位置快取
-      observedElements: new Map() // 追踪已被觀察的元素
-    },
+    groupHighlights: new Map(), // 存儲每個組的高亮元素 Map<groupIndex, Map<key, element>>
     observer: null, // IntersectionObserver 實例
+    _updateTimer: null, // 防抖計時器
 
     initialize(textArea) {
       if (!textArea) return;
@@ -460,9 +456,11 @@ const ManualReplaceManager = {
       // 使用 TextHighlight 的樣式計算方法
       const styles = TextHighlight.PositionCalculator.getTextAreaStyles(textArea);
       
+      // 模仿 TextHighlight 的內層容器設置，位置計算方法已經處理了所有偏移
+      // 需要與 TextHighlight 外層容器設置相同的基準偏移
       this.container.style.cssText = `
         position: absolute;
-        top: ${TextHighlight.CONFIG.FIXED_OFFSET.TOP}px;
+        top: ${TextHighlight.CONFIG.FIXED_OFFSET.TOP + 0}px;
         left: 0;
         width: ${textArea.offsetWidth}px;
         height: ${textArea.offsetHeight}px;
@@ -471,13 +469,9 @@ const ManualReplaceManager = {
         overflow: hidden;
         font: ${styles.font};
         line-height: ${styles.lineHeight}px;
-        padding: ${styles.paddingTop}px ${styles.paddingLeft}px;
       `;
       
       textArea.parentElement.appendChild(this.container);
-      
-      // 初始化 IntersectionObserver
-      this._initializeObserver();
       
       // 使用 TextHighlight 的滾動處理器
       TextHighlight.ScrollHelper.bindScrollEvent(
@@ -486,18 +480,6 @@ const ManualReplaceManager = {
       );
       
       this._setupResizeObserver(textArea);
-    },
-
-    // 新增方法：初始化 IntersectionObserver
-    _initializeObserver() {
-      // 如果已經存在觀察器，先斷開連接
-      if (this.observer) {
-        this.observer.disconnect();
-      }
-
-      // 暫時禁用 IntersectionObserver，直接在虛擬滾動中控制顯示
-      // 這樣可以避免 IntersectionObserver 與虛擬滾動邏輯衝突
-      this.observer = null;
     },
 
     _setupResizeObserver(textArea) {
@@ -546,156 +528,71 @@ const ManualReplaceManager = {
     _updateVirtualScrolling(textArea) {
       const scrollTop = textArea.scrollTop;
       const scrollBottom = scrollTop + textArea.clientHeight;
-      const bufferSize = this.virtualScrollData.bufferSize;
+      const bufferSize = 200;
       
-      // 創建文檔片段，減少DOM操作
-      const fragment = document.createDocumentFragment();
+      // 使用 SharedVirtualScroll 的多組更新方法
+      const groupedPositions = new Map();
       
-      // 更新每個組的可見性
-      this.virtualScrollData.allPositions.forEach((positions, groupIndex) => {
-        // 獲取或創建該組的可見高亮 Map
-        if (!this.virtualScrollData.visibleHighlights.has(groupIndex)) {
-          this.virtualScrollData.visibleHighlights.set(groupIndex, new Map());
-        }
-        const groupHighlights = this.virtualScrollData.visibleHighlights.get(groupIndex);
-        
-        // 處理所有位置
-        positions.forEach(pos => {
-          const top = pos.position ? pos.position.top : pos.top;
-          const left = pos.position ? pos.position.left : pos.left;
-          const text = pos.position ? pos.position.text : pos.text;
-          
-          const key = `${groupIndex}-${top}-${left}-${text}`;
-          
-          // 計算相對於容器的位置（考慮滾動偏移）
-          const relativeTop = top - scrollTop;
-          
-          // 計算元素在文檔中的絕對位置
-          const absoluteTop = top;
-          const absoluteBottom = top + (pos.lineHeight || 20);
-          
-          // 判斷元素是否在可視區域內（加上緩衝區）
-          const isInViewport = (absoluteBottom >= scrollTop - bufferSize) && 
-                              (absoluteTop <= scrollBottom + bufferSize);
-          
-          // 檢查元素是否已存在
-          if (!this.virtualScrollData.observedElements.has(key)) {
-            // 創建新元素
-            const highlight = document.createElement('div');
-            highlight.className = 'replace-preview-highlight';
-            highlight.style.cssText = `
-              position: absolute;
-              left: ${left - 1}px;
-              top: ${relativeTop}px;
-              width: ${pos.width + 3}px;
-              height: ${pos.lineHeight - 1}px;
-              border: 0px solid ${pos.color};
-              border-radius: 2px;
-              will-change: transform;
-              z-index: 1001;
-              backface-visibility: hidden;
-              -webkit-font-smoothing: antialiased;
-              background: none;
-              display: ${isInViewport ? 'block' : 'none'};
-            `;
-            
-            // 設置 data 屬性，用於識別元素
-            highlight.dataset.groupIndex = groupIndex;
-            highlight.dataset.top = top;
-            highlight.dataset.key = key;
-            
-            // 將新元素添加到文檔片段
-            fragment.appendChild(highlight);
-            
-            // 將元素添加到映射中
-            this.virtualScrollData.observedElements.set(key, highlight);
-            groupHighlights.set(key, highlight);
-          } else {
-            // 更新現有元素的位置和可見性
-            const highlight = this.virtualScrollData.observedElements.get(key);
-            // 更新元素位置，考慮滾動偏移
-            highlight.style.top = `${relativeTop}px`;
-            // 直接控制元素的顯示隱藏
-            highlight.style.display = isInViewport ? 'block' : 'none';
-            
-            // 確保該元素在當前組的可見高亮中
-            if (!groupHighlights.has(key)) {
-              groupHighlights.set(key, highlight);
-            }
-          }
-        });
-      });
+      // 先清理所有組，再重新添加有內容的組
+      // 這確保空的組會被正確清理
+      const activeGroups = new Set();
       
-      // 一次性將所有新元素添加到DOM
-      if (fragment.childNodes.length > 0) {
-        this.container.appendChild(fragment);
-      }
-      
-      // 處理不再需要的元素
-      this._cleanupUnusedHighlights();
-      
-      // 記錄當前滾動位置
-      this.virtualScrollData.lastScrollTop = scrollTop;
-    },
-    
-    // 新增方法：清理不再使用的高亮元素
-    _cleanupUnusedHighlights() {
-      // 先收集所有有效的鍵
-      const validKeys = new Set();
-      this.virtualScrollData.allPositions.forEach((positions, groupIndex) => {
-        positions.forEach(pos => {
-          const top = pos.position ? pos.position.top : pos.top;
-          const left = pos.position ? pos.position.left : pos.left;
-          const text = pos.position ? pos.position.text : pos.text;
-          const key = `${groupIndex}-${top}-${left}-${text}`;
-          validKeys.add(key);
-        });
-      });
-      
-      // 檢查並移除不再有效的元素
-      const keysToRemove = [];
-      this.virtualScrollData.observedElements.forEach((highlight, key) => {
-        if (!validKeys.has(key)) {
-          // 停止觀察此元素
-          if (this.observer) {
-            this.observer.unobserve(highlight);
-          }
-          // 從DOM中移除
-          if (highlight.parentNode) {
-            highlight.parentNode.removeChild(highlight);
-          }
-          // 標記為待移除
-          keysToRemove.push(key);
-          
-          // 從各組的可見高亮中移除
-          const groupIndex = highlight.dataset.groupIndex;
-          if (groupIndex && this.virtualScrollData.visibleHighlights.has(parseInt(groupIndex))) {
-            this.virtualScrollData.visibleHighlights.get(parseInt(groupIndex)).delete(key);
+      // 收集所有組的位置數據
+      ManualReplaceManager._rules.extraGroups.forEach((rule, index) => {
+        if (rule.from?.trim()) {
+          // 獲取該組的位置數據（這裡需要從已有的位置快取中獲取）
+          const positions = this._getGroupPositions(textArea, rule.from, index + 1);
+          if (positions && positions.length > 0) {
+            groupedPositions.set(index + 1, positions);
+            activeGroups.add(index + 1);
           }
         }
       });
       
-      // 從觀察元素映射中移除
-      keysToRemove.forEach(key => {
-        this.virtualScrollData.observedElements.delete(key);
+      // 主組
+      if (ManualReplaceManager._rules.mainGroup?.from?.trim()) {
+        const positions = this._getGroupPositions(textArea, ManualReplaceManager._rules.mainGroup.from, 0);
+        if (positions && positions.length > 0) {
+          groupedPositions.set(0, positions);
+          activeGroups.add(0);
+        }
+      }
+      
+      // 清理非活躍組的高亮
+      this.groupHighlights.forEach((groupHighlightMap, groupIndex) => {
+        if (!activeGroups.has(groupIndex)) {
+          this.clearGroupHighlights(groupIndex);
+        }
+      });
+      
+      // 使用 SharedVirtualScroll 更新可見性
+      TextHighlight.SharedVirtualScroll.updateMultiGroupVirtualView({
+        groupedPositions,
+        groupHighlights: this.groupHighlights,
+        visibleTop: scrollTop - bufferSize,
+        visibleBottom: scrollBottom + bufferSize,
+        scrollTop,
+        createHighlight: (pos) => {
+          return TextHighlight.Renderer.createPreviewHighlight(
+            pos.position,
+            pos.position.width,
+            pos.lineHeight,
+            pos.color
+          );
+        },
+        container: this.container,
+        highlightClass: 'replace-preview-highlight'
       });
     },
 
-    updatePreview(textArea, searchText, groupIndex) {
-      if (!searchText.trim()) {
-        this.clearGroupHighlights(groupIndex);
-        return;
-      }
-
+    // 新增：獲取組的位置數據的輔助方法
+    _getGroupPositions(textArea, searchText, groupIndex) {
       try {
         const text = textArea.value;
         const regex = RegexHelper.createRegex(searchText);
         const matches = Array.from(text.matchAll(regex));
         
-        if (matches.length === 0) {
-          this.clearGroupHighlights(groupIndex);
-          return;
-        }
+        if (matches.length === 0) return [];
 
         // 檢查匹配數量是否超過上限
         if (matches.length > ManualReplaceManager.CONFIG.MAX_PREVIEWS) {
@@ -708,125 +605,72 @@ const ManualReplaceManager = {
           groupIndex % ManualReplaceManager.CONFIG.PREVIEW_COLORS.length
         ];
 
-        // 檢查文本是否變化
-        const textChanged = this.virtualScrollData.lastText !== text;
-        if (textChanged) {
-          // 文本變化時清除快取
-          this.virtualScrollData.positionCache.clear();
-          this.virtualScrollData.lastText = text;
-        }
-
         // 收集所有位置信息
         const positions = [];
         
         for (const match of matches) {
-          // 檢查快取
-          const cacheKey = `${groupIndex}-${match.index}-${match[0]}`;
-          let positionList = this.virtualScrollData.positionCache.get(cacheKey);
-          
-          // 如果快取未命中或需要重新計算
-          if (!positionList || textChanged) {
-            positionList = TextHighlight.PositionCalculator.calculatePosition(
-              textArea,
-              match.index,
-              text,
-              match[0],
-              styles
-            );
-            
-            if (positionList) {
-              // 更新快取
-              this.virtualScrollData.positionCache.set(cacheKey, positionList.map(pos => ({
-                ...pos,
-                text: match[0],
-                color,
-                lineHeight: styles.lineHeight
-              })));
-            }
-          }
+          const positionList = TextHighlight.PositionCalculator.calculatePosition(
+            textArea,
+            match.index,
+            text,
+            match[0],
+            styles
+          );
           
           if (positionList) {
             positionList.forEach(position => {
               positions.push({
-                ...position,
-                text: match[0],
+                position: {
+                  ...position,
+                  text: match[0],
+                  width: position.width
+                },
                 color,
+                targetWord: searchText,
                 lineHeight: styles.lineHeight
               });
             });
           }
         }
 
-        // 更新虛擬滾動數據
-        this.virtualScrollData.allPositions.set(groupIndex, positions);
-        
-        // 觸發可見性更新
-        this._updateVirtualScrolling(textArea);
-
-        // 清理過期的快取
-        if (this.virtualScrollData.positionCache.size > 1000) {
-          const entries = Array.from(this.virtualScrollData.positionCache.entries());
-          const halfSize = Math.floor(entries.length / 2);
-          this.virtualScrollData.positionCache = new Map(entries.slice(halfSize));
-        }
-
+        return positions;
       } catch (error) {
-        console.error('預覽更新失敗:', error);
+        console.error('獲取組位置數據失敗:', error);
+        return [];
       }
+    },
+
+    updatePreview(textArea, searchText, groupIndex) {
+      if (!searchText || !searchText.trim()) {
+        this.clearGroupHighlights(groupIndex);
+        return;
+      }
+
+      // 使用防抖機制，避免頻繁更新
+      if (this._updateTimer) {
+        clearTimeout(this._updateTimer);
+      }
+      
+      this._updateTimer = setTimeout(() => {
+        this._updateVirtualScrolling(textArea);
+      }, 16); // 約60fps的更新頻率
     },
 
     clearGroupHighlights(groupIndex) {
-      // 清除位置數據
-      this.virtualScrollData.allPositions.delete(groupIndex);
-      
-      // 清除該組的位置快取
-      const cacheKeys = Array.from(this.virtualScrollData.positionCache.keys())
-        .filter(key => key.startsWith(`${groupIndex}-`));
-      cacheKeys.forEach(key => this.virtualScrollData.positionCache.delete(key));
-      
-      // 清除可見的高亮元素和停止觀察
-      const groupHighlights = this.virtualScrollData.visibleHighlights.get(groupIndex);
-      if (groupHighlights) {
-        groupHighlights.forEach(highlight => {
-          // 停止觀察此元素
-          if (this.observer) {
-            this.observer.unobserve(highlight);
-          }
-          // 從DOM中移除
-          highlight.remove();
-          
-          // 從觀察元素映射中移除
-          const key = highlight.dataset.key;
-          if (key) {
-            this.virtualScrollData.observedElements.delete(key);
-          }
-        });
-        groupHighlights.clear();
-      }
+      // 使用 SharedVirtualScroll 的清理方法
+      TextHighlight.SharedVirtualScroll.clearGroupHighlights(
+        groupIndex, 
+        this.groupHighlights, 
+        this.observer
+      );
     },
 
     clearAllHighlights() {
-      // 停止所有觀察
-      if (this.observer) {
-        this.observer.disconnect();
-      }
-      
-      // 清除數據結構
-      this.virtualScrollData.allPositions.clear();
-      this.virtualScrollData.positionCache.clear();
-      this.virtualScrollData.observedElements.clear();
-      
-      // 清除DOM元素
-      this.virtualScrollData.visibleHighlights.forEach(groupHighlights => {
-        groupHighlights.forEach(highlight => {
-          highlight.remove();
-        });
-        groupHighlights.clear();
-      });
-      this.virtualScrollData.visibleHighlights.clear();
-      
-      // 重新初始化觀察器
-      this._initializeObserver();
+      // 使用 SharedVirtualScroll 的清理方法
+      TextHighlight.SharedVirtualScroll.clearAllGroupHighlights(
+        this.groupHighlights, 
+        this.observer
+      );
     }
   },
 
@@ -835,29 +679,8 @@ const ManualReplaceManager = {
     const textArea = document.querySelector('textarea[name="content"]');
     if (!textArea) return;
 
-    // 更新主組預覽
-    if (this._rules.mainGroup?.from?.trim()) {
-      this.PreviewHighlight.updatePreview(
-        textArea,
-        this._rules.mainGroup.from,
-        0
-      );
-    } else {
-      this.PreviewHighlight.clearGroupHighlights(0);
-    }
-
-    // 更新其他組預覽
-    this._rules.extraGroups.forEach((rule, index) => {
-      if (rule.from?.trim()) {
-        this.PreviewHighlight.updatePreview(
-          textArea,
-          rule.from,
-          index + 1
-        );
-      } else {
-        this.PreviewHighlight.clearGroupHighlights(index + 1);
-      }
-    });
+    // 直接觸發虛擬滾動更新，這會一次性處理所有組的預覽
+    this.PreviewHighlight._updateVirtualScrolling(textArea);
   },
 
   /** 存儲相關方法 */
@@ -944,6 +767,11 @@ const ManualReplaceManager = {
     this.PreviewHighlight.clearAllHighlights();
     if (this.PreviewHighlight.container) {
       this.PreviewHighlight.container.remove();
+    }
+    // 清理防抖計時器
+    if (this.PreviewHighlight._updateTimer) {
+      clearTimeout(this.PreviewHighlight._updateTimer);
+      this.PreviewHighlight._updateTimer = null;
     }
   },
 

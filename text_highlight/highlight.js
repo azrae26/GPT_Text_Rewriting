@@ -171,7 +171,7 @@ const TextHighlight = {
       // 設置外層容器樣式，使用 textarea 的實際尺寸
       outerContainer.style.cssText = `
         position: absolute;
-        top: ${TextHighlight.CONFIG.FIXED_OFFSET.TOP}px; /* 使用配置的固定偏移量 */
+        top: ${TextHighlight.CONFIG.FIXED_OFFSET.TOP + 0}px; /* 增加 3px 來補償向上偏移 */
         left: 0;
         width: ${textArea.offsetWidth}px;
         height: ${textArea.offsetHeight}px;
@@ -840,30 +840,87 @@ const TextHighlight = {
    */
   Renderer: {
     /**
-     * 創建標示元素
+     * 獲取預設樣式
      */
-    createHighlight(position, width, lineHeight, color) {
-      const highlight = document.createElement('div');
-      highlight.className = 'text-highlight';
-      
-      // 使用 transform 代替直接設置 top
-      // 將元素固定在初始位置，然後用 transform 移動
-      highlight.style.cssText = `
-        position: absolute;
-        background-color: ${color};
-        height: ${lineHeight}px;
-        width: ${width}px;
-        left: ${position.left}px;
-        top: 0;
-        transform: translate3d(0, ${position.top}px, 0);
-        pointer-events: none;
-        will-change: transform;
-        backface-visibility: hidden;
-        -webkit-font-smoothing: antialiased;
-      `;
+    getDefaultStyles(position, width, lineHeight, color) {
+      return {
+        position: 'absolute',
+        backgroundColor: color,
+        height: `${lineHeight}px`,
+        width: `${width}px`,
+        left: `${position.left}px`,
+        top: '0',
+        transform: `translate3d(0, ${position.top}px, 0)`,
+        pointerEvents: 'none',
+        willChange: 'transform',
+        backfaceVisibility: 'hidden',
+        WebkitFontSmoothing: 'antialiased'
+      };
+    },
 
+    /**
+     * 將樣式對象轉換為 CSS 字串
+     */
+    stylesToCss(styles) {
+      return Object.entries(styles)
+        .map(([key, value]) => {
+          // 處理 camelCase 轉 kebab-case
+          const cssKey = key.replace(/([A-Z])/g, '-$1').toLowerCase();
+          return `${cssKey}: ${value}`;
+        })
+        .join('; ') + ';';
+    },
+
+    /**
+     * 創建標示元素（擴展版本）
+     * @param {Object} position 位置信息
+     * @param {number} width 寬度
+     * @param {number} lineHeight 行高
+     * @param {string} color 顏色
+     * @param {string} [customClass='text-highlight'] 自定義類名
+     * @param {Object} [customStyles={}] 自定義樣式
+     * @returns {HTMLElement} 高亮元素
+     */
+    createHighlight(position, width, lineHeight, color, customClass = 'text-highlight', customStyles = {}) {
+      const highlight = document.createElement('div');
+      highlight.className = customClass;
+      
+      // 合併預設樣式和自定義樣式
+      const defaultStyles = this.getDefaultStyles(position, width, lineHeight, color);
+      const mergedStyles = { ...defaultStyles, ...customStyles };
+      
+      highlight.style.cssText = this.stylesToCss(mergedStyles);
       highlight.dataset.originalTop = position.top;
+      
       return highlight;
+    },
+
+    /**
+     * 創建帶邊框的預覽高亮元素（專為 manual-replace 設計）
+     * @param {Object} position 位置信息
+     * @param {number} width 寬度
+     * @param {number} lineHeight 行高
+     * @param {string} color 邊框顏色
+     * @returns {HTMLElement} 預覽高亮元素
+     */
+    createPreviewHighlight(position, width, lineHeight, color) {
+      const customStyles = {
+        border: `0px solid ${color}`,
+        borderRadius: '2px',
+        background: 'none',
+        zIndex: '1001',
+        // 初始 transform 設為使用原始位置，虛擬滾動會動態更新
+        transform: `translate3d(0, ${position.top}px, 0)`
+      };
+      
+      return this.createHighlight(
+        { ...position, top: 0 }, // top 設為 0，完全由 transform 控制
+        width + 3, 
+        lineHeight - 1, 
+        'transparent', 
+        'replace-preview-highlight', 
+        customStyles
+      );
     }
   },
 
@@ -1080,6 +1137,136 @@ const TextHighlight = {
 
       const endTime = new Date();
       return visibleHighlights;
+    },
+
+    /**
+     * 更新多組虛擬滾動視圖
+     * @param {Object} params 參數對象
+     * @param {Map} params.groupedPositions Map<groupIndex, positions[]>
+     * @param {Map} params.groupHighlights Map<groupIndex, Map<key, element>>
+     * @param {number} params.visibleTop 可見區域頂部
+     * @param {number} params.visibleBottom 可見區域底部
+     * @param {number} params.scrollTop 滾動位置
+     * @param {Function} params.createHighlight 創建高亮元素的函數
+     * @param {HTMLElement} params.container 容器元素
+     * @param {string} [params.highlightClass='text-highlight'] 高亮元素的 class
+     */
+    updateMultiGroupVirtualView({
+      groupedPositions,
+      groupHighlights,
+      visibleTop,
+      visibleBottom,
+      scrollTop,
+      createHighlight,
+      container,
+      highlightClass = 'text-highlight'
+    }) {
+      // 創建文檔片段，減少DOM操作
+      const fragment = document.createDocumentFragment();
+      const newElements = [];
+      
+      // 更新每個組的可見性
+      groupedPositions.forEach((positions, groupIndex) => {
+        // 獲取或創建該組的可見高亮 Map
+        if (!groupHighlights.has(groupIndex)) {
+          groupHighlights.set(groupIndex, new Map());
+        }
+        const groupHighlightMap = groupHighlights.get(groupIndex);
+        
+        // 記錄現有的高亮元素
+        const existingHighlights = new Map(groupHighlightMap);
+        groupHighlightMap.clear();
+
+        // 找出需要顯示的位置
+        const visiblePositions = positions.filter(pos => {
+          const top = pos.position ? pos.position.top : pos.top;
+          return top >= visibleTop && top <= visibleBottom;
+        });
+
+        // 更新或創建可見範圍內的高亮
+        visiblePositions.forEach(pos => {
+          const top = pos.position ? pos.position.top : pos.top;
+          const left = pos.position ? pos.position.left : pos.left;
+          const text = pos.position ? pos.position.text : pos.text;
+          
+          const key = `${top}-${left}-${text}`;
+          let highlight = existingHighlights.get(key);
+
+          if (highlight) {
+            // 重用現有元素，只更新 transform
+            existingHighlights.delete(key);
+            highlight.style.transform = `translate3d(0, ${top - scrollTop}px, 0)`;
+            highlight.style.display = 'block';
+            highlight.dataset.groupIndex = groupIndex;
+          } else {
+            // 創建新元素
+            highlight = createHighlight(pos);
+            highlight.className = highlightClass;
+            highlight.style.transform = `translate3d(0, ${top - scrollTop}px, 0)`;
+            highlight.dataset.groupIndex = groupIndex;
+            newElements.push(highlight);
+          }
+
+          groupHighlightMap.set(key, highlight);
+        });
+
+        // 隱藏不再可見的元素
+        existingHighlights.forEach(highlight => {
+          highlight.style.display = 'none';
+        });
+      });
+      
+      // 一次性將所有新元素添加到DOM
+      newElements.forEach(element => {
+        container.appendChild(element);
+      });
+    },
+
+    /**
+     * 清理特定組的高亮元素
+     * @param {number} groupIndex 組索引
+     * @param {Map} groupHighlights 組高亮映射
+     * @param {IntersectionObserver} observer 觀察器實例
+     */
+    clearGroupHighlights(groupIndex, groupHighlights, observer = null) {
+      const groupHighlightMap = groupHighlights.get(groupIndex);
+      if (groupHighlightMap) {
+        groupHighlightMap.forEach(highlight => {
+          // 停止觀察此元素
+          if (observer) {
+            observer.unobserve(highlight);
+          }
+          // 從DOM中移除
+          if (highlight.parentNode) {
+            highlight.parentNode.removeChild(highlight);
+          }
+        });
+        groupHighlightMap.clear();
+      }
+    },
+
+    /**
+     * 清理所有組的高亮元素
+     * @param {Map} groupHighlights 所有組的高亮映射
+     * @param {IntersectionObserver} observer 觀察器實例
+     */
+    clearAllGroupHighlights(groupHighlights, observer = null) {
+      groupHighlights.forEach((groupHighlightMap, groupIndex) => {
+        if (groupHighlightMap) {
+          groupHighlightMap.forEach(highlight => {
+            // 停止觀察此元素
+            if (observer) {
+              observer.unobserve(highlight);
+            }
+            // 從DOM中移除
+            if (highlight.parentNode) {
+              highlight.parentNode.removeChild(highlight);
+            }
+          });
+          groupHighlightMap.clear();
+        }
+      });
+      groupHighlights.clear();
     }
   }
 };

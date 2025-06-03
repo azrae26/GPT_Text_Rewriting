@@ -143,4 +143,26 @@ if (placeholder && container.contains(placeholder) && shouldMove) {
 }
 ```
 
+## Code Refactoring Experience (2025-06-03)
+
+### Highlights System Refactoring
+**虛擬滾動重構關鍵經驗:**
+
+**問題1: 高亮清理不完整**
+- **症狀**: 清空輸入框後高亮元素殘留在DOM中
+- **根本原因**: 虛擬滾動只更新有內容的組，不主動清理空組
+- **解決**: 追蹤活躍組，在更新前清理非活躍組
+
+**最佳實踐:**
+```javascript
+// 虛擬滾動更新前必須清理非活躍組
+const activeGroups = new Set();
+// ... 收集活躍組 ...
+this.groupHighlights.forEach((groupHighlightMap, groupIndex) => {
+  if (!activeGroups.has(groupIndex)) {
+    this.clearGroupHighlights(groupIndex);
+  }
+});
+```
+
 
