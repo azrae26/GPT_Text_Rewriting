@@ -107,8 +107,12 @@ const SearchController = {
         const key = `highlight-${index}`;
         const { top, left, width, height } = position;
         
-        // 判斷是否在可視區域
-        const isVisible = (top + height >= viewportTop) && (top <= viewportBottom);
+        // 計算元素的絕對位置（相對於文本區域內容）
+        const absoluteTop = top;
+        const absoluteBottom = top + height;
+        
+        // 判斷是否在可視區域（考慮滾動位置）
+        const isVisible = (absoluteBottom >= viewportTop) && (absoluteTop <= viewportBottom);
         
         if (isVisible) {
           let highlight = instance.visibleHighlights.get(key);
@@ -123,11 +127,13 @@ const SearchController = {
               border-radius: 2px;
               will-change: transform;
               backface-visibility: hidden;
+              pointer-events: none;
+              z-index: 2;
             `;
             fragment.appendChild(highlight);
           }
           
-          // 更新位置
+          // 更新位置（相對於覆蓋層，考慮滾動偏移）
           highlight.style.left = `${left}px`;
           highlight.style.top = `${top - scrollTop}px`;
           highlight.style.width = `${width}px`;
@@ -170,73 +176,167 @@ const SearchController = {
     getTextAreaStyles(textArea) {
       const computedStyle = getComputedStyle(textArea);
       return {
-        font: computedStyle.font,
+        font: `${computedStyle.fontSize} ${computedStyle.fontFamily}`,
         lineHeight: parseFloat(computedStyle.lineHeight) || 20,
         paddingLeft: parseFloat(computedStyle.paddingLeft) || 0,
         paddingTop: parseFloat(computedStyle.paddingTop) || 0,
-        paddingRight: parseFloat(computedStyle.paddingRight) || 0
+        paddingRight: parseFloat(computedStyle.paddingRight) || 0,
+        borderLeft: parseFloat(computedStyle.borderLeftWidth) || 0,
+        borderTop: parseFloat(computedStyle.borderTopWidth) || 0,
+        border: parseFloat(computedStyle.borderWidth) || 0
       };
     },
 
     calculatePositions(textArea, matches, styles) {
       const text = textArea.value;
-      const { paddingLeft, paddingTop, lineHeight } = styles;
       const positions = [];
 
-      // 創建測量元素
-      const measureDiv = document.createElement('div');
-      measureDiv.style.cssText = `
-        position: absolute;
-        visibility: hidden;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-        width: ${textArea.clientWidth - paddingLeft - parseFloat(styles.paddingRight)}px;
-        font: ${styles.font};
-        line-height: ${lineHeight}px;
-        padding: 0;
-        border: none;
-        top: -9999px;
-        left: -9999px;
-      `;
-      document.body.appendChild(measureDiv);
+      // 創建測量 div，完全模擬 textarea 的樣式和佈局
+      let measureDiv = document.getElementById('search-measure-div');
+      if (!measureDiv) {
+        measureDiv = document.createElement('div');
+        measureDiv.id = 'search-measure-div';
+        measureDiv.style.cssText = `
+          position: absolute;
+          visibility: hidden;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+          width: ${textArea.offsetWidth}px;
+          font: ${styles.font};
+          line-height: ${styles.lineHeight}px;
+          padding: ${styles.paddingTop}px ${styles.paddingLeft}px;
+          border: ${styles.border}px solid transparent;
+          box-sizing: border-box;
+          margin: 0;
+          overflow: hidden;
+          background: none;
+          pointer-events: none;
+          top: -9999px;
+          left: -9999px;
+          transform: none;
+          max-height: ${textArea.offsetHeight}px;
+          height: ${textArea.offsetHeight}px;
+        `;
+        document.body.appendChild(measureDiv);
+        
+        // 確保寬度與 textarea 一致
+        const actualWidth = getComputedStyle(textArea).width;
+        measureDiv.style.width = actualWidth;
+      }
+
+      // 設置測量 div 的內容
+      measureDiv.textContent = text;
 
       try {
+        const range = document.createRange();
+        const textNode = measureDiv.firstChild;
+        if (!textNode) return [];
+
+        const divRect = measureDiv.getBoundingClientRect();
+
         matches.forEach((match, index) => {
           const cacheKey = `${match.start}-${match.end}-${match.text}`;
           let cachedPosition = SearchController.PositionCache.get(cacheKey);
 
           if (!cachedPosition) {
-            // 計算位置
-            const beforeText = text.substring(0, match.start);
-            const matchText = match.text;
+            try {
+              // 使用精確的 range API 計算位置
+              range.setStart(textNode, match.start);
+              range.setEnd(textNode, match.start + match.text.length);
 
-            measureDiv.textContent = beforeText;
-            const beforeRect = measureDiv.getBoundingClientRect();
+              const rects = range.getClientRects();
+              if (rects.length === 0) return;
 
-            measureDiv.textContent = beforeText + matchText;
-            const afterRect = measureDiv.getBoundingClientRect();
+              // 處理多行匹配，合併相鄰的矩形
+              let currentRect = null;
+              const matchPositions = [];
 
-            cachedPosition = {
-              top: beforeRect.height - lineHeight + paddingTop,
-              left: paddingLeft,
-              width: afterRect.width - beforeRect.width,
-              height: lineHeight,
-              text: matchText
-            };
+              for (let i = 0; i < rects.length; i++) {
+                const rect = rects[i];
+                
+                if (!currentRect) {
+                  // 第一個矩形
+                  currentRect = {
+                    top: rect.top,
+                    left: rect.left,
+                    width: rect.width,
+                    height: rect.height,
+                    bottom: rect.bottom
+                  };
+                } else if (Math.abs(rect.top - currentRect.top) < 1) {
+                  // 如果在同一行，合併矩形
+                  currentRect.width = (rect.left + rect.width) - currentRect.left;
+                } else {
+                  // 不在同一行，保存當前矩形並開始新的矩形
+                  matchPositions.push({
+                    top: currentRect.top - divRect.top + styles.paddingTop,
+                    left: currentRect.left - divRect.left + styles.paddingLeft,
+                    width: currentRect.width,
+                    height: currentRect.height,
+                    text: match.text,
+                    isMultiLine: rects.length > 1,
+                    lineIndex: matchPositions.length
+                  });
+                  
+                  currentRect = {
+                    top: rect.top,
+                    left: rect.left,
+                    width: rect.width,
+                    height: rect.height,
+                    bottom: rect.bottom
+                  };
+                }
+              }
+              
+              // 添加最後一個矩形
+              if (currentRect) {
+                matchPositions.push({
+                  top: currentRect.top - divRect.top + styles.paddingTop,
+                  left: currentRect.left - divRect.left + styles.paddingLeft,
+                  width: currentRect.width,
+                  height: currentRect.height,
+                  text: match.text,
+                  isMultiLine: rects.length > 1,
+                  lineIndex: matchPositions.length
+                });
+              }
 
-            SearchController.PositionCache.set(cacheKey, cachedPosition);
+              cachedPosition = matchPositions;
+              SearchController.PositionCache.set(cacheKey, cachedPosition);
+            } catch (error) {
+              console.error('計算單個匹配位置時發生錯誤:', error);
+              return;
+            }
           }
 
-          positions.push({
-            ...cachedPosition,
-            index
-          });
+          // 將所有匹配的位置添加到結果中
+          if (cachedPosition && Array.isArray(cachedPosition)) {
+            cachedPosition.forEach((pos, subIndex) => {
+              positions.push({
+                ...pos,
+                index: index,
+                subIndex: subIndex,
+                matchStart: match.start,
+                matchEnd: match.end
+              });
+            });
+          }
         });
-      } finally {
-        document.body.removeChild(measureDiv);
+
+        range.detach();
+      } catch (error) {
+        console.error('計算位置時發生錯誤:', error);
       }
 
       return positions;
+    },
+
+    // 清理測量元素
+    cleanup() {
+      const measureDiv = document.getElementById('search-measure-div');
+      if (measureDiv) {
+        measureDiv.remove();
+      }
     }
   },
 
@@ -324,23 +424,34 @@ const SearchController = {
   setupHighlightContainer(instance) {
     const { targetTextarea, virtualScrollInstance } = instance;
     
-    // 創建高亮覆蓋層
+    // 獲取 textarea 相對於父容器的位置
+    const textareaContainer = targetTextarea.parentElement;
+    const textareaRect = targetTextarea.getBoundingClientRect();
+    const containerRect = textareaContainer.getBoundingClientRect();
+    
+    // 計算偏移量
+    const offsetTop = textareaRect.top - containerRect.top;
+    const offsetLeft = textareaRect.left - containerRect.left;
+    
+    // 創建高亮覆蓋層，精確對應 textarea 的位置和大小
     const overlay = document.createElement('div');
     overlay.className = 'search-highlight-overlay';
     overlay.style.cssText = `
       position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: 100%;
+      top: ${offsetTop}px;
+      left: ${offsetLeft}px;
+      width: ${targetTextarea.offsetWidth}px;
+      height: ${targetTextarea.offsetHeight}px;
       pointer-events: none;
       z-index: 1;
       overflow: hidden;
+      background: transparent;
+      border: ${getComputedStyle(targetTextarea).border};
+      box-sizing: border-box;
     `;
 
     // 確保父容器有相對定位
-    const textareaContainer = targetTextarea.parentElement;
-    if (textareaContainer.style.position !== 'relative') {
+    if (getComputedStyle(textareaContainer).position === 'static') {
       textareaContainer.style.position = 'relative';
     }
     textareaContainer.appendChild(overlay);
@@ -348,6 +459,19 @@ const SearchController = {
     // 設置虛擬滾動實例
     virtualScrollInstance.container = overlay;
     virtualScrollInstance.textArea = targetTextarea;
+    
+    // 保存偏移量供後續使用
+    instance.textareaOffset = {
+      top: offsetTop,
+      left: offsetLeft
+    };
+    
+    console.log('SearchController: 高亮容器已設置', {
+      container: overlay,
+      textArea: targetTextarea,
+      offset: instance.textareaOffset,
+      textareaSize: { width: targetTextarea.offsetWidth, height: targetTextarea.offsetHeight }
+    });
   },
 
   /**
@@ -396,6 +520,58 @@ const SearchController = {
     });
     
     targetTextarea.addEventListener('scroll', scrollHandler, { passive: true });
+
+    // 監聽窗口大小變化和容器變化，動態更新高亮容器位置
+    const updateContainerPosition = () => {
+      this.updateHighlightContainerPosition(instance);
+    };
+
+    // 使用 ResizeObserver 監聽 textarea 大小變化
+    if (window.ResizeObserver) {
+      const resizeObserver = new ResizeObserver(updateContainerPosition);
+      resizeObserver.observe(targetTextarea);
+      resizeObserver.observe(targetTextarea.parentElement);
+      instance.resizeObserver = resizeObserver;
+    }
+
+    // 監聽窗口大小變化
+    window.addEventListener('resize', updateContainerPosition);
+    instance.windowResizeHandler = updateContainerPosition;
+  },
+
+  /**
+   * 更新高亮容器位置
+   */
+  updateHighlightContainerPosition(instance) {
+    const { targetTextarea, virtualScrollInstance } = instance;
+    const overlay = virtualScrollInstance.container;
+    
+    if (!overlay) return;
+
+    // 重新計算位置
+    const textareaContainer = targetTextarea.parentElement;
+    const textareaRect = targetTextarea.getBoundingClientRect();
+    const containerRect = textareaContainer.getBoundingClientRect();
+    
+    const offsetTop = textareaRect.top - containerRect.top;
+    const offsetLeft = textareaRect.left - containerRect.left;
+    
+    // 更新覆蓋層位置和大小
+    overlay.style.top = `${offsetTop}px`;
+    overlay.style.left = `${offsetLeft}px`;
+    overlay.style.width = `${targetTextarea.offsetWidth}px`;
+    overlay.style.height = `${targetTextarea.offsetHeight}px`;
+    
+    // 更新保存的偏移量
+    instance.textareaOffset = {
+      top: offsetTop,
+      left: offsetLeft
+    };
+
+    // 重新觸發高亮顯示
+    if (instance.currentMatches.length > 0) {
+      this.VirtualScrollManager.updateVirtualView(virtualScrollInstance, targetTextarea.scrollTop);
+    }
   },
 
   /**
@@ -500,7 +676,7 @@ const SearchController = {
     });
 
     // 按位置排序並合併重疊的匹配
-    return this.mergeOverlappingMatches(matches.sort((a, b) => a.start - b.start));
+    return this.mergeOverlappingMatches(matches.sort((a, b) => a.start - b.start), text);
   },
 
   /**
@@ -527,7 +703,7 @@ const SearchController = {
   /**
    * 合併重疊的匹配結果
    */
-  mergeOverlappingMatches(matches) {
+  mergeOverlappingMatches(matches, text) {
     if (matches.length <= 1) return matches;
     
     const merged = [matches[0]];
@@ -664,6 +840,19 @@ const SearchController = {
     
     // 清除虛擬滾動實例
     this.VirtualScrollManager.destroy(containerId);
+    
+    // 清除 ResizeObserver
+    if (instance.resizeObserver) {
+      instance.resizeObserver.disconnect();
+    }
+    
+    // 清除窗口大小變化監聽器
+    if (instance.windowResizeHandler) {
+      window.removeEventListener('resize', instance.windowResizeHandler);
+    }
+    
+    // 清理位置計算器
+    this.PositionCalculator.cleanup();
     
     // 移除搜尋介面
     const searchContainer = instance.container.querySelector('.search-container');

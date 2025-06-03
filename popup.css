@@ -67,7 +67,7 @@ input:focus, select:focus {
 /* 文本區域樣式 */
 textarea {
   flex: 0 0 auto;
-  min-height: 330px;    /* 固定最小高度 */
+  min-height: 350px;    /* 固定最小高度 */
   resize: none;         /* 禁止手動調整大小 */
   border: none;
   color: #333;
@@ -1011,7 +1011,7 @@ input.form-input {
 
 /* 股票清單輸入框特殊樣式 */
 #stock-list-input {
-  height: 390px;
+  height: 350px;
   border: 1px solid #ddd;
 }
 
@@ -1304,13 +1304,19 @@ input.form-input {
 
 /* 調整股票輸入框高度以容納搜尋框 */
 #stock-content #stock-list-input {
-  height: calc(100% - 50px);
-  min-height: 120px;
+  height: 350px !important;
+  min-height: 350px !important;
 }
 
 /* 搜尋功能在其他分頁的通用樣式 */
 .content:has(.search-container) textarea {
   height: calc(100% - 50px) !important;
   min-height: 100px;
+}
+
+/* 股票分頁的 textarea 特殊處理 */
+#stock-content.content:has(.search-container) #stock-list-input {
+  height: 350px !important;
+  min-height: 350px !important;
 }
   
