@@ -1184,4 +1184,133 @@ input.form-input {
   color: #2196F3;
   font-weight: 500;
 }
+
+/* 股票分頁搜尋功能樣式 */
+.search-container {
+  margin-bottom: 8px;
+}
+
+.search-input-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 0;
+  transition: border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+}
+
+.search-input-container:focus-within {
+  border-color: #4CAF50;
+  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.25);
+}
+
+.search-input {
+  flex: 1;
+  border: none;
+  outline: none;
+  padding: 8px 12px;
+  background: transparent;
+  font-size: 14px;
+  color: #495057;
+}
+
+.search-input::placeholder {
+  color: #6c757d;
+  font-style: italic;
+}
+
+.search-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding-right: 8px;
+  gap: 8px;
+  min-height: 32px;
+}
+
+.search-counter {
+  font-size: 12px;
+  color: #6c757d;
+  white-space: nowrap;
+  min-width: 60px;
+  text-align: right;
+  display: flex;
+  align-items: center;
+}
+
+.search-counter.success {
+  color: #28a745;
+  font-weight: 500;
+}
+
+.search-counter.error {
+  color: #dc3545;
+  font-weight: 500;
+}
+
+.search-clear {
+  background: none;
+  border: none;
+  color: #6c757d;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  border-radius: 2px;
+  transition: all 0.15s ease;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  flex-shrink: 0;
+}
+
+.search-clear:hover {
+  background-color: #e9ecef;
+  color: #495057;
+}
+
+.search-clear:active {
+  background-color: #dee2e6;
+}
+
+/* 搜尋高亮覆蓋層 */
+.search-highlight-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 1;
+  overflow: hidden;
+}
+
+.search-highlight {
+  position: absolute;
+  background-color: rgba(255, 255, 0, 0.4);
+  border-radius: 2px;
+  transition: transform 0.1s ease;
+}
+
+/* 確保股票輸入框容器有相對定位 */
+#stock-content {
+  position: relative;
+}
+
+/* 調整股票輸入框高度以容納搜尋框 */
+#stock-content #stock-list-input {
+  height: calc(100% - 50px);
+  min-height: 120px;
+}
+
+/* 搜尋功能在其他分頁的通用樣式 */
+.content:has(.search-container) textarea {
+  height: calc(100% - 50px) !important;
+  min-height: 100px;
+}
   

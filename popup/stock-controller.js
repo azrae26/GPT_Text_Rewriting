@@ -22,10 +22,38 @@ const StockManager = {
     this.stockListInput = stockListInputElement;
     this.triggerContentScriptUpdate = triggerContentScriptUpdateFn;
     
+    // 初始化股票清單搜尋功能
+    this.initStockSearch();
+    
     // 初始化股票爬蟲控制器
     StockCrawlerController.init();
     
     console.log('股票功能管理器初始化完成');
+  },
+
+  // 初始化股票搜尋功能
+  initStockSearch() {
+    if (typeof SearchController !== 'undefined') {
+      // 初始化搜尋功能
+      const searchInstance = SearchController.init(
+        'stock-content', // 容器ID - 股票分頁的content div
+        'stock-list-input', // 目標textarea ID
+        {
+          placeholder: '搜尋股票代碼或公司名稱...',
+          showCounter: true,
+          enableRegex: true
+        }
+      );
+      
+      if (searchInstance) {
+        console.log('股票搜尋功能已初始化');
+        this.searchInstance = searchInstance;
+      } else {
+        console.warn('股票搜尋功能初始化失敗');
+      }
+    } else {
+      console.warn('SearchController 未載入，股票搜尋功能無法使用');
+    }
   },
 
   // 更新股票清單設定

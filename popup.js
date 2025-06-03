@@ -688,6 +688,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     console.warn('StockManager 未載入，股票功能可能無法正常運作');
   }
 
+
+
   // 添加節流函數
   const throttle = (func, limit) => {
     let inThrottle;
