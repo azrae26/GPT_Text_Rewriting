@@ -36,3 +36,5 @@ coverage/
 google_translator/*.json
 *.json 
 
+# 翻譯代理程式
+translation-agent-main
