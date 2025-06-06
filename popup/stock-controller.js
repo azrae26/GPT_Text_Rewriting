@@ -15,12 +15,19 @@ const STOCK_CRAWLER_CONFIG = {
 const StockManager = {
   // DOM 元素引用
   stockListInput: null,
+  copyButton: null,
   
   // 初始化
   init(stockListInputElement, triggerContentScriptUpdateFn) {
     console.log('初始化股票功能管理器');
     this.stockListInput = stockListInputElement;
     this.triggerContentScriptUpdate = triggerContentScriptUpdateFn;
+    this.copyButton = document.getElementById('copy-stock-list');
+    
+    // 綁定複製按鈕事件
+    if (this.copyButton) {
+      this.copyButton.addEventListener('click', () => this.copyStockList());
+    }
     
     // 初始化股票爬蟲控制器
     StockCrawlerController.init();
@@ -48,6 +55,44 @@ const StockManager = {
           }
         });
       }
+    });
+  },
+
+  // 複製股票清單
+  copyStockList() {
+    const stockListText = this.stockListInput.value.trim();
+    if (!stockListText) {
+      return;
+    }
+    
+    // 處理股票清單：去除特殊規則，代號和公司名用TAB隔開
+    const processedList = stockListText
+      .split('\n')
+      .filter(line => line.trim())
+      .map(line => {
+        const parts = line.split(',');
+        if (parts.length >= 2) {
+          // 只取代號和公司名稱，忽略匹配模式
+          const code = parts[0].trim();
+          const name = parts[1].trim();
+          return `${code}\t${name}`;
+        }
+        return line.trim();
+      })
+      .join('\n');
+    
+    // 複製到剪貼簿
+    navigator.clipboard.writeText(processedList).then(() => {
+      // 綠色動畫和圖示反饋
+      const originalIcon = this.copyButton.innerHTML;
+      this.copyButton.classList.add('copied');
+      this.copyButton.innerHTML = '<i class="fa-solid fa-check"></i>';
+      setTimeout(() => {
+        this.copyButton.classList.remove('copied');
+        this.copyButton.innerHTML = originalIcon;
+      }, 1000);
+    }).catch(err => {
+      console.error('複製失敗:', err);
     });
   },
 

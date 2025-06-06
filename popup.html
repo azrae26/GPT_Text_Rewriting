@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GPT 文字重寫</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="popup.css">
 </head>
 <body>
@@ -262,13 +263,16 @@
   <!-- 股票 -->
   <div id="stock-tab" class="main-tab-content">
     <div class="content">
-      <textarea id="stock-list-input" placeholder="請輸入股票清單，格式如下：
+      <div class="stock-input-container">
+        <textarea id="stock-list-input" placeholder="請輸入股票清單，格式如下：
 代碼,公司名稱,匹配模式(可選)
 例如：
 1101,台泥
-1303,南亞,(?<!東)南亞
-2330,台積電
-2454,聯發科"></textarea>
+1303,南亞,(?<!東)南亞"></textarea>
+        <button id="copy-stock-list" class="copy-button" title="複製股票清單">
+          <i class="fa-regular fa-copy"></i>
+        </button>
+      </div>
       
       <div class="stock-crawler-controls">
         <div class="crawler-interval-container">

@@ -1010,9 +1010,52 @@ input.form-input {
 }
 
 /* 股票清單輸入框特殊樣式 */
+.stock-input-container {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+}
+
 #stock-list-input {
   height: 390px;
   border: 1px solid #ddd;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.copy-button {
+  position: absolute;
+  top: 0px;
+  right: 18px;
+  width: 28px;
+  height: 28px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: #666;
+  transition: all 0.2s ease;
+  z-index: 10;
+  font-family: "Font Awesome 6 Free";
+  font-weight: 400; /* Regular weight for fa-regular */
+}
+
+.copy-button:hover {
+  background: #f5f5f5;
+  color: #333;
+  border-color: #bbb;
+}
+
+.copy-button.copied {
+  background: #4CAF50 !important;
+  color: white !important;
+  border-color: #45a049 !important;
+  transform: scale(1.1);
+  transition: all 0.2s ease;
 }
 
 /* 股票爬蟲控制區域樣式 */
