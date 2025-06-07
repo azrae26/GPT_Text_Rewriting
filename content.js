@@ -1,5 +1,22 @@
 /* global chrome, GlobalSettings, TextProcessor, Notification, UIManager, TranslateManager */
-// AI 文章改寫助手 - 內容腳本
+/**
+ * content.js - 內容腳本主入口
+ * 功能：在目標網頁中注入和初始化所有擴充功能
+ * 職責：
+ * - URL 檢查和條件啟用：確保只在目標頁面啟用功能
+ * - 智能初始化：處理動態頁面載入和 DOM 變化檢測
+ * - UI 模組協調：統一初始化和管理各功能模組
+ * - 頁面狀態監控：監聽 URL 變化和頁面重新載入
+ * - 高亮功能初始化：處理文本高亮功能的載入和設定
+ * - 錯誤處理和重試機制：確保功能在各種網頁狀態下正常工作
+ * 
+ * 依賴：
+ * - GlobalSettings：全局設定管理
+ * - UIManager：UI 元素管理
+ * - TextHighlight：文本高亮功能
+ * - TextProcessor, TranslateManager 等各功能模組
+ * - Chrome Extensions API
+ */
 
 console.log('Content script starting to load');
 

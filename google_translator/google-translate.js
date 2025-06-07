@@ -1,4 +1,21 @@
 /* global GlobalSettings, Notification, TextProcessor */
+/**
+ * google_translator/google-translate.js - Google 翻譯管理模組
+ * 功能：提供 Google Cloud Translation API 的完整翻譯功能
+ * 職責：
+ * - Google API 整合：處理 Google Cloud Translation API 認證和請求
+ * - 批次翻譯處理：支援大型文本的分批翻譯處理
+ * - OAuth 2.0 認證：自動處理 JWT 令牌生成和 API 認證
+ * - 多語言支援：支援繁中、簡中、英文、日文等多種語言
+ * - 錯誤重試機制：智能處理 API 失敗和網路錯誤
+ * - 取消機制：支援翻譯過程中的即時取消
+ * - 憑證管理：支援彈出視窗設定和預設檔案兩種憑證來源
+ * 
+ * 依賴：
+ * - Chrome Storage API：儲存和讀取 API 憑證
+ * - JWT Helper：生成 OAuth 2.0 認證令牌
+ * - Notification：進度通知和狀態顯示
+ */
 
 // 常數配置
 window.GoogleTranslateConfig = {

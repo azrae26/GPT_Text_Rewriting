@@ -1,4 +1,21 @@
 /* global GlobalSettings, Notification, TextProcessor */
+/**
+ * translate.js - AI 翻譯管理模組
+ * 功能：提供完整的 AI 翻譯功能，支援批次處理、多階段優化和錯誤處理
+ * 職責：
+ * - 批次翻譯處理：將長文本拆分為批次，支援並行處理
+ * - 多階段翻譯：初步翻譯 → 反思檢查 → 優化改進的三階段流程
+ * - 上下文管理：維護前文語境，確保翻譯一致性
+ * - 中英對照處理：支援專業術語的對照表功能
+ * - 取消機制：支援翻譯過程中的即時取消
+ * - 錯誤重試：智能重試機制和失敗批次處理
+ * - 格式處理：支援移除特殊字符和格式清理
+ * 
+ * 依賴：
+ * - GlobalSettings：全局設定和 API 配置
+ * - TextProcessor：文本處理和 API 請求
+ * - Notification：進度通知和狀態提示
+ */
 
 // 常數配置
 window.TranslateConfig = {

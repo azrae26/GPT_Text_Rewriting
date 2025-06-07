@@ -1,5 +1,23 @@
 /* global GlobalSettings, TextProcessor, Notification, UndoManager */
-/** UI管理模組 */
+/**
+ * ui-manager.js - UI 管理模組
+ * 功能：管理所有使用者介面元素的創建、事件處理和狀態管理
+ * 職責：
+ * - 改寫按鈕管理：創建和管理改寫、翻譯按鈕
+ * - 股票代碼功能：智能識別股票代碼並創建快速輸入按鈕
+ * - 雙擊事件處理：處理文本區域的雙擊自動改寫
+ * - 文本區域增強：添加快捷鍵和事件監聽
+ * - 動態 UI 更新：根據頁面狀態動態調整 UI 元素
+ * - Google 翻譯整合：處理多語言翻譯下拉選單
+ * - 任務狀態追蹤：管理活動改寫任務的狀態
+ * 
+ * 依賴：
+ * - GlobalSettings：全局設定管理
+ * - TextProcessor：文本處理核心
+ * - TranslateManager：翻譯功能管理
+ * - GoogleTranslateManager：Google 翻譯功能
+ * - UndoManager：復原功能
+ */
 const UIManager = {
   /** 初始化追蹤改寫任務的 Set */
   _activeRewrites: new Set(),

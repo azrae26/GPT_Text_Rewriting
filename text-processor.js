@@ -1,6 +1,20 @@
 /* global GlobalSettings, Notification, UndoManager */
 /**
- * 文本處理模組，負責處理文字改寫的邏輯。
+ * text-processor.js - 文本處理核心模組
+ * 功能：處理所有文字改寫、翻譯、生成和摘要的核心邏輯
+ * 職責：
+ * - 文本改寫：支援全文改寫、短文本改寫、自動改寫等模式
+ * - 特殊文本識別：識別股票代碼、日期等特殊格式文本
+ * - API 請求管理：統一處理 Gemini 和 OpenAI API 請求
+ * - 上下文處理：處理多輪對話和背景知識整合
+ * - 指令模板處理：支援動態佔位符替換（如日期）
+ * - 請求取消機制：支援翻譯和生成任務的中途取消
+ * 
+ * 依賴：
+ * - GlobalSettings：全局設定和 API 配置
+ * - Notification：通知系統
+ * - UndoManager：復原功能管理
+ * - TranslateManager, GenerationManager：任務管理器
  */
 const TextProcessor = {
   /**

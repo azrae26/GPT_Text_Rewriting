@@ -1,7 +1,19 @@
 /* global chrome */
 
 /**
- * 全局變量和設置模組，管理擴充程式的全局設定。
+ * settings.js - 全局設定管理模組
+ * 功能：統一管理擴充程式的所有設定項目，包含 API 配置、模型管理、指令設定等
+ * 職責：
+ * - 實現雙存儲策略（Sync Storage + Local Storage）
+ * - 管理 API 金鑰和自定義模型
+ * - 處理各種改寫、翻譯、生成模式的設定
+ * - 提供設定的載入、儲存、驗證和清理功能
+ * - 管理生成設定組合和設定匯入匯出
+ * - 支援存儲容量優化和殭屍設定清理
+ * 
+ * 依賴：
+ * - Chrome Extensions API (storage.sync, storage.local)
+ * - 遵循項目儲存策略規範（新功能使用 Local Storage）
  */
 const GlobalSettings = {
   /** API 相關配置 */

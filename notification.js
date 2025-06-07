@@ -1,4 +1,20 @@
-// 通知系統模組 - 處理所有通知相關的顯示和管理
+/**
+ * notification.js - 通知系統模組
+ * 功能：統一管理所有通知訊息的顯示、更新和狀態管理
+ * 職責：
+ * - 動態通知創建：根據任務類型創建相應的通知界面
+ * - 進度追蹤：顯示翻譯、生成等任務的實時進度
+ * - 階段識別：自動識別並顯示不同任務階段（翻譯、反思、優化等）
+ * - 批次進度管理：支援批次任務的進度條和計數顯示
+ * - 計時器管理：提供自動隱藏和倒數計時功能
+ * - 模型信息顯示：智能顯示當前使用的 AI 模型和 API 狀態
+ * - 狀態同步：與 TranslateManager、GenerationManager 等同步狀態
+ * 
+ * 依賴：
+ * - GlobalSettings：獲取模型顯示名稱和配置
+ * - TranslateConfig、GenerationConfig：階段標識和配置
+ * - TranslateManager、GenerationManager：任務狀態同步
+ */
 
 const Notification = {
   notificationElement: null, // 儲存通知元素的變數

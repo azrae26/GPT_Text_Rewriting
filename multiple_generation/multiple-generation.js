@@ -1,4 +1,21 @@
 /* global GlobalSettings, Notification, TextProcessor */
+/**
+ * multiple_generation/multiple-generation.js - 多輪生成管理模組
+ * 功能：提供完整的 AI 多輪生成功能，支援反思-優化循環處理
+ * 職責：
+ * - 多輪生成流程：初始生成 → 反思一 → 優化一 → 反思二 → 優化二 → 反思三 → 優化三
+ * - 批次處理管理：將長文本分批處理，支援大量內容生成
+ * - 智能上下文管理：維護前文語境和背景知識整合
+ * - 錯誤重試機制：支援生成失敗的智能重試和錯誤處理
+ * - 取消機制：支援生成過程中的即時取消和狀態重置
+ * - 進度追蹤：提供詳細的階段進度和完成狀態監控
+ * - 格式處理：支援特殊字符移除和文本格式化
+ * 
+ * 依賴：
+ * - GlobalSettings：全局設定和 API 配置管理
+ * - TextProcessor：文本處理和 API 請求核心
+ * - Notification：進度通知和狀態顯示
+ */
 
 // 常數配置
 window.GenerationConfig = {
