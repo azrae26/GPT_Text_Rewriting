@@ -20,13 +20,15 @@
  * - 處理自動替換的執行
  * - 提供拖曳排序功能
  * - 管理輸入框的展開/收縮
+ * - 支援動態年份替換（YYYY, YY, YYYY±n, YY±n 格式）
  */
 const AutoReplaceManager = {
   CONFIG: {
     AUTO_REPLACE_KEY: 'autoReplaceRules',
     FROM_INPUT_WIDTH: 367,    // 替換目標框寬度 (285 + 82)
     TO_INPUT_WIDTH: 115,      // 替換結果框寬度
-    INPUT_HEIGHT: 32          // 輸入框高度
+    INPUT_HEIGHT: 32,         // 輸入框高度
+    YEAR_FETCH_DELAY: 10     // 獲取年份時的延遲毫秒數
   },
 
   // 添加一個屬性來存儲當前的規則
@@ -384,7 +386,7 @@ const AutoReplaceManager = {
   },
 
   /** 執行自動替換 */
-  handleAutoReplace(textArea) {
+  async handleAutoReplace(textArea) {
     // 如果在 popup 頁面中，發送消息到 content script
     if (window.location.pathname.endsWith('popup.html')) {
       this._sendMessageToContentScript();
@@ -395,7 +397,7 @@ const AutoReplaceManager = {
     const cursorState = this._saveCursorState(textArea);
     
     // 執行替換
-    const result = this._executeReplacements(textArea);
+    const result = await this._executeReplacements(textArea);
     
     // 如果有變更，更新文本並恢復游標
     if (result.changed) {
@@ -420,8 +422,96 @@ const AutoReplaceManager = {
     };
   },
 
+  /** 從網頁獲取當前年份 */
+  async getCurrentYear() {
+    try {
+      console.log(`[AutoReplace][${new Date().toISOString()}] 🗓️ 開始獲取當前年份...`);
+      
+      // 延遲指定毫秒數
+      await new Promise(resolve => setTimeout(resolve, this.CONFIG.YEAR_FETCH_DELAY));
+      
+      // 嘗試從指定的CSS選擇器獲取年份
+      const dateInput = document.querySelector('.MuiInputBase-root.MuiOutlinedInput-root.MuiInputBase-colorPrimary.MuiInputBase-formControl.MuiInputBase-adornedEnd.css-1oy18r0 input');
+      console.log(`[AutoReplace][${new Date().toISOString()}] 🔍 查找日期輸入框: ${dateInput ? '找到' : '未找到'}`);
+      
+      if (dateInput && dateInput.value) {
+        const dateValue = dateInput.value;
+        console.log(`[AutoReplace][${new Date().toISOString()}] 📅 日期框值: ${dateValue}`);
+        
+        // 嘗試從日期值中提取年份
+        const yearMatch = dateValue.match(/(\d{4})/);
+        if (yearMatch) {
+          const year = parseInt(yearMatch[1]);
+          console.log(`[AutoReplace][${new Date().toISOString()}] ✅ 從網頁日期框成功獲取年份: ${year}`);
+          return year;
+        } else {
+          console.log(`[AutoReplace][${new Date().toISOString()}] ⚠️ 日期值中未找到四位年份格式`);
+        }
+      } else {
+        console.log(`[AutoReplace][${new Date().toISOString()}] ⚠️ 日期框為空或不存在`);
+      }
+      
+      // 如果無法從網頁獲取，使用當前系統年份作為備份
+      const currentYear = new Date().getFullYear();
+      console.log(`[AutoReplace][${new Date().toISOString()}] 🔄 使用系統年份作為備份: ${currentYear}`);
+      return currentYear;
+    } catch (error) {
+      console.warn(`[AutoReplace][${new Date().toISOString()}] ❌ 獲取年份時出錯，使用系統年份:`, error);
+      const fallbackYear = new Date().getFullYear();
+      console.log(`[AutoReplace][${new Date().toISOString()}] 🆘 異常備份年份: ${fallbackYear}`);
+      return fallbackYear;
+    }
+  },
+
+  /** 處理替換詞中的年份格式 */
+  async processYearFormats(text) {
+    if (!text || typeof text !== 'string') {
+      return text;
+    }
+
+    // 檢查是否包含年份格式
+    const hasYearFormat = /YYYY([+-]\d+)?|YY([+-]\d+)?/g.test(text);
+    if (!hasYearFormat) {
+      return text; // 沒有年份格式，直接返回，不顯示調試訊息
+    }
+
+    console.log(`[AutoReplace][${new Date().toISOString()}] 🔄 開始處理年份格式，原始文本: "${text}"`);
+    const currentYear = await this.getCurrentYear();
+    let processedText = text;
+
+    console.log(`[AutoReplace][${new Date().toISOString()}] 📊 基準年份: ${currentYear}`);
+
+    // 處理四位年份格式 YYYY±數字
+    processedText = processedText.replace(/YYYY([+-]\d+)?/g, (match, offset) => {
+      if (offset) {
+        const adjustment = parseInt(offset);
+        const targetYear = currentYear + adjustment;
+        console.log(`[AutoReplace][${new Date().toISOString()}] 🔢 四位年份格式替換: ${match} → ${targetYear} (基準${currentYear}${offset}=${targetYear})`);
+        return targetYear.toString();
+      } else {
+        console.log(`[AutoReplace][${new Date().toISOString()}] 🔢 四位年份格式替換: ${match} → ${currentYear}`);
+        return currentYear.toString();
+      }
+    });
+
+    // 處理兩位年份格式 YY±數字
+    processedText = processedText.replace(/YY([+-]\d+)?/g, (match, offset) => {
+      let targetYear = currentYear;
+      if (offset) {
+        const adjustment = parseInt(offset);
+        targetYear = currentYear + adjustment;
+      }
+      const twoDigitYear = (targetYear % 100).toString().padStart(2, '0');
+      console.log(`[AutoReplace][${new Date().toISOString()}] 🔢 兩位年份格式替換: ${match} → ${twoDigitYear} (來自${targetYear})`);
+      return twoDigitYear;
+    });
+
+    console.log(`[AutoReplace][${new Date().toISOString()}] ✅ 年份格式處理完成: "${text}" → "${processedText}"`);
+    return processedText;
+  },
+
   /** 執行所有替換規則 */
-  _executeReplacements(textArea) {
+  async _executeReplacements(textArea) {
     let text = textArea.value;
     let changed = false;
     let totalChanges = 0;
@@ -430,9 +520,12 @@ const AutoReplaceManager = {
 
     const rules = this._getActiveRules();
     
-    rules.forEach(rule => {
+    for (const rule of rules) {
         try {
             const fromText = rule.from;
+            // 處理替換詞中的年份格式
+            const processedToText = await this.processYearFormats(rule.to);
+            
             // 優先使用緩存中的正則表達式
             let regex = regexCache.get(fromText);
             if (!regex) {
@@ -447,27 +540,27 @@ const AutoReplaceManager = {
                 matches.forEach(match => {
                     replacementDetails.push({
                         from: match,
-                        to: rule.to
+                        to: processedToText
                     });
                 });
             }
             // 進行替換
-            const newText = text.replace(regex, rule.to);
+            const newText = text.replace(regex, processedToText);
             if (newText !== text) {
                 text = newText;
                 changed = true;
                 totalChanges += matches ? matches.length : 0;
             }
         } catch (error) {
-            console.error('替換錯誤:', error);
+            console.error(`[AutoReplace][${new Date().toISOString()}] 替換錯誤:`, error);
         }
-    });
+    }
 
     if (changed) {
         // 輸出詳細的替換資訊
-        console.log(`自動替換：完成 ${totalChanges} 處替換`);
+        console.log(`[AutoReplace][${new Date().toISOString()}] 自動替換：完成 ${totalChanges} 處替換`);
         replacementDetails.forEach(detail => {
-            console.log(`將「${detail.from}」替換為「${detail.to}」`);
+            console.log(`[AutoReplace][${new Date().toISOString()}] 將「${detail.from}」替換為「${detail.to}」`);
         });
     }
     return { text, changed };
