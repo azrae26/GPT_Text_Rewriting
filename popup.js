@@ -95,8 +95,20 @@ document.addEventListener('DOMContentLoaded', async function() {
   const addCustomModelBtn = document.getElementById('add-custom-model');
   const customModelsContainer = document.getElementById('custom-models-container');
 
+  // 同步功能相關元素
+  const syncStatus = document.getElementById('sync-status');
+  const statusIcon = document.getElementById('status-icon');
+  const statusText = document.getElementById('status-text');
+  const authButton = document.getElementById('auth-button');
+  const signoutButton = document.getElementById('signout-button');
+  const manualSyncButton = document.getElementById('manual-sync-button');
+  const autoSyncToggle = document.getElementById('auto-sync-toggle');
+  const resetSyncButton = document.getElementById('reset-sync-button');
+  const syncError = document.getElementById('sync-error');
+
   // 2. 初始化設定
   let apiKeys = {};
+  let settingsIO = null; // 同步管理器實例
 
   // Initialize CustomModelManager (將在 CustomModelManager 定義後進行初始化)
 
@@ -523,6 +535,14 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // 初始化所有事件處理器
   setupEventHandlers();
+
+  // 11. 初始化同步功能
+  if (typeof SettingsIO !== 'undefined') {
+    settingsIO = new SettingsIO();
+    initializeSyncFeatures();
+  } else {
+    console.warn('SettingsIO 未載入，同步功能將不可用');
+  }
 
   // 10. 功能按鈕事件處理
   rewriteButton.addEventListener('click', function() {
@@ -1674,6 +1694,224 @@ document.addEventListener('DOMContentLoaded', async function() {
   if (autoReplaceContainer) {
     // 直接使用已載入的 AutoReplaceManager
     AutoReplaceManager.initializeAutoReplaceGroups(autoReplaceContainer, document.createElement('textarea'));
+  }
+
+  // 12. 同步功能相關函數
+  // 輔助函數：獲取當前時間字符串
+  function getCurrentTimeString() {
+    return new Date().toISOString();
+  }
+
+  // 初始化同步功能
+  async function initializeSyncFeatures() {
+    console.log(`[popup.js][${getCurrentTimeString()}] 初始化同步功能`);
+    
+    try {
+      // 初始化 SettingsIO
+      await settingsIO.init();
+      
+      // 設置同步相關事件監聽器
+      setupSyncEventHandlers();
+      
+      // 更新初始狀態顯示
+      await updateSyncStatus();
+      
+      console.log(`[popup.js][${getCurrentTimeString()}] 同步功能初始化完成`);
+    } catch (error) {
+      console.error(`[popup.js][${getCurrentTimeString()}] 同步功能初始化失敗:`, error);
+    }
+  }
+
+  // 設置同步相關事件處理器
+  function setupSyncEventHandlers() {
+    // 認證按鈕
+    if (authButton) {
+      authButton.addEventListener('click', async () => {
+        console.log(`[popup.js][${getCurrentTimeString()}] 開始認證`);
+        try {
+          authButton.disabled = true;
+          authButton.textContent = '認證中...';
+          
+          const result = await settingsIO.authenticateWithGoogle(true);
+          if (result.success) {
+            console.log(`[popup.js][${getCurrentTimeString()}] 認證成功`);
+            await updateSyncStatus();
+          } else {
+            throw new Error(result.error || '認證失敗');
+          }
+        } catch (error) {
+          console.error(`[popup.js][${getCurrentTimeString()}] 認證失敗:`, error);
+          showSyncError('認證失敗: ' + error.message);
+        } finally {
+          authButton.disabled = false;
+          authButton.textContent = '連接 Google Drive';
+        }
+      });
+    }
+
+    // 登出按鈕
+    if (signoutButton) {
+      signoutButton.addEventListener('click', async () => {
+        console.log(`[popup.js][${getCurrentTimeString()}] 開始登出`);
+        try {
+          await settingsIO.signOut();
+          await updateSyncStatus();
+          console.log(`[popup.js][${getCurrentTimeString()}] 登出成功`);
+        } catch (error) {
+          console.error(`[popup.js][${getCurrentTimeString()}] 登出失敗:`, error);
+          showSyncError('登出失敗: ' + error.message);
+        }
+      });
+    }
+
+    // 手動同步按鈕
+    if (manualSyncButton) {
+      manualSyncButton.addEventListener('click', async () => {
+        console.log(`[popup.js][${getCurrentTimeString()}] 開始手動同步`);
+        try {
+          manualSyncButton.disabled = true;
+          manualSyncButton.textContent = '同步中...';
+          
+          const result = await settingsIO.manualSync();
+          if (result.success) {
+            console.log(`[popup.js][${getCurrentTimeString()}] 手動同步成功`);
+            clearSyncError();
+          } else {
+            throw new Error(result.error || '同步失敗');
+          }
+        } catch (error) {
+          console.error(`[popup.js][${getCurrentTimeString()}] 手動同步失敗:`, error);
+          showSyncError('同步失敗: ' + error.message);
+        } finally {
+          manualSyncButton.disabled = false;
+          manualSyncButton.textContent = '手動同步';
+          await updateSyncStatus();
+        }
+      });
+    }
+
+    // 自動同步開關
+    if (autoSyncToggle) {
+      autoSyncToggle.addEventListener('click', async () => {
+        console.log(`[popup.js][${getCurrentTimeString()}] 切換自動同步`);
+        try {
+          const enabled = autoSyncToggle.classList.contains('active');
+          const newState = !enabled;
+          
+          await settingsIO.toggleAutoSync(newState);
+          
+          if (newState) {
+            autoSyncToggle.classList.add('active');
+          } else {
+            autoSyncToggle.classList.remove('active');
+          }
+          
+          console.log(`[popup.js][${getCurrentTimeString()}] 自動同步已`, newState ? '啟用' : '停用');
+          await updateSyncStatus();
+        } catch (error) {
+          console.error(`[popup.js][${getCurrentTimeString()}] 切換自動同步失敗:`, error);
+          showSyncError('切換自動同步失敗: ' + error.message);
+        }
+      });
+    }
+
+    // 重置同步按鈕
+    if (resetSyncButton) {
+      resetSyncButton.addEventListener('click', async () => {
+        if (confirm('確定要重置同步設定嗎？這將清除所有同步相關資料。')) {
+          console.log(`[popup.js][${getCurrentTimeString()}] 重置同步設定`);
+          try {
+            await settingsIO.resetSyncStatus();
+            await updateSyncStatus();
+            console.log(`[popup.js][${getCurrentTimeString()}] 同步設定重置完成`);
+          } catch (error) {
+            console.error(`[popup.js][${getCurrentTimeString()}] 重置同步設定失敗:`, error);
+            showSyncError('重置失敗: ' + error.message);
+          }
+        }
+      });
+    }
+  }
+
+  // 更新同步狀態顯示
+  async function updateSyncStatus() {
+    if (!settingsIO || !syncStatus) {
+      return;
+    }
+
+    try {
+      const status = await settingsIO.getSyncStatus();
+      
+      // 更新狀態圖示和文字
+      if (statusIcon && statusText) {
+        statusIcon.className = 'status-icon';
+        syncStatus.className = 'sync-status';
+        
+        if (status.enabled && status.status === 'success') {
+          statusIcon.classList.add('connected');
+          syncStatus.classList.add('connected');
+          statusText.textContent = '已連接 Google Drive';
+        } else if (status.status === 'syncing') {
+          statusIcon.classList.add('syncing');
+          syncStatus.classList.add('syncing');
+          statusText.textContent = '同步中...';
+        } else if (status.error) {
+          statusIcon.classList.add('error');
+          syncStatus.classList.add('error');
+          statusText.textContent = '同步錯誤';
+        } else {
+          statusIcon.classList.add('disconnected');
+          syncStatus.classList.add('disconnected');
+          statusText.textContent = '未連接';
+        }
+      }
+
+      // 更新按鈕狀態
+      if (authButton && signoutButton) {
+        if (status.enabled) {
+          authButton.style.display = 'none';
+          signoutButton.style.display = 'inline-block';
+        } else {
+          authButton.style.display = 'inline-block';
+          signoutButton.style.display = 'none';
+        }
+      }
+
+      // 更新自動同步開關
+      if (autoSyncToggle) {
+        if (status.enabled) {
+          autoSyncToggle.classList.add('active');
+        } else {
+          autoSyncToggle.classList.remove('active');
+        }
+      }
+
+      // 顯示錯誤訊息
+      if (status.error) {
+        showSyncError(status.error);
+      } else {
+        clearSyncError();
+      }
+
+    } catch (error) {
+      console.error(`[popup.js][${getCurrentTimeString()}] 更新同步狀態失敗:`, error);
+    }
+  }
+
+  // 顯示同步錯誤
+  function showSyncError(message) {
+    if (syncError) {
+      syncError.textContent = message;
+      syncError.style.display = 'block';
+    }
+  }
+
+  // 清除同步錯誤
+  function clearSyncError() {
+    if (syncError) {
+      syncError.style.display = 'none';
+      syncError.textContent = '';
+    }
   }
 
   // 立即初始化 CustomModelManager 和 StockCrawlerController

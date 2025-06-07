@@ -6,12 +6,15 @@
   "permissions": [
     "storage",
     "activeTab",
-    "tabs"
+    "tabs",
+    "identity",
+    "alarms"
   ],
   "host_permissions": [
     "https://data.uanalyze.twobitto.com/*",
     "https://pro.uanalyze.com.tw/*",
-    "https://mopsov.twse.com.tw/*"
+    "https://mopsov.twse.com.tw/*",
+    "https://www.googleapis.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -98,5 +101,11 @@
     "16": "images/icon16_blue.png",
     "48": "images/icon48_blue.png",
     "128": "images/icon128_blue.png"
+  },
+  "oauth2": {
+    "client_id": "862665835661-leepued02022ei05bgb4jga850eglj0n.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/drive.appdata"
+    ]
   }
 }

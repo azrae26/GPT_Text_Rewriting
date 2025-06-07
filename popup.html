@@ -6,6 +6,7 @@
   <title>GPT 文字重寫</title>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
   <link rel="stylesheet" href="popup.css">
+  <link rel="stylesheet" href="SettingsIO/settings-io.css">
 </head>
 <body>
   <div class="main-tab-container">
@@ -15,6 +16,7 @@
     <div class="main-tab" data-tab="highlight">高亮</div>
     <div class="main-tab" data-tab="auto-replace">替換</div>
     <div class="main-tab" data-tab="stock">股票</div>
+    <div class="main-tab" data-tab="sync">同步</div>
     <div class="main-tab" data-tab="settings">設定</div>
   </div>
 
@@ -298,6 +300,82 @@
     </div>
   </div>
 
+  <!-- 同步 -->
+  <div id="sync-tab" class="main-tab-content">
+    <div class="content">
+      <div class="sync-container">
+        <div class="sync-section">
+          <h3>Google Drive 同步</h3>
+          <div id="sync-status" class="sync-status disconnected">
+            <div id="status-icon" class="status-icon disconnected"></div>
+            <span id="status-text">未連接</span>
+          </div>
+          <div id="sync-error" class="sync-error" style="display: none;"></div>
+        </div>
+        
+        <div class="sync-section">
+          <h3>同步控制</h3>
+          <div class="sync-controls">
+            <div class="control-group">
+              <button id="auth-button" class="sync-button auth-button">
+                <i class="fa-brands fa-google"></i>
+                <span>連接 Google Drive</span>
+              </button>
+              <button id="signout-button" class="sync-button signout-button" style="display: none;">
+                <i class="fa-solid fa-sign-out-alt"></i>
+                <span>登出</span>
+              </button>
+            </div>
+            
+            <div class="control-group">
+              <button id="manual-sync-button" class="sync-button">
+                <i class="fa-solid fa-sync-alt"></i>
+                <span>手動同步</span>
+              </button>
+              <div class="sync-toggle-container">
+                <span class="sync-toggle-label">自動同步</span>
+                <div id="auto-sync-toggle" class="sync-toggle"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <div class="sync-section">
+          <h3>進階設定</h3>
+          <div class="sync-advanced">
+            <div class="setting-item">
+              <label for="sync-filename">同步檔案名稱：</label>
+              <input type="text" id="sync-filename" value="gpt-text-rewriting-settings.json" readonly>
+            </div>
+            <div class="setting-item">
+              <label for="sync-interval">同步間隔：</label>
+              <span class="setting-value">2 分鐘</span>
+            </div>
+            <div class="setting-item">
+              <button id="reset-sync-button" class="sync-button danger-button">
+                <i class="fa-solid fa-trash"></i>
+                <span>重置同步設定</span>
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="sync-section">
+          <h3>說明</h3>
+          <div class="sync-help">
+            <ul class="help-list">
+              <li>首次使用需要連接 Google 帳號以授權存取 Google Drive</li>
+              <li>設定檔案將儲存在您的 Google Drive 應用程式資料夾中</li>
+              <li>自動同步會在偵測到設定變更後 10 秒鐘自動上傳</li>
+              <li>每 2 分鐘會自動檢查雲端是否有較新的設定</li>
+              <li>當多個裝置同時修改設定時，以最新修改的版本為準</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- 設定 -->
   <div id="settings-tab" class="main-tab-content">
     <div class="content">
@@ -364,6 +442,7 @@
   <script src="text_replace/replace-manager.js"></script>
   <script src="text_replace/manual-replace-manager.js"></script>
   <script src="text_replace/auto-replace-manager.js"></script>
+  <script src="SettingsIO/settings-io.js"></script>
   <script src="settings.js"></script>
   <script src="default.js"></script>
   <script src="translate.js"></script>
