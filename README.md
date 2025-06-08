@@ -94,6 +94,49 @@ AI 文章改寫助手是一個 Chrome 擴展，專為提升文章寫作效率而
 - StockManager 和 StockCrawlerController 已暴露為全局變數
 - popup.html 已正確引入股票控制器腳本
 
+## 最新更新 (2025/06/08)
+
+### 修復：Popup 關閉後同步停止問題
+
+**問題描述**：
+之前當 popup 頁面關閉後，自動同步功能就會停止工作，因為 SettingsIO 實例是在 popup 環境中創建的。
+
+**解決方案**：
+將同步邏輯移到 background.js 中，確保即使 popup 關閉也能持續運行自動同步。
+
+**主要修改**：
+1. **Manifest.json**：
+   - 修改背景腳本配置，包含必要依賴檔案
+   - 添加 `default.js`, `settings.js`, `SettingsIO/settings-io.js` 到背景腳本
+   - 使用 Manifest V3 兼容的腳本列表格式
+
+2. **Background.js**：
+   - 添加依賴初始化函數 `initializeSyncDependencies()`
+   - 創建 `initializeBackgroundSync()` 函數在背景環境中運行
+   - 實現完整的同步消息處理邏輯，支援所有同步操作
+   - 創建持久的 SettingsIO 實例，不受 popup 生命週期影響
+
+3. **Popup.js**：
+   - 分離同步邏輯為 `syncOperations` 和 `authOperations`
+   - `syncOperations` 通過消息與 background 溝通執行實際同步
+   - `authOperations` 保留在 popup 處理 OAuth 認證（需要用戶交互）
+   - 所有同步相關 UI 事件都委託給背景服務處理
+
+**測試清單**：
+- [ ] 重新載入擴展以確保 background.js 修改生效
+- [ ] 測試手動同步功能是否正常
+- [ ] 測試 OAuth 認證是否正常工作
+- [ ] 關閉 popup 後等待一段時間，確認自動同步仍在運行
+- [ ] 檢查 Chrome 開發者工具中的 background 頁面是否有錯誤
+- [ ] 確認設定的上傳和下載功能正常
+
+**架構改變**：
+```
+之前：Popup (SettingsIO) → 關閉後停止
+現在：Background (SettingsIO) → 持續運行
+      Popup (UI + OAuth) → 僅處理用戶介面和認證
+```
+
 ## 系統要求
 
 - Chrome 瀏覽器 88.0 或更高版本

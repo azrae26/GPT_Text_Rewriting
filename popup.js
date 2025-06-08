@@ -25,6 +25,11 @@
 document.addEventListener('DOMContentLoaded', async function() {
   console.log('DOM 載入完成，開始初始化...');
   
+  // 輔助函數：獲取當前時間字符串
+  function getCurrentTimeString() {
+    return new Date().toISOString();
+  }
+
   // 1. DOM 元素獲取 (按功能分組)
   // API 和模型相關
   const apiKeyInput = document.getElementById('api-key');
@@ -108,7 +113,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // 2. 初始化設定
   let apiKeys = {};
-  let settingsIO = null; // 同步管理器實例
+  let settingsIO = null; // 僅用於OAuth認證（同步邏輯已移至background）
 
   // Initialize CustomModelManager (將在 CustomModelManager 定義後進行初始化)
 
@@ -536,8 +541,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 初始化所有事件處理器
   setupEventHandlers();
 
-  // 11. 初始化同步功能（現在通過background處理）
-  initializeSyncFeatures();
+  // 將初始化同步功能延後到所有函數都定義完成後
 
   // 10. 功能按鈕事件處理
   rewriteButton.addEventListener('click', function() {
@@ -1692,10 +1696,6 @@ document.addEventListener('DOMContentLoaded', async function() {
   }
 
   // 12. 同步功能相關函數
-  // 輔助函數：獲取當前時間字符串
-  function getCurrentTimeString() {
-    return new Date().toISOString();
-  }
 
   // 認證操作包裝器（需要在popup環境中處理OAuth）
   const authOperations = {
@@ -1810,11 +1810,29 @@ document.addEventListener('DOMContentLoaded', async function() {
   async function initializeSyncFeatures() {
     console.log(`[popup.js][${getCurrentTimeString()}] 初始化同步功能UI`);
     
+    // 檢查關鍵 DOM 元素
+    console.log(`[popup.js][${getCurrentTimeString()}] DOM元素檢查:`, {
+      syncStatus: !!syncStatus,
+      statusIcon: !!statusIcon,
+      statusText: !!statusText,
+      autoSyncToggle: !!autoSyncToggle,
+      authButton: !!authButton,
+      signoutButton: !!signoutButton
+    });
+    
     try {
       // 注意：同步邏輯已移到background，這裡只處理UI交互
       
       // 設置同步相關事件監聽器
       setupSyncEventHandlers();
+      
+      // 監聽背景同步狀態更新
+      chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+        if (message.action === 'syncStatusUpdate') {
+          console.log(`[popup.js][${getCurrentTimeString()}] 收到背景同步狀態更新:`, message.data);
+          updateSyncStatus();
+        }
+      });
       
       // 更新初始狀態顯示
       await updateSyncStatus();
@@ -1949,6 +1967,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 更新同步狀態顯示
   async function updateSyncStatus() {
     if (!syncStatus) {
+      console.log(`[popup.js][${getCurrentTimeString()}] updateSyncStatus: syncStatus元素未找到`);
       return;
     }
 
@@ -1957,22 +1976,27 @@ document.addEventListener('DOMContentLoaded', async function() {
       if (!result.success) {
         throw new Error(result.error);
       }
-      const status = result.status;
+      // 正確解析狀態數據結構
+      const syncStatusData = result.status;
+      console.log(`[popup.js][${getCurrentTimeString()}] updateSyncStatus: enabled=${syncStatusData.enabled}, status=${syncStatusData.status}`, {
+        fullResult: result,
+        syncStatusData: syncStatusData
+      });
       
       // 更新狀態圖示和文字
       if (statusIcon && statusText) {
         statusIcon.className = 'status-icon';
         syncStatus.className = 'sync-status';
         
-        if (status.enabled && status.status === 'success') {
+        if (syncStatusData.enabled && !syncStatusData.error) {
           statusIcon.classList.add('connected');
           syncStatus.classList.add('connected');
           statusText.textContent = '已連接 Google Drive';
-        } else if (status.status === 'syncing') {
+        } else if (syncStatusData.status === 'syncing') {
           statusIcon.classList.add('syncing');
           syncStatus.classList.add('syncing');
           statusText.textContent = '同步中...';
-        } else if (status.error) {
+        } else if (syncStatusData.error) {
           statusIcon.classList.add('error');
           syncStatus.classList.add('error');
           statusText.textContent = '同步錯誤';
@@ -1985,7 +2009,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
       // 更新按鈕狀態
       if (authButton && signoutButton) {
-        if (status.enabled) {
+        if (syncStatusData.enabled) {
           authButton.style.display = 'none';
           signoutButton.style.display = 'inline-block';
         } else {
@@ -1996,7 +2020,8 @@ document.addEventListener('DOMContentLoaded', async function() {
 
       // 更新自動同步開關
       if (autoSyncToggle) {
-        if (status.enabled) {
+        console.log(`[popup.js][${getCurrentTimeString()}] 更新自動同步開關狀態: ${syncStatusData.enabled}`);
+        if (syncStatusData.enabled) {
           autoSyncToggle.classList.add('active');
         } else {
           autoSyncToggle.classList.remove('active');
@@ -2004,8 +2029,8 @@ document.addEventListener('DOMContentLoaded', async function() {
       }
 
       // 顯示錯誤訊息
-      if (status.error) {
-        showSyncError(status.error);
+      if (syncStatusData.error) {
+        showSyncError(syncStatusData.error);
       } else {
         clearSyncError();
       }
@@ -2030,6 +2055,9 @@ document.addEventListener('DOMContentLoaded', async function() {
       syncError.textContent = '';
     }
   }
+
+  // 首先初始化同步功能（確保所有函數都已定義）
+  initializeSyncFeatures();
 
   // 立即初始化 CustomModelManager 和 StockCrawlerController
   setTimeout(async () => {
