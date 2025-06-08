@@ -43,6 +43,8 @@ class SettingsIO {
     this.syncIntervalId = null;
     this.uploadTimeoutId = null;
     this.isInitialized = false;
+    this.localChangeDetected = false; // 本地修改保護標記
+    this.isInternalSyncUpdate = false; // 同步系統內部更新標記
     
     this.handleStorageChange = this.handleStorageChange.bind(this);
     this.performSync = this.performSync.bind(this);
@@ -94,7 +96,28 @@ class SettingsIO {
 
     console.log(`[SettingsIO][${getCurrentTimeString()}] 偵測到設定變更:`, relevantChanges);
 
-    await this.updateLastModifiedTime();
+    // 檢查是否是由同步系統自己觸發的變更（比如從雲端下載後的設定更新）
+    if (this.syncInProgress && this.isInternalSyncUpdate) {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 忽略同步系統內部更新`);
+      return;
+    }
+
+    // 立即更新時間戳記並發送調試信息
+    const newTimestamp = Date.now();
+    await chrome.storage.local.set({ lastModified: newTimestamp });
+    
+    // 發送調試信息到 background
+    this.sendSyncDebug(`設定變更: ${relevantChanges.join(', ')}, 新時間戳: ${new Date(newTimestamp).toISOString()}`, 'change', 'local_update');
+    
+    // 立即設置本地修改保護標記
+    this.localChangeDetected = true;
+    
+    // 如果有同步正在進行，記錄警告
+    if (this.syncInProgress) {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🚨 檢測到本地修改，已設置保護標記`);
+      this.sendSyncDebug('檢測到本地修改，已設置保護標記', 'interrupt', 'protect_local');
+    }
+    
     this.scheduleUpload();
   }
 
@@ -183,9 +206,14 @@ class SettingsIO {
       }
 
       const actualToken = typeof authResult.token === 'object' ? authResult.token.token : authResult.token;
+      
+      // 先獲取檔案ID並顯示
+      const fileId = await this.getOrCreateDriveFile(actualToken);
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 手動同步使用檔案ID: ${fileId}`);
+      
       await this.performSync(actualToken);
       
-      console.log(`[SettingsIO][${getCurrentTimeString()}] 手動同步完成`);
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 手動同步完成 (檔案ID: ${fileId})`);
       return { success: true };
     } catch (error) {
       console.error(`[SettingsIO][${getCurrentTimeString()}] 手動同步失敗:`, error);
@@ -202,7 +230,9 @@ class SettingsIO {
     });
 
     if (enabled) {
-      const syncResult = await this.manualSync();
+      // 🎯 聊明解法：第一次開啟同步，直接強制下載雲端設定
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🔽 首次開啟同步，強制下載雲端設定`);
+      const syncResult = await this.forceDownloadFromCloud();
       if (syncResult.success) {
         this.startPeriodicSync();
       }
@@ -249,6 +279,32 @@ class SettingsIO {
     try {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 開始執行同步`);
       
+      // 優先檢查是否有本地修改保護標記
+      if (this.localChangeDetected) {
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🛡️ 檢測到本地修改保護，直接上傳到雲端`);
+        this.sendSyncDebug('檢測到本地修改保護，強制上傳', 'protect', 'force_upload');
+        
+        if (!token) {
+          const authResult = await this.authenticateWithGoogle(false);
+          if (!authResult.success) {
+            console.log(`[SettingsIO][${getCurrentTimeString()}] 認證失敗，跳過同步`);
+            return;
+          }
+          token = authResult.token;
+        }
+
+        if (!token || typeof token !== 'string') {
+          throw new Error('無效的認證 token');
+        }
+
+        const fileId = await this.getOrCreateDriveFile(token);
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 使用檔案ID進行上傳: ${fileId}`);
+        await this.uploadSettings(token, fileId);
+        this.localChangeDetected = false; // 重置標記
+        await this.updateSyncStatus('success');
+        return;
+      }
+      
       if (!token) {
         const authResult = await this.authenticateWithGoogle(false);
         if (!authResult.success) {
@@ -263,6 +319,8 @@ class SettingsIO {
       }
 
       const fileId = await this.getOrCreateDriveFile(token);
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 使用檔案ID進行同步: ${fileId}`);
+      
       const driveSettings = await this.downloadSettings(token, fileId);
       const localSettings = await GlobalSettings.getAllSettings();
       
@@ -273,7 +331,9 @@ class SettingsIO {
       
       if (needsReload) {
         console.log(`[SettingsIO][${getCurrentTimeString()}] 更新本地設定並重新載入`);
+        this.isInternalSyncUpdate = true; // 標記為內部更新
         await this.saveSettings(mergedSettings);
+        this.isInternalSyncUpdate = false; // 重置標記
         
         if (typeof location !== 'undefined' && location.reload) {
           location.reload();
@@ -289,6 +349,7 @@ class SettingsIO {
         }
       } else if (needsUpload) {
         console.log(`[SettingsIO][${getCurrentTimeString()}] 本地設定較新，上傳到雲端`);
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 使用檔案ID進行上傳: ${fileId}`);
         await this.uploadSettings(token, fileId);
       } else {
         console.log(`[SettingsIO][${getCurrentTimeString()}] 設定已同步，無需操作`);
@@ -311,6 +372,9 @@ class SettingsIO {
     
     console.log(`[SettingsIO][${getCurrentTimeString()}] 比較時間戳記: 本地=${new Date(localLastModified).toISOString()}, 雲端=${new Date(driveLastModified).toISOString()}, 本地最近=${isLocalRecent}`);
     
+    // 發送時間戳比較信息到 background
+    this.sendSyncDebug(`時間戳比較: 本地=${new Date(localLastModified).toISOString()}, 雲端=${new Date(driveLastModified).toISOString()}, 本地最近=${isLocalRecent}`, 'compare', 'timestamp');
+    
     // 特殊情況：本地時間戳無效
     if (localLastModified <= 0 && driveLastModified > 0) {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 本地時間戳無效，強制使用雲端版本`);
@@ -323,10 +387,58 @@ class SettingsIO {
       };
     }
 
-    // 比較實際內容
+    // 比較實際內容 - 添加詳細調試
     const localContent = this.filterSettingsForComparison(localSettings);
     const driveContent = this.filterSettingsForComparison(driveSettings);
+    
+    // 發送過濾後內容的詳細信息到 background
+    const localKeys = Object.keys(localContent).sort();
+    const driveKeys = Object.keys(driveContent).sort();
+    const localKeyCount = localKeys.length;
+    const driveKeyCount = driveKeys.length;
+    
+    this.sendSyncDebug(`過濾後內容: 本地鍵值數=${localKeyCount}, 雲端鍵值數=${driveKeyCount}`, 'compare', 'filtered_content');
+    
+    // 檢查鍵值差異
+    const missingInDrive = localKeys.filter(key => !driveKeys.includes(key));
+    const missingInLocal = driveKeys.filter(key => !localKeys.includes(key));
+    
+    if (missingInDrive.length > 0) {
+      this.sendSyncDebug(`雲端缺少的鍵值: ${missingInDrive.slice(0, 10).join(', ')}${missingInDrive.length > 10 ? '...' : ''}`, 'compare', 'missing_keys');
+    }
+    if (missingInLocal.length > 0) {
+      this.sendSyncDebug(`本地缺少的鍵值: ${missingInLocal.slice(0, 10).join(', ')}${missingInLocal.length > 10 ? '...' : ''}`, 'compare', 'missing_keys');
+    }
+    
+    // 檢查相同鍵值的值差異
+    const commonKeys = localKeys.filter(key => driveKeys.includes(key));
+    const differentValues = [];
+    
+    for (const key of commonKeys) {
+      if (!this.deepEqual(localContent[key], driveContent[key])) {
+        const localValue = localContent[key];
+        const driveValue = driveContent[key];
+        const localType = typeof localValue;
+        const driveType = typeof driveValue;
+        
+        if (localType === 'string' && driveType === 'string') {
+          const localLength = localValue.length;
+          const driveLength = driveValue.length;
+          differentValues.push(`${key}(本地長度:${localLength}, 雲端長度:${driveLength})`);
+        } else {
+          differentValues.push(`${key}(本地:${localType}, 雲端:${driveType})`);
+        }
+      }
+    }
+    
+    if (differentValues.length > 0) {
+      this.sendSyncDebug(`值不同的鍵: ${differentValues.slice(0, 5).join(', ')}${differentValues.length > 5 ? '...' : ''}`, 'compare', 'different_values');
+    }
+    
     const hasContentDifference = !this.deepEqual(localContent, driveContent);
+    
+    // 發送最終比較結果到 background
+    this.sendSyncDebug(`內容比較結果: ${hasContentDifference ? '有差異' : '無差異'}, 鍵值差異=${missingInDrive.length + missingInLocal.length}, 值差異=${differentValues.length}`, 'compare', 'final_result');
     
     if (!hasContentDifference) {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 設定內容相同，跳過同步`);
@@ -406,13 +518,15 @@ class SettingsIO {
         fileId = await this.getOrCreateDriveFile(token);
       }
 
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 正在上傳到檔案ID: ${fileId}`);
+
       const allSettings = await GlobalSettings.getAllSettings();
       const settings = this.cleanSettingsForUpload(allSettings);
       settings.lastModified = Date.now();
       
       await this.updateDriveFile(token, fileId, settings);
       
-      console.log(`[SettingsIO][${getCurrentTimeString()}] 設定上傳完成`);
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 設定上傳完成 (檔案ID: ${fileId})`);
       
     } catch (error) {
       console.error(`[SettingsIO][${getCurrentTimeString()}] 上傳設定失敗:`, error);
@@ -449,23 +563,68 @@ class SettingsIO {
       }
     }
 
-    try {
-      const searchUrl = `${SettingsIO.CONSTANTS.DRIVE_API_BASE}/files?q=name='${SettingsIO.CONSTANTS.SETTINGS_FILENAME}' and trashed=false`;
-      const searchResponse = await fetch(searchUrl, {
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      const searchData = await searchResponse.json();
+    // 🎯 聰明解法：如果本地沒有檔案ID，檢查 Chrome Sync Storage 是否有其他設備保存的檔案ID
+    if (!fileId) {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 檢查其他設備是否已有檔案ID...`);
       
-      if (searchData.files && searchData.files.length > 0) {
-        fileId = searchData.files[0].id;
-        console.log(`[SettingsIO][${getCurrentTimeString()}] 找到現有檔案:`, fileId);
+      // 先檢查整個 sync storage 來調試
+      const allSyncData = await new Promise((resolve) => {
+        chrome.storage.sync.get(null, (result) => resolve(result));
+      });
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 Chrome Sync Storage 內容:`, Object.keys(allSyncData));
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 Chrome Sync Storage 大小:`, JSON.stringify(allSyncData).length, 'bytes');
+      
+      const syncResult = await new Promise((resolve) => {
+        chrome.storage.sync.get(['sharedDriveFileId'], (result) => resolve(result));
+      });
+      
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 檢查結果: sharedDriveFileId =`, syncResult.sharedDriveFileId || '(空值)');
+      
+      if (syncResult.sharedDriveFileId) {
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 發現其他設備的檔案ID: ${syncResult.sharedDriveFileId}`);
+        try {
+          // 驗證這個檔案ID是否有效
+          await this.getDriveFileMetadata(token, syncResult.sharedDriveFileId);
+          fileId = syncResult.sharedDriveFileId;
+          
+          // 將找到的檔案ID保存到本地
+          await chrome.storage.local.set({
+            [SettingsIO.CONSTANTS.KEYS.DRIVE_FILE_ID]: fileId
+          });
+          console.log(`[SettingsIO][${getCurrentTimeString()}] 🎉 成功使用其他設備的檔案ID`);
+          return fileId;
+        } catch (error) {
+          console.log(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 其他設備的檔案ID無效:`, error.message);
+          
+          // 清理無效的檔案ID
+          console.log(`[SettingsIO][${getCurrentTimeString()}] 🧹 清理無效的檔案ID...`);
+          await Promise.all([
+            chrome.storage.local.remove([SettingsIO.CONSTANTS.KEYS.DRIVE_FILE_ID]),
+            new Promise((resolve) => {
+              chrome.storage.sync.remove(['sharedDriveFileId'], () => {
+                console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 已清理無效的檔案ID`);
+                resolve();
+              });
+            })
+          ]);
+        }
+      } else {
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ❌ 未找到其他設備的檔案ID`);
+      }
+    }
+
+    // 如果還是沒有檔案ID，搜尋現有檔案
+    try {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 開始搜尋現有雲端檔案...`);
+      fileId = await this.searchExistingDriveFile(token);
+      
+      if (fileId) {
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 搜尋成功，找到檔案ID: ${fileId}`);
+      } else {
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ❌ 搜尋失敗，未找到現有檔案`);
       }
     } catch (error) {
-      console.log(`[SettingsIO][${getCurrentTimeString()}] 搜尋檔案失敗:`, error);
+      console.log(`[SettingsIO][${getCurrentTimeString()}] ❌ 搜尋檔案時發生錯誤:`, error);
     }
 
     if (!fileId) {
@@ -477,17 +636,38 @@ class SettingsIO {
       fileId = await this.createDriveFile(token, settings);
     }
 
-    await chrome.storage.local.set({
-      [SettingsIO.CONSTANTS.KEYS.DRIVE_FILE_ID]: fileId
-    });
+    // 🎯 聰明解法：將檔案ID同時保存到本地和同步儲存，供其他設備使用
+    await Promise.all([
+      chrome.storage.local.set({
+        [SettingsIO.CONSTANTS.KEYS.DRIVE_FILE_ID]: fileId
+      }),
+      new Promise((resolve, reject) => {
+        chrome.storage.sync.set({ 
+          sharedDriveFileId: fileId 
+        }, () => {
+          if (chrome.runtime.lastError) {
+            console.error(`[SettingsIO][${getCurrentTimeString()}] ❌ 保存檔案ID到 Chrome Sync Storage 失敗:`, chrome.runtime.lastError);
+            reject(chrome.runtime.lastError);
+          } else {
+            console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 檔案ID已成功保存到 Chrome Sync Storage: ${fileId}`);
+            resolve();
+          }
+        });
+      })
+    ]);
+    
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 📤 檔案ID已共享給其他設備: ${fileId}`);
 
     return fileId;
   }
 
   async createDriveFile(token, settings) {
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 正在創建新的雲端檔案...`);
+    
+    // 不使用 appDataFolder，改用用戶Drive中的特定資料夾
     const metadata = {
-      name: SettingsIO.CONSTANTS.SETTINGS_FILENAME,
-      parents: ['appDataFolder']
+      name: SettingsIO.CONSTANTS.SETTINGS_FILENAME
+      // 移除 parents: ['appDataFolder']，讓檔案創建在根目錄
     };
 
     const form = new FormData();
@@ -506,11 +686,14 @@ class SettingsIO {
     }
 
     const result = await response.json();
-    console.log(`[SettingsIO][${getCurrentTimeString()}] 檔案創建成功:`, result.id);
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 新檔案創建成功: ${result.id}`);
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 📁 設定檔案已保存到您的Google Drive根目錄，檔案名稱: ${SettingsIO.CONSTANTS.SETTINGS_FILENAME}`);
     return result.id;
   }
 
   async updateDriveFile(token, fileId, settings) {
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 正在更新檔案ID: ${fileId}`);
+    
     const response = await fetch(`${SettingsIO.CONSTANTS.UPLOAD_API_BASE}/files/${fileId}?uploadType=media`, {
       method: 'PATCH',
       headers: {
@@ -525,10 +708,12 @@ class SettingsIO {
       throw new Error(`更新檔案失敗: ${response.status} - ${error}`);
     }
 
-    console.log(`[SettingsIO][${getCurrentTimeString()}] 檔案更新成功`);
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 檔案更新成功: ${fileId}`);
   }
 
   async downloadSettings(token, fileId) {
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 正在從檔案ID下載設定: ${fileId}`);
+    
     const response = await fetch(`${SettingsIO.CONSTANTS.DRIVE_API_BASE}/files/${fileId}?alt=media`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
@@ -538,7 +723,7 @@ class SettingsIO {
     }
 
     const settings = await response.json();
-    console.log(`[SettingsIO][${getCurrentTimeString()}] 設定下載完成`);
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 設定下載完成 (檔案ID: ${fileId})`);
     return settings;
   }
 
@@ -662,13 +847,145 @@ class SettingsIO {
 
       const token = typeof authResult.token === 'object' ? authResult.token.token : authResult.token;
       const fileId = await this.getOrCreateDriveFile(token);
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 強制上傳使用檔案ID: ${fileId}`);
       await this.uploadSettings(token, fileId);
       
-      console.log(`[SettingsIO][${getCurrentTimeString()}] 強制上傳完成`);
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 強制上傳完成 (檔案ID: ${fileId})`);
       return { success: true };
     } catch (error) {
       console.error(`[SettingsIO][${getCurrentTimeString()}] 強制上傳失敗:`, error);
       return { success: false, error: error.message };
+    }
+  }
+
+  // 🎯 聊明解法：強制下載雲端設定（開啟同步時使用）
+  async forceDownloadFromCloud() {
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 🔽 開始強制下載雲端設定`);
+    
+    try {
+      const authResult = await this.authenticateWithGoogle(true);
+      if (!authResult.success) {
+        throw new Error(authResult.error || '認證失敗');
+      }
+
+      const token = typeof authResult.token === 'object' ? authResult.token.token : authResult.token;
+      
+      // 🔍 先嘗試搜尋現有檔案，不創建新檔案
+      let fileId = await this.searchExistingDriveFile(token);
+      
+      if (!fileId) {
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 未找到現有雲端檔案，可能是首次使用`);
+        // 如果真的沒有檔案，才創建一個空檔案
+        fileId = await this.getOrCreateDriveFile(token);
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 創建新檔案ID: ${fileId}`);
+      } else {
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 找到現有雲端檔案，檔案ID: ${fileId}`);
+        // 儲存找到的檔案ID
+        await chrome.storage.local.set({
+          [SettingsIO.CONSTANTS.KEYS.DRIVE_FILE_ID]: fileId
+        });
+      }
+      
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 正在從檔案ID下載: ${fileId}`);
+      const driveSettings = await this.downloadSettings(token, fileId);
+      
+      // 檢查雲端是否有內容，如果有就直接套用
+      if (driveSettings && Object.keys(driveSettings).length > 2) {  // 不只是lastModified
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🎉 發現雲端設定，直接套用 (檔案ID: ${fileId})`);
+        
+        this.isInternalSyncUpdate = true;
+        await this.saveSettings(driveSettings);
+        this.isInternalSyncUpdate = false;
+        
+        // 通知頁面重新載入
+        try {
+          chrome.runtime.sendMessage({
+            action: 'settingsUpdated',
+            data: { reason: 'forceDownload', timestamp: Date.now() }
+          }).catch(() => {});
+        } catch (e) {}
+        
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 雲端設定下載完成 (檔案ID: ${fileId})`);
+      } else {
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ℹ️ 雲端設定為空，保持本地設定 (檔案ID: ${fileId})`);
+      }
+      
+      await this.updateSyncStatus('success');
+      return { success: true };
+      
+    } catch (error) {
+      console.error(`[SettingsIO][${getCurrentTimeString()}] 強制下載失敗:`, error);
+      await this.setSyncError(error.message);
+      return { success: false, error: error.message };
+    }
+  }
+
+  // 🔍 新增：專門搜尋現有檔案的方法（不創建）
+  async searchExistingDriveFile(token) {
+    try {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 搜尋現有雲端檔案...`);
+      
+      // 嘗試多種搜尋策略
+      const searchStrategies = [
+        // 策略1：搜尋檔案名稱（根目錄）
+        `name='${SettingsIO.CONSTANTS.SETTINGS_FILENAME}' and trashed=false`,
+        // 策略2：模糊搜尋
+        `name contains 'gpt-text-rewriting-settings' and trashed=false`
+      ];
+      
+      for (let i = 0; i < searchStrategies.length; i++) {
+        const query = searchStrategies[i];
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 嘗試搜尋策略${i + 1}: ${query}`);
+        
+        const searchUrl = `${SettingsIO.CONSTANTS.DRIVE_API_BASE}/files?q=${encodeURIComponent(query)}`;
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 搜尋URL: ${searchUrl}`);
+        
+        const searchResponse = await fetch(searchUrl, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 搜尋回應狀態: ${searchResponse.status}`);
+        
+        if (!searchResponse.ok) {
+          const errorText = await searchResponse.text();
+          console.error(`[SettingsIO][${getCurrentTimeString()}] ❌ 搜尋請求失敗: ${searchResponse.status} - ${errorText}`);
+          continue;
+        }
+
+        const searchData = await searchResponse.json();
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 搜尋結果:`, searchData);
+        
+        if (searchData.files && searchData.files.length > 0) {
+          const fileId = searchData.files[0].id;
+          const modifiedTime = searchData.files[0].modifiedTime;
+          const parents = searchData.files[0].parents;
+          console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 找到現有檔案ID: ${fileId}, 修改時間: ${modifiedTime}, 父資料夾: ${parents?.join(', ') || '根目錄'}`);
+          
+          if (searchData.files.length > 1) {
+            console.log(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 發現多個同名檔案 (${searchData.files.length}個)，使用第一個`);
+            
+            // 列出所有找到的檔案ID
+            searchData.files.forEach((file, index) => {
+              console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 檔案${index + 1}: ${file.id} (${file.modifiedTime}) 父資料夾: ${file.parents?.join(', ') || '根目錄'}`);
+            });
+          }
+          
+          return fileId;
+        } else {
+          console.log(`[SettingsIO][${getCurrentTimeString()}] ❌ 策略${i + 1}未找到檔案`);
+          console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 詳細搜尋結果:`, JSON.stringify(searchData, null, 2));
+        }
+      }
+      
+      console.log(`[SettingsIO][${getCurrentTimeString()}] ❌ 所有搜尋策略都未找到現有檔案`);
+      return null;
+      
+    } catch (error) {
+      console.error(`[SettingsIO][${getCurrentTimeString()}] 搜尋檔案失敗:`, error);
+      return null;
     }
   }
 }
@@ -712,13 +1029,19 @@ class TokenManager {
       const clientId = this.getCurrentClientId();
       console.log(`[TokenManager][${getCurrentTimeString()}] 開始認證, interactive:`, interactive);
       
+      // 如果是互動式認證，先清除舊的token以使用新權限
+      if (interactive) {
+        console.log(`[TokenManager][${getCurrentTimeString()}] 清除舊認證token以使用新權限...`);
+        await chrome.identity.clearAllCachedAuthTokens();
+      }
+      
       if (interactive && clientId !== '862665835661-leepued02022ei05bgb4jga850eglj0n.apps.googleusercontent.com') {
         return await this.performWebAuthFlow(clientId);
       }
       
       const tokenResult = await chrome.identity.getAuthToken({ 
         interactive: interactive,
-        scopes: ['https://www.googleapis.com/auth/drive.appdata']
+        scopes: ['https://www.googleapis.com/auth/drive.file']
       });
 
       if (!tokenResult) {
@@ -760,7 +1083,7 @@ class TokenManager {
   async performWebAuthFlow(clientId) {
     try {
       const redirectUri = chrome.identity.getRedirectURL();
-      const scopes = 'https://www.googleapis.com/auth/drive.appdata';
+      const scopes = 'https://www.googleapis.com/auth/drive.file';
       
       const authUrl = `https://accounts.google.com/oauth/authorize?` +
         `client_id=${clientId}&` +

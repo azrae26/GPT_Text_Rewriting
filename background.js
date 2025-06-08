@@ -1509,6 +1509,59 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
             console.log(`[設定管理器 ${timestamp}]`, logMessage, data || '');
     }
   }
+  // 處理同步調試信息
+  else if (request.action === 'syncDebug') {
+    const timestamp = new Date().toLocaleTimeString();
+    const debugType = request.data?.reason || 'general';
+    const debugAction = request.data?.action || 'info';
+    
+    // 根據調試類型使用不同的表情符號和顏色
+    let emoji = '🔍';
+    let style = 'color: #666';
+    
+    if (debugType === 'timestamp') {
+      emoji = '⏰';
+      style = 'color: #FF9800; font-weight: bold;';
+    } else if (debugType === 'filtered_content') {
+      emoji = '📊';
+      style = 'color: #2196F3;';
+    } else if (debugType === 'missing_keys') {
+      emoji = '🔑';
+      style = 'color: #FF5722; font-weight: bold;';
+    } else if (debugType === 'different_values') {
+      emoji = '📝';
+      style = 'color: #E91E63; font-weight: bold;';
+    } else if (debugType === 'final_result') {
+      emoji = '🎯';
+      style = 'color: #9C27B0; font-weight: bold;';
+    } else if (debugType === 'local_update') {
+      emoji = '✏️';
+      style = 'color: #FF5722; font-weight: bold;';
+    } else if (debugType === 'protect_local') {
+      emoji = '🛡️';
+      style = 'color: #F44336; font-weight: bold;';
+    } else if (debugType === 'force_upload') {
+      emoji = '🚀';
+      style = 'color: #4CAF50; font-weight: bold;';
+    } else if (debugAction === 'download') {
+      emoji = '⬇️';
+      style = 'color: #4CAF50; font-weight: bold;';
+    } else if (debugAction === 'upload') {
+      emoji = '⬆️';
+      style = 'color: #3F51B5; font-weight: bold;';
+    } else if (debugAction === 'none') {
+      emoji = '✅';
+      style = 'color: #8BC34A;';
+    }
+    
+    console.log(
+      `%c[SyncDebug][${timestamp}] ${emoji} ${request.message}`, 
+      style,
+      request.data || ''
+    );
+    
+    sendResponse({ status: 'success' });
+  }
   return true; // 表示我們會異步發送回應
 });
 
@@ -1526,5 +1579,59 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         tabContentScriptStatus.set(tabId, false);
     }
 });
+
+// 調試函數：顯示當前Google帳號
+async function debugShowGoogleAccount() {
+  try {
+    console.log('[DEBUG] 開始獲取當前Google帳號信息...');
+    
+    // 獲取認證token（使用Drive API權限）
+    const tokenResult = await chrome.identity.getAuthToken({ 
+      interactive: false,
+      scopes: ['https://www.googleapis.com/auth/drive.appdata']
+    });
+    
+    if (!tokenResult) {
+      console.log('[DEBUG] ❌ 未獲取到認證token，可能未登入Google帳號');
+      return;
+    }
+    
+    const token = typeof tokenResult === 'object' ? tokenResult.token : tokenResult;
+    console.log('[DEBUG] ✅ 成功獲取認證token');
+    
+    // 使用Drive API的about接口獲取用戶信息
+    const response = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    if (!response.ok) {
+      console.log('[DEBUG] ❌ 獲取用戶信息失敗:', response.status, response.statusText);
+      return;
+    }
+    
+    const data = await response.json();
+    const userInfo = data.user;
+    
+    console.log('=================================');
+    console.log('🔍 當前Google帳號信息:');
+    console.log('📧 Email:', userInfo.emailAddress);
+    console.log('👤 顯示名稱:', userInfo.displayName);
+    console.log('🆔 用戶ID:', userInfo.permissionId);
+    console.log('🖼️ 頭像:', userInfo.photoLink);
+    console.log('=================================');
+    
+    return userInfo;
+    
+  } catch (error) {
+    console.error('[DEBUG] ❌ 獲取Google帳號信息失敗:', error);
+    console.log('提示：可能需要先登入Google帳號或重新認證');
+  }
+}
+
+// 全局暴露調試函數
+self.debugShowGoogleAccount = debugShowGoogleAccount;
 
 
