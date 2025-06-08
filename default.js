@@ -232,4 +232,14 @@ Auras=雙鴻
   zhEnMapping: '1101,台泥',
 };
 
-window.DefaultSettings = DefaultSettings;
+// 將 DefaultSettings 暴露到適當的全域物件
+if (typeof window !== 'undefined') {
+  // 瀏覽器環境
+  window.DefaultSettings = DefaultSettings;
+} else if (typeof self !== 'undefined') {
+  // Service Worker 環境
+  self.DefaultSettings = DefaultSettings;
+} else if (typeof global !== 'undefined') {
+  // Node.js 環境
+  global.DefaultSettings = DefaultSettings;
+}

@@ -30,6 +30,34 @@ document.addEventListener('DOMContentLoaded', async function() {
     return new Date().toISOString();
   }
 
+  // 監聽來自 background 的訊息
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.action === 'settingsUpdated') {
+      console.log(`[popup.js][${getCurrentTimeString()}] 收到設定更新通知:`, message.data);
+      
+      // 當雲端同步更新設定時，重新載入 popup 的設定
+      if (message.data.reason === 'cloudSync') {
+        console.log(`[popup.js][${getCurrentTimeString()}] 雲端同步已更新設定，正在重新載入...`);
+        
+        // 延遲一下再重新載入，確保儲存完成
+        setTimeout(async () => {
+          try {
+            // 重新載入設定
+            const updatedSettings = await GlobalSettings.loadSettings();
+            console.log(`[popup.js][${getCurrentTimeString()}] 重新載入的設定:`, updatedSettings);
+            
+            // 重新應用到 UI（這裡可以添加更多特定的 UI 更新邏輯）
+            location.reload(); // 簡單重新載入 popup
+          } catch (error) {
+            console.error(`[popup.js][${getCurrentTimeString()}] 重新載入設定失敗:`, error);
+          }
+        }, 500);
+      }
+      
+      sendResponse({ received: true });
+    }
+  });
+
   // 1. DOM 元素獲取 (按功能分組)
   // API 和模型相關
   const apiKeyInput = document.getElementById('api-key');

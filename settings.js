@@ -241,10 +241,12 @@ const GlobalSettings = {
       this.syncInterval = syncResult.syncInterval || 15;
       
       // 使用 DefaultSettings 中的預設值
-      this.confirmModel = syncResult.confirmModel === undefined ? window.DefaultSettings?.confirmModel : syncResult.confirmModel;
-      this.confirmContent = syncResult.confirmContent === undefined ? window.DefaultSettings?.confirmContent : syncResult.confirmContent;
-      this.removeHash = syncResult.removeHash === undefined ? window.DefaultSettings?.removeHash : syncResult.removeHash;
-      this.removeStar = syncResult.removeStar === undefined ? window.DefaultSettings?.removeStar : syncResult.removeStar;
+          // 取得適當的全域 DefaultSettings
+    const defaultSettings = this.getGlobalDefaultSettings();
+    this.confirmModel = syncResult.confirmModel === undefined ? defaultSettings?.confirmModel : syncResult.confirmModel;
+    this.confirmContent = syncResult.confirmContent === undefined ? defaultSettings?.confirmContent : syncResult.confirmContent;
+    this.removeHash = syncResult.removeHash === undefined ? defaultSettings?.removeHash : syncResult.removeHash;
+    this.removeStar = syncResult.removeStar === undefined ? defaultSettings?.removeStar : syncResult.removeStar;
 
       // 更新自動改寫模式 - 修改：從 local storage 載入
       if (localResult.autoRewritePatterns) {
@@ -252,8 +254,8 @@ const GlobalSettings = {
       } else if (syncResult.autoRewritePatterns) {
         // 向後兼容：如果 local storage 沒有，檢查 sync storage
         this.updateAutoRewritePatterns(syncResult.autoRewritePatterns);
-      } else if (window.DefaultSettings?.autoRewritePatterns) {
-        this.updateAutoRewritePatterns(window.DefaultSettings.autoRewritePatterns);
+      } else if (defaultSettings?.autoRewritePatterns) {
+        this.updateAutoRewritePatterns(defaultSettings.autoRewritePatterns);
       }
 
       // 如果是首次運行，設置預設值
@@ -327,7 +329,7 @@ const GlobalSettings = {
       return this;
     } catch (error) {
       console.error('載入設置時出錯:', error);
-      return window.DefaultSettings || {};
+      return this.getGlobalDefaultSettings() || {};
     }
   },
 
@@ -941,13 +943,29 @@ const GlobalSettings = {
         importantSettings.customModels = syncData.customModels;
       }
       
-      // 合併所有資料
+      // 優先使用 sync storage 的關鍵設定
+      const syncPriorityKeys = ['lastModified', 'apiKeys', 'autoSyncEnabled'];
+      
+      // 合併所有資料，但確保關鍵設定不被 local storage 覆蓋
       const allData = { 
         ...syncData, 
         ...localData,
         ...replaceSettings,
         ...importantSettings
       };
+      
+      // 恢復關鍵設定的 sync storage 值
+      syncPriorityKeys.forEach(key => {
+        if (syncData[key] !== undefined) {
+          const beforeValue = allData[key];
+          allData[key] = syncData[key];
+          
+          // 如果值被覆蓋了，記錄日誌
+          if (beforeValue !== undefined && beforeValue !== syncData[key]) {
+            console.log(`[Settings] 🔄 ${key} 優先使用 sync storage 值: ${beforeValue} -> ${syncData[key]}`);
+          }
+        }
+      });
       
       return this._filterValidSettings(allData);
     } catch (error) {
@@ -1304,8 +1322,29 @@ const GlobalSettings = {
     
     // 返回第一個可用模型
     return modelKeys[0];
+  },
+
+  // 取得適當環境的全域 DefaultSettings
+  getGlobalDefaultSettings() {
+    if (typeof window !== 'undefined' && window.DefaultSettings) {
+      return window.DefaultSettings;
+    } else if (typeof self !== 'undefined' && self.DefaultSettings) {
+      return self.DefaultSettings;
+    } else if (typeof global !== 'undefined' && global.DefaultSettings) {
+      return global.DefaultSettings;
+    }
+    return {};
   }
 };
 
 // 確保 GlobalSettings 可以被其他檔案訪問
-window.GlobalSettings = GlobalSettings;
+if (typeof window !== 'undefined') {
+  // 瀏覽器環境
+  window.GlobalSettings = GlobalSettings;
+} else if (typeof self !== 'undefined') {
+  // Service Worker 環境
+  self.GlobalSettings = GlobalSettings;
+} else if (typeof global !== 'undefined') {
+  // Node.js 環境
+  global.GlobalSettings = GlobalSettings;
+}

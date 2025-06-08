@@ -137,6 +137,65 @@ AI 文章改寫助手是一個 Chrome 擴展，專為提升文章寫作效率而
       Popup (UI + OAuth) → 僅處理用戶介面和認證
 ```
 
+### 進一步修復：模擬同步功能替換為真實同步功能 (2025/06/08 15:31)
+
+**問題發現**：
+上次修復後發現背景同步功能只是**模擬實現**，沒有真正執行同步操作。用戶反饋顯示每15秒觸發定期同步，總是顯示「本地 53 項，雲端 37 項」和「需要上傳」，但數字從不改變，popup也沒有更新。
+
+**根本原因**：
+- `BackgroundSyncManager` 類別是一個**模擬實現**，只做記錄和檢查，沒有真正的同步邏輯
+- 真正的同步邏輯在 `SettingsIO/settings-io.js` 中，但之前沒有在背景環境中正確集成
+
+**徹底修復方案**：
+1. **真實同步集成**：
+   - 將 `BackgroundSyncManager` 從模擬實現改為真實實現
+   - 添加 `settingsIO` 屬性來持有真正的 SettingsIO 實例
+   - 重寫所有同步方法使其使用真正的 SettingsIO 而非模擬邏輯
+
+2. **動態載入機制**：
+   - 實現 `loadSettingsIO()` 和 `loadDependencies()` 方法
+   - 動態載入 SettingsIO 類別到背景環境
+   - 使用 `chrome.runtime.getURL()` 和 ES6 import 語法
+
+3. **完整同步功能**：
+   - `manualSync()` - 使用真實的 `settingsIO.manualSync()`
+   - `toggleAutoSync()` - 使用真實的 `settingsIO.toggleAutoSync()`
+   - `performPeriodicSync()` - 執行真正的 `settingsIO.performSync()`
+   - `getSyncStatus()` - 獲取真實的同步狀態
+
+4. **備用實現改善**：
+   - 改善 `FallbackSettingsIO` 類別，提供更清楚的警告訊息
+   - 明確區分真實實現和備用實現的日誌輸出
+
+5. **錯誤處理強化**：
+   - 詳細的載入失敗日誌，包含檢查建議
+   - 明確的實例類型檢查和狀態反饋
+
+**修復結果**：
+```
+之前：Background (模擬SettingsIO) → 只記錄，不執行
+現在：Background (真實SettingsIO) → 執行完整的 Google Drive 雲端同步
+```
+
+**重要技術修復（15:31 完成）**：
+- **Service Worker 相容性問題**：發現 ES6 `import()` 在 Service Worker 環境中被禁用
+- **解決方案**：改用 `importScripts()` 載入依賴檔案（Service Worker 標準方法）
+- **檔案修改**：調整 `SettingsIO/settings-io.js` 匯出語法，增加 `self` 全域變數支援
+- **載入順序**：確保依賴檔案（default.js, settings.js, SettingsIO/settings-io.js）正確載入
+
+**重要改變**：
+- ✅ 移除了所有模擬同步邏輯
+- ✅ 集成了完整的 Google Drive 雲端同步功能
+- ✅ 定期同步現在會執行真正的雲端操作
+- ✅ 背景同步狀態會真實反映同步進度和結果
+- ✅ 解決了 Service Worker 環境中動態 import 的相容性問題
+
+**測試建議**：
+1. 重新載入擴展，檢查 Background 日誌是否不再出現 import() 錯誤
+2. 確認日誌顯示「真實 SettingsIO 載入完成」而非「使用備用實現」
+3. 開啟 Popup，測試手動同步功能是否使用真正的 Google Drive 同步
+4. 檢查定期同步是否正確執行雲端操作（而非模擬操作）
+
 ## 系統要求
 
 - Chrome 瀏覽器 88.0 或更高版本

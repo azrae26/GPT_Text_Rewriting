@@ -308,8 +308,26 @@ class SettingsIO {
       if (needsReload) {
         console.log(`[SettingsIO][${getCurrentTimeString()}] 更新本地設定並重新載入`);
         await this.saveSettings(mergedSettings);
-        // 直接重新載入，不顯示確認對話框
-        location.reload();
+        // 在不同環境中處理重新載入
+        if (typeof location !== 'undefined' && location.reload) {
+          // 瀏覽器環境：直接重新載入
+          location.reload();
+        } else {
+          // Service Worker 環境：記錄更新完成，通知 popup（如果存在）
+          console.log(`[SettingsIO][${getCurrentTimeString()}] Service Worker 環境：設定已更新，請重新開啟 popup 查看最新設定`);
+          
+          // 嘗試通知 popup 重新載入設定（如果 popup 開啟的話）
+          try {
+            chrome.runtime.sendMessage({
+              action: 'settingsUpdated',
+              data: { reason: 'cloudSync', timestamp: Date.now() }
+            }).catch(() => {
+              // 忽略錯誤（popup 可能未開啟）
+            });
+          } catch (e) {
+            // 忽略通知錯誤
+          }
+        }
       } else if (needsUpload) {
         // 如果本地設定較新，上傳到雲端
         console.log(`[SettingsIO][${getCurrentTimeString()}] 本地設定較新，上傳到雲端`);
@@ -439,17 +457,18 @@ class SettingsIO {
     };
     console.log(`[SettingsIO][${getCurrentTimeString()}] 比較設定時間戳記:`, timestampData);
     
-    // 發送到 background 保存調試訊息
-    chrome.runtime.sendMessage({
-      action: 'syncDebug',
-      type: 'timestamp',
-      message: '比較設定時間戳記',
-      data: timestampData
-    }).catch(() => {}); // 忽略錯誤
-
     // 特殊情況：如果本地時間戳記為 0 或無效，且雲端有有效時間戳記，強制使用雲端版本
     if (localLastModified <= 0 && driveLastModified > 0) {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 本地時間戳記無效（${localLastModified}），強制使用雲端版本`);
+      
+      // 簡化調試：記錄關鍵同步決策
+      chrome.runtime.sendMessage({
+        action: 'syncDebug',
+        type: 'sync_result',
+        message: '時間戳無效，強制下載雲端版本',
+        data: { action: 'download', reason: 'invalid_timestamp' }
+      }).catch(() => {});
+      
       return {
         needsReload: true,
         needsUpload: false,
@@ -482,7 +501,7 @@ class SettingsIO {
     // 使用更可靠的深度比較
     const hasContentDifference = !this.deepEqual(localContent, driveContent);
     
-    // 詳細分析鍵值差異
+    // 分析差異（簡化版）
     const localKeys = Object.keys(localContent);
     const driveKeys = Object.keys(driveContent);
     const onlyInLocal = localKeys.filter(key => !driveKeys.includes(key));
@@ -490,50 +509,19 @@ class SettingsIO {
     const differentValues = localKeys.filter(key => 
       driveKeys.includes(key) && !this.deepEqual(localContent[key], driveContent[key])
     );
-    
-    const contentCompareData = {
-      hasContentDifference,
-      localSize: JSON.stringify(localContent).length,
-      driveSize: JSON.stringify(driveContent).length,
-      localKeys: localKeys.length,
-      driveKeys: driveKeys.length,
-      onlyInLocal: onlyInLocal,
-      onlyInDrive: onlyInDrive,
-      differentValues: differentValues,
-      keySizeDiff: onlyInLocal.length - onlyInDrive.length
-    };
-    console.log(`[SettingsIO][${getCurrentTimeString()}] 設定內容比較:`, contentCompareData);
-    
-    // 發送到 background 保存調試訊息
-    chrome.runtime.sendMessage({
-      action: 'syncDebug',
-      type: 'content_compare',
-      message: '設定內容比較',
-      data: contentCompareData
-    }).catch(() => {}); // 忽略錯誤
-    
-    // 如果有鍵值差異，發送詳細的差異分析
-    if (onlyInLocal.length > 0 || onlyInDrive.length > 0 || differentValues.length > 0) {
-      chrome.runtime.sendMessage({
-        action: 'syncDebug',
-        type: 'key_difference',
-        message: `鍵值差異詳細分析: 本地多${onlyInLocal.length}個, 雲端多${onlyInDrive.length}個, 值不同${differentValues.length}個`,
-        data: {
-          onlyInLocal: onlyInLocal, // 顯示完整列表
-          onlyInDrive: onlyInDrive,
-          differentValues: differentValues,
-          totalDiffs: {
-            onlyLocalCount: onlyInLocal.length,
-            onlyDriveCount: onlyInDrive.length, 
-            differentCount: differentValues.length
-          }
-        }
-      }).catch(() => {});
-    }
 
     // 如果內容完全相同，不需要任何操作
     if (!hasContentDifference) {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 設定內容相同，跳過同步`);
+      
+      // 簡化調試：記錄無需同步
+      chrome.runtime.sendMessage({
+        action: 'syncDebug',
+        type: 'sync_result',
+        message: '設定相同，無需同步',
+        data: { action: 'none', reason: 'no_difference' }
+      }).catch(() => {});
+      
       return {
         needsReload: false,
         needsUpload: false,
@@ -544,17 +532,28 @@ class SettingsIO {
     // 決定使用哪個版本（只有在內容有差異時才考慮）
     const useCloudVersion = !isLocalRecent && driveLastModified > localLastModified;
     
+    // 建立差異摘要
+    const diffSummary = [];
+    if (onlyInLocal.length > 0) diffSummary.push(`本地多${onlyInLocal.length}項`);
+    if (onlyInDrive.length > 0) diffSummary.push(`雲端多${onlyInDrive.length}項`);
+    if (differentValues.length > 0) diffSummary.push(`${differentValues.length}項內容不同`);
+    
     if (useCloudVersion) {
       // 使用雲端版本，且內容確實不同才重啟
       console.log(`[SettingsIO][${getCurrentTimeString()}] 採用雲端版本，需要重新載入`);
       
-      // 發送到 background
+      // 簡化調試：記錄下載決策和差異
       chrome.runtime.sendMessage({
         action: 'syncDebug',
-        type: 'sync_decision',
-        message: '採用雲端版本，需要重新載入',
-        data: { decision: 'use_cloud', needsReload: true }
+        type: 'sync_result',
+        message: `下載雲端版本 - ${diffSummary.join(', ')}`,
+        data: { 
+          action: 'download', 
+          reason: 'cloud_newer',
+          differences: diffSummary.join(', ')
+        }
       }).catch(() => {});
+      
       return {
         needsReload: true,
         needsUpload: false,
@@ -567,13 +566,18 @@ class SettingsIO {
       // 使用本地版本，上傳到雲端
       console.log(`[SettingsIO][${getCurrentTimeString()}] 採用本地版本，將上傳到雲端`);
       
-      // 發送到 background
+      // 簡化調試：記錄上傳決策和差異
       chrome.runtime.sendMessage({
         action: 'syncDebug',
-        type: 'sync_decision',
-        message: '採用本地版本，將上傳到雲端',
-        data: { decision: 'use_local', needsUpload: true }
+        type: 'sync_result',
+        message: `上傳本地版本 - ${diffSummary.join(', ')}`,
+        data: { 
+          action: 'upload', 
+          reason: 'local_newer',
+          differences: diffSummary.join(', ')
+        }
       }).catch(() => {});
+      
       return {
         needsReload: false,
         needsUpload: true,
@@ -593,14 +597,6 @@ class SettingsIO {
     
     try {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 開始上傳設定`);
-      
-      // 發送到 background
-      chrome.runtime.sendMessage({
-        action: 'syncDebug',
-        type: 'upload',
-        message: '開始上傳設定',
-        data: { timestamp: getCurrentTimeString() }
-      }).catch(() => {});
       
       // 如果沒有提供 token，獲取新的
       if (!token) {
@@ -631,15 +627,12 @@ class SettingsIO {
       
       console.log(`[SettingsIO][${getCurrentTimeString()}] 設定上傳完成`);
       
-      // 發送到 background
+      // 簡化調試：記錄上傳成功
       chrome.runtime.sendMessage({
         action: 'syncDebug',
-        type: 'upload',
-        message: '設定上傳完成',
-        data: { 
-          timestamp: getCurrentTimeString(),
-          settingsSize: JSON.stringify(settings).length 
-        }
+        type: 'upload_result',
+        message: `上傳成功 (${Math.round(JSON.stringify(settings).length/1024)}KB)`,
+        data: { success: true, size: JSON.stringify(settings).length }
       }).catch(() => {});
       
     } catch (error) {
@@ -799,13 +792,23 @@ class SettingsIO {
       }
     });
 
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 保存設定分類:`, {
+      syncKeys: Object.keys(syncSettings),
+      localKeys: Object.keys(localSettings),
+      hasLastModified: 'lastModified' in settings,
+      lastModifiedValue: settings.lastModified,
+      lastModifiedInSync: 'lastModified' in syncSettings
+    });
+
     // 分別儲存
     if (Object.keys(syncSettings).length > 0) {
       await chrome.storage.sync.set(syncSettings);
+      console.log(`[SettingsIO][${getCurrentTimeString()}] Sync storage 保存完成`);
     }
     
     if (Object.keys(localSettings).length > 0) {
       await chrome.storage.local.set(localSettings);
+      console.log(`[SettingsIO][${getCurrentTimeString()}] Local storage 保存完成`);
     }
   }
 
@@ -1128,6 +1131,32 @@ class TokenManager {
   }
 }
 
-// 暴露到全局
-window.SettingsIO = SettingsIO;
-window.TokenManager = TokenManager; 
+// 暴露到全局（適用於所有環境：window、self、global）
+if (typeof window !== 'undefined') {
+  window.SettingsIO = SettingsIO;
+  window.TokenManager = TokenManager;
+} else if (typeof self !== 'undefined') {
+  // Service Worker 環境
+  self.SettingsIO = SettingsIO;
+  self.TokenManager = TokenManager;
+} else if (typeof global !== 'undefined') {
+  // Node.js 環境
+  global.SettingsIO = SettingsIO;
+  global.TokenManager = TokenManager;
+}
+
+// ES6 模組匯出（for Node.js 環境）
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { SettingsIO, TokenManager };
+}
+
+// ES6 匯出（for import statements）- 僅在支援的環境中
+try {
+  if (typeof module === 'undefined') {
+    // 不在 Service Worker 環境中才使用 export
+    // export { SettingsIO, TokenManager }; 
+    // 暫時註解掉以避免 Service Worker 錯誤
+  }
+} catch (e) {
+  // 忽略 export 相關錯誤
+} 
