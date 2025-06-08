@@ -881,6 +881,22 @@ const GlobalSettings = {
         this._getChromeStorage('local')
       ]);
       
+      // 排除同步系統內部狀態（這些不應該同步到雲端）
+      const internalStateKeys = [
+        'syncStatus', 'syncError', 'syncDebugLogs', 'stockCrawlerState',
+        'lastSyncTime', 'driveFileId', 'syncEnabled'
+      ];
+      
+      // 從 localData 中移除內部狀態
+      internalStateKeys.forEach(key => {
+        if (key in localData) {
+          delete localData[key];
+        }
+        if (key in syncData) {
+          delete syncData[key];
+        }
+      });
+      
       // 特別處理替換規則，移除前綴
       const replaceSettings = {};
       Object.entries(localData).forEach(([key, value]) => {

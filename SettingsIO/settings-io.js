@@ -4,19 +4,26 @@
  * - OAuth2 認證管理 (TokenManager)
  * - Google Drive 檔案同步
  * - 自動設定上傳和下載
- * - 設定衝突處理
+ * - 設定衝突處理和時間戳記驗證
  * - 多分頁協調管理
+ * - 深度內容比較和無效時間戳記處理
  * 
  * 職責：
  * - 管理與 Google Drive 的所有互動
  * - 處理設定的雲端同步邏輯
  * - 提供同步狀態和錯誤處理
  * - 實現自動和手動同步功能
+ * - 處理本地時間戳記異常的特殊情況
  * 
  * 依賴：
  * - Chrome Extensions API: storage, identity, alarms
  * - Google Drive API v3
  * - GlobalSettings: 本地設定管理
+ * 
+ * 更新日誌：
+ * - 2025-06-08: 修復本地時間戳記為 0 時的同步問題，添加深度比較邏輯
+ * - 2025-06-08: 排除 UI 狀態鍵值（如 lastMainTab）避免不必要的同步觸發
+ * - 2025-06-08: 重新設計自動清理功能，僅在雲端上傳時清理，不影響本地邏輯
  */
 
 class SettingsIO {
@@ -32,7 +39,7 @@ class SettingsIO {
     // 時間設定 (毫秒)
     TIMINGS: {
       UPLOAD_DEBOUNCE: 10000,        // 上傳延遲 10 秒
-      SYNC_INTERVAL: 120000,          // 同步間隔 2 分鐘
+      SYNC_INTERVAL: 0.25*60*1000,          // 同步間隔 0.25 分鐘
       TOKEN_REFRESH_MARGIN: 600000,   // Token 提前更新 10 分鐘
       LOCAL_RECENT_THRESHOLD: 5000,   // 本地最近更新閾值 5 秒
       COMPETITION_DELAY: 100,         // 多分頁競爭延遲 100ms
@@ -108,12 +115,15 @@ class SettingsIO {
       SettingsIO.CONSTANTS.KEYS.LAST_SYNC,
       SettingsIO.CONSTANTS.KEYS.SYNC_STATUS,
       SettingsIO.CONSTANTS.KEYS.SETTINGS_HASH,
-      SettingsIO.CONSTANTS.KEYS.SYNC_ERROR
+      SettingsIO.CONSTANTS.KEYS.SYNC_ERROR,
+      'syncDebugLogs', // 調試日誌不需要同步
+      'stockCrawlerState' // 爬蟲狀態是運行時狀態，不需要同步
     ];
 
     const relevantChanges = Object.keys(changes).filter(key => 
       !ignoredKeys.includes(key) && 
-      this.isSettingsKey(key)
+      this.isSettingsKey(key) &&
+      !this.shouldExcludeFromSyncComparison(key) // 排除不應觸發同步的 UI 狀態
     );
 
     if (relevantChanges.length === 0) {
@@ -285,8 +295,8 @@ class SettingsIO {
       // 下載雲端設定
       const driveSettings = await this.downloadSettings(token, fileId);
       
-      // 獲取本地設定
-      const localSettings = await GlobalSettings.loadSettings();
+      // 獲取本地設定 - 修復：使用 getAllSettings() 確保與手動匯出一致
+      const localSettings = await GlobalSettings.getAllSettings();
       
       // 比較和合併設定
       const { needsReload, needsUpload, mergedSettings } = await this.compareAndMergeSettings(
@@ -320,6 +330,99 @@ class SettingsIO {
     }
   }
 
+  // 判斷是否為純 UI 狀態鍵值（位置、大小、選中狀態等）
+  isUIStateKey(key) {
+    const uiStateKeys = [
+      'lastMainTab',           // 最後選中的主分頁
+      'lastSubTab',            // 最後選中的子分頁  
+      'windowState',           // 窗口狀態（位置、大小）
+      'selectedItem',          // 當前選中的項目（非功能性選擇）
+      'expandedSections',      // 展開的區塊狀態
+      'scrollPosition',        // 滾動位置
+      'dialogState',           // 對話框開關狀態
+      'panelState',            // 面板展開/收起狀態
+      'replacePosition',       // 替換框位置
+      'summaryPosition',       // 摘要面板位置
+      'summaryExpanded',       // 摘要面板展開狀態
+      'isFirstTime',           // 首次使用標記
+      'firstRun',              // 首次運行標記
+      'autoExport'             // 自動匯出狀態
+      // 注意：移除了 sortOrder 和 filterState，這些是功能性設定，不是純 UI 狀態
+    ];
+    
+    return uiStateKeys.includes(key);
+  }
+
+  // 判斷是否為不需要同步的鍵值（僅用於同步比較，不影響儲存分類）
+  shouldExcludeFromSync(key) {
+    // 排除同步相關的內部狀態
+    const syncInternalKeys = [
+      SettingsIO.CONSTANTS.KEYS.LAST_SYNC,
+      SettingsIO.CONSTANTS.KEYS.SYNC_STATUS,
+      SettingsIO.CONSTANTS.KEYS.SETTINGS_HASH,
+      SettingsIO.CONSTANTS.KEYS.SYNC_ERROR,
+      SettingsIO.CONSTANTS.KEYS.DRIVE_FILE_ID,
+      'syncDebugLogs',         // 調試日誌
+      'stockCrawlerState'      // 爬蟲狀態
+    ];
+    
+    return syncInternalKeys.includes(key) || this.isUIStateKey(key);
+  }
+
+  // 清理設定以便雲端上傳（僅移除不需要雲端同步的項目）
+  cleanSettingsForCloudUpload(settings) {
+    const cleanedSettings = {};
+    const excludedKeys = [];
+    
+    // 只排除明確不需要雲端同步的項目
+    Object.entries(settings).forEach(([key, value]) => {
+      if (this.shouldExcludeFromCloudSync(key)) {
+        excludedKeys.push(key);
+      } else {
+        cleanedSettings[key] = value;
+      }
+    });
+    
+    if (excludedKeys.length > 0) {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 雲端上傳時排除的鍵值:`, excludedKeys);
+      // 發送調試訊息
+      chrome.runtime.sendMessage({
+        action: 'syncDebug',
+        type: 'upload_cleanup',
+        message: `雲端上傳時自動排除 ${excludedKeys.length} 個項目`,
+        data: { excludedKeys }
+      }).catch(() => {});
+    }
+    
+    return cleanedSettings;
+  }
+
+  // 判斷是否為不需要雲端同步的鍵值（更保守的判斷）
+  shouldExcludeFromCloudSync(key) {
+    // 只排除明確的雲端同步無關項目
+    const cloudExcludeKeys = [
+      // 同步系統內部狀態（這些在雲端沒有意義）
+      SettingsIO.CONSTANTS.KEYS.LAST_SYNC,
+      SettingsIO.CONSTANTS.KEYS.SYNC_STATUS, 
+      SettingsIO.CONSTANTS.KEYS.SETTINGS_HASH,
+      SettingsIO.CONSTANTS.KEYS.SYNC_ERROR,
+      SettingsIO.CONSTANTS.KEYS.DRIVE_FILE_ID,
+      SettingsIO.CONSTANTS.KEYS.SYNC_ENABLED,
+      // 調試和運行時狀態
+      'syncDebugLogs',
+      'stockCrawlerState'
+    ];
+    
+    // 也排除所有 UI 狀態鍵值（會頻繁變化，不適合雲端同步）
+    return cloudExcludeKeys.includes(key) || this.isUIStateKey(key);
+  }
+
+  // 判斷是否為不應影響同步決策的鍵值（僅用於比較）
+  shouldExcludeFromSyncComparison(key) {
+    // 排除所有 UI 狀態鍵值，這些變化不應觸發同步
+    return this.isUIStateKey(key);
+  }
+
   // 比較和合併設定
   async compareAndMergeSettings(localSettings, driveSettings) {
     const localLastModified = localSettings.lastModified || 0;
@@ -328,24 +431,105 @@ class SettingsIO {
     // 檢查本地是否剛更新過（5秒內）
     const isLocalRecent = (Date.now() - localLastModified) < SettingsIO.CONSTANTS.TIMINGS.LOCAL_RECENT_THRESHOLD;
     
-    console.log(`[SettingsIO][${getCurrentTimeString()}] 比較設定時間戳記:`, {
+    const timestampData = {
       local: new Date(localLastModified).toISOString(),
       drive: new Date(driveLastModified).toISOString(),
-      isLocalRecent
-    });
+      isLocalRecent,
+      localIsEpoch: localLastModified <= 0
+    };
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 比較設定時間戳記:`, timestampData);
+    
+    // 發送到 background 保存調試訊息
+    chrome.runtime.sendMessage({
+      action: 'syncDebug',
+      type: 'timestamp',
+      message: '比較設定時間戳記',
+      data: timestampData
+    }).catch(() => {}); // 忽略錯誤
 
-    // 比較實際設定內容是否有差異（排除時間戳記）
+    // 特殊情況：如果本地時間戳記為 0 或無效，且雲端有有效時間戳記，強制使用雲端版本
+    if (localLastModified <= 0 && driveLastModified > 0) {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 本地時間戳記無效（${localLastModified}），強制使用雲端版本`);
+      return {
+        needsReload: true,
+        needsUpload: false,
+        mergedSettings: {
+          ...driveSettings,
+          lastModified: driveLastModified
+        }
+      };
+    }
+
+    // 比較實際設定內容是否有差異（排除時間戳記和 UI 狀態鍵值）
     const localContent = { ...localSettings };
     const driveContent = { ...driveSettings };
     delete localContent.lastModified;
     delete driveContent.lastModified;
     
-    const hasContentDifference = JSON.stringify(localContent) !== JSON.stringify(driveContent);
-    console.log(`[SettingsIO][${getCurrentTimeString()}] 設定內容比較:`, {
+    // 排除不應影響同步決策的鍵值
+    Object.keys(localContent).forEach(key => {
+      if (this.shouldExcludeFromSyncComparison(key)) {
+        delete localContent[key];
+      }
+    });
+    
+    Object.keys(driveContent).forEach(key => {
+      if (this.shouldExcludeFromSyncComparison(key)) {
+        delete driveContent[key];
+      }
+    });
+    
+    // 使用更可靠的深度比較
+    const hasContentDifference = !this.deepEqual(localContent, driveContent);
+    
+    // 詳細分析鍵值差異
+    const localKeys = Object.keys(localContent);
+    const driveKeys = Object.keys(driveContent);
+    const onlyInLocal = localKeys.filter(key => !driveKeys.includes(key));
+    const onlyInDrive = driveKeys.filter(key => !localKeys.includes(key));
+    const differentValues = localKeys.filter(key => 
+      driveKeys.includes(key) && !this.deepEqual(localContent[key], driveContent[key])
+    );
+    
+    const contentCompareData = {
       hasContentDifference,
       localSize: JSON.stringify(localContent).length,
-      driveSize: JSON.stringify(driveContent).length
-    });
+      driveSize: JSON.stringify(driveContent).length,
+      localKeys: localKeys.length,
+      driveKeys: driveKeys.length,
+      onlyInLocal: onlyInLocal,
+      onlyInDrive: onlyInDrive,
+      differentValues: differentValues,
+      keySizeDiff: onlyInLocal.length - onlyInDrive.length
+    };
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 設定內容比較:`, contentCompareData);
+    
+    // 發送到 background 保存調試訊息
+    chrome.runtime.sendMessage({
+      action: 'syncDebug',
+      type: 'content_compare',
+      message: '設定內容比較',
+      data: contentCompareData
+    }).catch(() => {}); // 忽略錯誤
+    
+    // 如果有鍵值差異，發送詳細的差異分析
+    if (onlyInLocal.length > 0 || onlyInDrive.length > 0 || differentValues.length > 0) {
+      chrome.runtime.sendMessage({
+        action: 'syncDebug',
+        type: 'key_difference',
+        message: `鍵值差異詳細分析: 本地多${onlyInLocal.length}個, 雲端多${onlyInDrive.length}個, 值不同${differentValues.length}個`,
+        data: {
+          onlyInLocal: onlyInLocal, // 顯示完整列表
+          onlyInDrive: onlyInDrive,
+          differentValues: differentValues,
+          totalDiffs: {
+            onlyLocalCount: onlyInLocal.length,
+            onlyDriveCount: onlyInDrive.length, 
+            differentCount: differentValues.length
+          }
+        }
+      }).catch(() => {});
+    }
 
     // 如果內容完全相同，不需要任何操作
     if (!hasContentDifference) {
@@ -363,6 +547,14 @@ class SettingsIO {
     if (useCloudVersion) {
       // 使用雲端版本，且內容確實不同才重啟
       console.log(`[SettingsIO][${getCurrentTimeString()}] 採用雲端版本，需要重新載入`);
+      
+      // 發送到 background
+      chrome.runtime.sendMessage({
+        action: 'syncDebug',
+        type: 'sync_decision',
+        message: '採用雲端版本，需要重新載入',
+        data: { decision: 'use_cloud', needsReload: true }
+      }).catch(() => {});
       return {
         needsReload: true,
         needsUpload: false,
@@ -374,6 +566,14 @@ class SettingsIO {
     } else {
       // 使用本地版本，上傳到雲端
       console.log(`[SettingsIO][${getCurrentTimeString()}] 採用本地版本，將上傳到雲端`);
+      
+      // 發送到 background
+      chrome.runtime.sendMessage({
+        action: 'syncDebug',
+        type: 'sync_decision',
+        message: '採用本地版本，將上傳到雲端',
+        data: { decision: 'use_local', needsUpload: true }
+      }).catch(() => {});
       return {
         needsReload: false,
         needsUpload: true,
@@ -394,6 +594,14 @@ class SettingsIO {
     try {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 開始上傳設定`);
       
+      // 發送到 background
+      chrome.runtime.sendMessage({
+        action: 'syncDebug',
+        type: 'upload',
+        message: '開始上傳設定',
+        data: { timestamp: getCurrentTimeString() }
+      }).catch(() => {});
+      
       // 如果沒有提供 token，獲取新的
       if (!token) {
         const authResult = await this.authenticateWithGoogle(false);
@@ -409,8 +617,11 @@ class SettingsIO {
         fileId = await this.getOrCreateDriveFile(token);
       }
 
-      // 獲取本地設定
-      const settings = await GlobalSettings.loadSettings();
+      // 獲取本地設定 - 修復：使用 getAllSettings() 確保與手動匯出一致
+      const allSettings = await GlobalSettings.getAllSettings();
+      
+      // 清理不需要雲端同步的項目
+      const settings = this.cleanSettingsForCloudUpload(allSettings);
       
       // 更新時間戳記
       settings.lastModified = Date.now();
@@ -419,6 +630,17 @@ class SettingsIO {
       await this.updateDriveFile(token, fileId, settings);
       
       console.log(`[SettingsIO][${getCurrentTimeString()}] 設定上傳完成`);
+      
+      // 發送到 background
+      chrome.runtime.sendMessage({
+        action: 'syncDebug',
+        type: 'upload',
+        message: '設定上傳完成',
+        data: { 
+          timestamp: getCurrentTimeString(),
+          settingsSize: JSON.stringify(settings).length 
+        }
+      }).catch(() => {});
       
     } catch (error) {
       console.error(`[SettingsIO][${getCurrentTimeString()}] 上傳設定失敗:`, error);
@@ -468,7 +690,8 @@ class SettingsIO {
     // 如果沒有找到檔案，創建新檔案
     if (!fileId) {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 創建新檔案`);
-      const settings = await GlobalSettings.loadSettings();
+      const allSettings = await GlobalSettings.getAllSettings();
+      const settings = this.cleanSettingsForCloudUpload(allSettings);
       settings.lastModified = Date.now();
       
       fileId = await this.createDriveFile(token, settings);
@@ -611,6 +834,48 @@ class SettingsIO {
     });
   }
 
+  // 深度比較兩個物件是否相等
+  deepEqual(obj1, obj2) {
+    if (obj1 === obj2) {
+      return true;
+    }
+
+    if (obj1 == null || obj2 == null) {
+      return obj1 === obj2;
+    }
+
+    if (typeof obj1 !== typeof obj2) {
+      return false;
+    }
+
+    if (typeof obj1 !== 'object') {
+      return obj1 === obj2;
+    }
+
+    if (Array.isArray(obj1) !== Array.isArray(obj2)) {
+      return false;
+    }
+
+    const keys1 = Object.keys(obj1);
+    const keys2 = Object.keys(obj2);
+
+    if (keys1.length !== keys2.length) {
+      return false;
+    }
+
+    for (let key of keys1) {
+      if (!keys2.includes(key)) {
+        return false;
+      }
+
+      if (!this.deepEqual(obj1[key], obj2[key])) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   // 獲取同步狀態
   async getSyncStatus() {
     const result = await chrome.storage.local.get([
@@ -649,6 +914,33 @@ class SettingsIO {
     await this.resetSyncStatus();
     console.log(`[SettingsIO][${getCurrentTimeString()}] 已登出`);
   }
+
+  // 強制上傳本地設定到雲端（忽略時間戳比較）
+  async forceUploadToCloud() {
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 開始強制上傳到雲端`);
+    
+    try {
+      // 認證
+      const authResult = await this.authenticateWithGoogle(true);
+      if (!authResult.success) {
+        throw new Error(authResult.error || '認證失敗');
+      }
+
+      const token = typeof authResult.token === 'object' ? authResult.token.token : authResult.token;
+      
+      // 獲取或創建檔案ID
+      const fileId = await this.getOrCreateDriveFile(token);
+      
+      // 強制上傳本地設定
+      await this.uploadSettings(token, fileId);
+      
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 強制上傳完成`);
+      return { success: true };
+    } catch (error) {
+      console.error(`[SettingsIO][${getCurrentTimeString()}] 強制上傳失敗:`, error);
+      return { success: false, error: error.message };
+    }
+  }
 }
 
 // 輔助函數：獲取當前時間字符串
@@ -663,6 +955,26 @@ class TokenManager {
     this.tokenExpiry = null;
     this.authInProgress = false;
     this.pendingRequests = [];
+    
+    // 根據擴展 ID 動態選擇 client ID
+    this.clientIdMap = {
+      'fcnkggimjeffgcnpdmjgjgnoapfbn': '862665835661-leepued02022ei05bgb4jga850eglj0n.apps.googleusercontent.com', // A 電腦
+      'hgelcpdcklajobdjoiplofieilaekgah': '862665835661-i3jvgnjlfhbvlruadp7v7v86si18p57i.apps.googleusercontent.com'  // B 電腦
+    };
+  }
+  
+  // 獲取當前擴展對應的 client ID
+  getCurrentClientId() {
+    const extensionId = chrome.runtime.id;
+    const clientId = this.clientIdMap[extensionId];
+    
+    if (!clientId) {
+      console.warn(`[TokenManager][${getCurrentTimeString()}] 未找到擴展 ID ${extensionId} 對應的 client ID，使用預設值`);
+      return '862665835661-leepued02022ei05bgb4jga850eglj0n.apps.googleusercontent.com';
+    }
+    
+    console.log(`[TokenManager][${getCurrentTimeString()}] 使用擴展 ${extensionId} 的 client ID: ${clientId}`);
+    return clientId;
   }
 
   // 獲取 Token
@@ -682,10 +994,18 @@ class TokenManager {
     this.authInProgress = true;
 
     try {
-      console.log(`[TokenManager][${getCurrentTimeString()}] 開始 OAuth 認證, interactive:`, interactive);
+      const clientId = this.getCurrentClientId();
+      console.log(`[TokenManager][${getCurrentTimeString()}] 開始 OAuth 認證, interactive:`, interactive, 'clientId:', clientId);
       
+      // 嘗試使用動態 Web Auth Flow
+      if (interactive && clientId !== '862665835661-leepued02022ei05bgb4jga850eglj0n.apps.googleusercontent.com') {
+        return await this.performWebAuthFlow(clientId);
+      }
+      
+      // 使用傳統方式（manifest.json 配置）
       const tokenResult = await chrome.identity.getAuthToken({ 
-        interactive: interactive 
+        interactive: interactive,
+        scopes: ['https://www.googleapis.com/auth/drive.appdata']
       });
 
       if (!tokenResult) {
@@ -725,6 +1045,64 @@ class TokenManager {
       return { success: false, error: error.message };
     } finally {
       this.authInProgress = false;
+    }
+  }
+
+  // 執行 Web Auth Flow
+  async performWebAuthFlow(clientId) {
+    try {
+      const redirectUri = chrome.identity.getRedirectURL();
+      const scopes = 'https://www.googleapis.com/auth/drive.appdata';
+      
+      const authUrl = `https://accounts.google.com/oauth/authorize?` +
+        `client_id=${clientId}&` +
+        `response_type=token&` +
+        `redirect_uri=${encodeURIComponent(redirectUri)}&` +
+        `scope=${encodeURIComponent(scopes)}`;
+
+      console.log(`[TokenManager][${getCurrentTimeString()}] 使用 Web Auth Flow:`, authUrl);
+
+      const responseUrl = await chrome.identity.launchWebAuthFlow({
+        url: authUrl,
+        interactive: true
+      });
+
+      if (!responseUrl) {
+        throw new Error('Web Auth Flow 失敗');
+      }
+
+      // 從回應 URL 中提取 token
+      const urlParams = new URLSearchParams(responseUrl.split('#')[1]);
+      const accessToken = urlParams.get('access_token');
+
+      if (!accessToken) {
+        throw new Error('未從回應中獲取到 access token');
+      }
+
+      // 快取 token
+      this.cachedToken = accessToken;
+      this.tokenExpiry = Date.now() + SettingsIO.CONSTANTS.TIMINGS.TOKEN_REFRESH_MARGIN;
+
+      console.log(`[TokenManager][${getCurrentTimeString()}] Web Auth Flow 認證成功`);
+
+      // 處理等待中的請求
+      this.pendingRequests.forEach(({ resolve }) => {
+        resolve({ success: true, token: accessToken });
+      });
+      this.pendingRequests = [];
+
+      return { success: true, token: accessToken };
+
+    } catch (error) {
+      console.error(`[TokenManager][${getCurrentTimeString()}] Web Auth Flow 失敗:`, error);
+      
+      // 通知等待中的請求
+      this.pendingRequests.forEach(({ reject }) => {
+        reject(error);
+      });
+      this.pendingRequests = [];
+
+      return { success: false, error: error.message };
     }
   }
 

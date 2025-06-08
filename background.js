@@ -1,4 +1,4 @@
-// background.js
+// background.js - 2025/06/08 更新：修復 popup 關閉後同步停止問題
 // 
 // 功能：
 // - 背景服務工作器，處理插件的核心邏輯
@@ -7,6 +7,7 @@
 // - 狀態持久化：維護爬蟲狀態，支援插件重新啟動後恢復
 // - 消息路由：處理來自 popup 和 content scripts 的消息
 // - 長連接管理：提供實時狀態更新給 popup
+// - 設定同步管理：處理自動同步，即使popup關閉也持續運行
 // 
 // 職責：
 // - 管理 BackgroundStockCrawlerManager 執行定時和單次股票爬取
@@ -14,11 +15,76 @@
 // - 維護與 popup 的雙向通信
 // - 提供跨域網路請求服務
 // - 管理插件生命週期和狀態恢復
+// - 管理 SettingsIO 實例，提供持續的自動同步服務
 // 
 // 依賴：
 // - Chrome Extensions API (runtime, storage, tabs)
 // - Fetch API for 跨域請求
 // - StockCrawlerUrls 配置
+// - settings.js：全域設定管理
+// - SettingsIO/settings-io.js：雲端同步功能
+
+// 背景同步功能相關變數
+let backgroundSettingsIO = null;
+let backgroundSyncInitialized = false;
+
+// 安全地載入依賴模組
+async function loadSyncDependencies() {
+  try {
+    console.log('[BackgroundSync][init] 開始載入同步相關依賴...');
+    
+    // 按正確順序載入依賴（重要：順序不能錯）
+    if (typeof window === 'undefined') {
+      // 在Service Worker環境中，需要創建全域window物件
+      globalThis.window = globalThis;
+    }
+    
+    // 載入預設設定
+    if (typeof DefaultSettings === 'undefined') {
+      try {
+        importScripts('default.js');
+        console.log('[BackgroundSync][init] default.js 載入成功');
+      } catch (error) {
+        console.warn('[BackgroundSync][init] default.js 載入失敗，將使用空物件:', error);
+        globalThis.window.DefaultSettings = {};
+      }
+    }
+    
+    // 載入全域設定管理
+    if (typeof GlobalSettings === 'undefined') {
+      try {
+        importScripts('settings.js');
+        console.log('[BackgroundSync][init] settings.js 載入成功');
+        
+        // 等待GlobalSettings初始化
+        if (GlobalSettings && typeof GlobalSettings.loadSettings === 'function') {
+          await GlobalSettings.loadSettings();
+          console.log('[BackgroundSync][init] GlobalSettings 初始化完成');
+        }
+      } catch (error) {
+        console.error('[BackgroundSync][init] settings.js 載入失敗:', error);
+        return false;
+      }
+    }
+    
+    // 載入同步功能
+    if (typeof SettingsIO === 'undefined') {
+      try {
+        importScripts('SettingsIO/settings-io.js');
+        console.log('[BackgroundSync][init] settings-io.js 載入成功');
+      } catch (error) {
+        console.error('[BackgroundSync][init] settings-io.js 載入失敗:', error);
+        return false;
+      }
+    }
+    
+    console.log('[BackgroundSync][init] 所有依賴載入完成');
+    return true;
+  } catch (error) {
+    console.error('[BackgroundSync][init] 載入依賴時發生錯誤:', error);
+    return false;
+  }
+}
 
 // === 配置常數 ===
 const STOCK_CRAWLER_CONFIG = {
@@ -658,6 +724,44 @@ const BackgroundStockCrawlerManager = {
   },
 
   /**
+   * 處理來自 settings-io.js 的調試訊息
+   */
+  logSyncDebug(type, message, data = {}) {
+    const timestamp = new Date().toISOString();
+    console.log(`[SettingsSync][${timestamp}][${type}] ${message}`, data);
+    
+    // 也可以保存到 storage 供查看
+    this._saveSyncLog(type, message, data, timestamp);
+  },
+
+  /**
+   * 保存同步日誌
+   */
+  async _saveSyncLog(type, message, data, timestamp) {
+    try {
+      const result = await chrome.storage.local.get(['syncDebugLogs']);
+      const logs = result.syncDebugLogs || [];
+      
+      // 添加新日誌
+      logs.push({
+        type,
+        message,
+        data,
+        timestamp
+      });
+      
+      // 只保留最近 50 條日誌
+      if (logs.length > 50) {
+        logs.splice(0, logs.length - 50);
+      }
+      
+      await chrome.storage.local.set({ syncDebugLogs: logs });
+    } catch (error) {
+      console.error('保存同步日誌失敗:', error);
+    }
+  },
+
+  /**
    * 獲取當前狀態
    */
   getCurrentStatus() {
@@ -697,8 +801,55 @@ const BackgroundStockCrawlerManager = {
   }
 };
 
-// 初始化背景爬蟲管理器
-BackgroundStockCrawlerManager.init();
+// 初始化背景同步功能
+async function initializeBackgroundSync() {
+  if (backgroundSyncInitialized) {
+    console.log('[BackgroundSync][init] 同步功能已初始化，跳過');
+    return;
+  }
+  
+  try {
+    console.log('[BackgroundSync][init] 開始初始化背景同步功能...');
+    
+    // 載入依賴
+    const dependenciesLoaded = await loadSyncDependencies();
+    if (!dependenciesLoaded) {
+      console.error('[BackgroundSync][init] 依賴載入失敗，無法啟用背景同步');
+      return;
+    }
+    
+    // 創建SettingsIO實例
+    if (typeof SettingsIO !== 'undefined') {
+      backgroundSettingsIO = new SettingsIO();
+      await backgroundSettingsIO.init();
+      backgroundSyncInitialized = true;
+      
+      console.log('[BackgroundSync][init] 背景同步功能初始化完成');
+    } else {
+      console.error('[BackgroundSync][init] SettingsIO 類別未定義');
+    }
+  } catch (error) {
+    console.error('[BackgroundSync][init] 初始化背景同步功能失敗:', error);
+  }
+}
+
+// 初始化背景服務
+async function initializeBackgroundServices() {
+  try {
+    // 初始化背景爬蟲管理器
+    BackgroundStockCrawlerManager.init();
+    
+    // 初始化背景同步功能
+    await initializeBackgroundSync();
+    
+    console.log('[Background][init] 所有背景服務初始化完成');
+  } catch (error) {
+    console.error('[Background][init] 背景服務初始化失敗:', error);
+  }
+}
+
+// 啟動背景服務
+initializeBackgroundServices();
 
 // 處理來自 popup 的長連接
 chrome.runtime.onConnect.addListener((port) => {
@@ -797,6 +948,125 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         sendResponse({ success: false, error: '未知命令' });
         return false;
     }
+  }
+  
+  // 處理設定同步相關請求
+  if (request.action === 'settingsSync') {
+    // 異步處理設定同步請求
+    const handleSyncRequest = async () => {
+      if (!backgroundSyncInitialized || !backgroundSettingsIO) {
+        console.log('[BackgroundSync][message] 同步功能未初始化，嘗試重新初始化...');
+        try {
+          await initializeBackgroundSync();
+          if (!backgroundSettingsIO) {
+            sendResponse({ success: false, error: '同步功能初始化失敗' });
+            return;
+          }
+        } catch (error) {
+          sendResponse({ success: false, error: `初始化錯誤: ${error.message}` });
+          return;
+        }
+      }
+    
+         switch (request.command) {
+       case 'manualSync':
+         console.log('[BackgroundSync][message] 處理手動同步請求');
+         try {
+           const result = await backgroundSettingsIO.manualSync();
+           sendResponse(result);
+         } catch (error) {
+           sendResponse({ success: false, error: error.message });
+         }
+         return;
+         
+       case 'toggleAutoSync':
+         console.log('[BackgroundSync][message] 切換自動同步:', request.enabled);
+         try {
+           const enabled = await backgroundSettingsIO.toggleAutoSync(request.enabled);
+           sendResponse({ success: true, enabled });
+         } catch (error) {
+           sendResponse({ success: false, error: error.message });
+         }
+         return;
+         
+       case 'getSyncStatus':
+         console.log('[BackgroundSync][message] 獲取同步狀態');
+         try {
+           const status = await backgroundSettingsIO.getSyncStatus();
+           sendResponse({ success: true, status });
+         } catch (error) {
+           sendResponse({ success: false, error: error.message });
+         }
+         return;
+         
+       case 'resetSyncStatus':
+         console.log('[BackgroundSync][message] 重置同步狀態');
+         try {
+           await backgroundSettingsIO.resetSyncStatus();
+           sendResponse({ success: true });
+         } catch (error) {
+           sendResponse({ success: false, error: error.message });
+         }
+         return;
+         
+       case 'signOut':
+         console.log('[BackgroundSync][message] 登出同步功能');
+         try {
+           await backgroundSettingsIO.signOut();
+           sendResponse({ success: true });
+         } catch (error) {
+           sendResponse({ success: false, error: error.message });
+         }
+         return;
+         
+       case 'forceUpload':
+         console.log('[BackgroundSync][message] 強制上傳設定');
+         try {
+           const result = await backgroundSettingsIO.forceUploadToCloud();
+           sendResponse(result);
+         } catch (error) {
+           sendResponse({ success: false, error: error.message });
+         }
+         return;
+        
+             default:
+         sendResponse({ success: false, error: '未知的同步命令' });
+         return;
+     }
+   };
+   
+   // 執行異步處理
+   handleSyncRequest().catch(error => {
+     console.error('[BackgroundSync][message] 處理同步請求時發生錯誤:', error);
+     sendResponse({ success: false, error: error.message });
+   });
+   
+   return true; // 表示會異步發送回應
+  }
+
+  // 處理同步調試訊息
+  if (request.action === 'syncDebug') {
+    BackgroundStockCrawlerManager.logSyncDebug(request.type, request.message, request.data);
+    sendResponse({ success: true });
+    return false;
+  }
+  
+  // 獲取同步日誌
+  if (request.action === 'getSyncLogs') {
+    chrome.storage.local.get(['syncDebugLogs'])
+      .then(result => {
+        sendResponse({ 
+          success: true, 
+          logs: result.syncDebugLogs || [] 
+        });
+      })
+      .catch(error => {
+        sendResponse({ 
+          success: false, 
+          error: error.message 
+        });
+      });
+    return true;
   }
 
   // 處理原有的 URL 爬取請求（保持向後兼容）

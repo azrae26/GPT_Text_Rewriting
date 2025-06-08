@@ -1,5 +1,5 @@
 /**
- * popup.js - 擴充功能彈出視窗的主要腳本（入口點）
+ * popup.js - 擴充功能彈出視窗的主要腳本（入口點）(2025/06/08 更新)
  * 功能：統一管理 API 金鑰、改寫設置、模型選擇、高亮功能、自動替換等配置項目
  * 職責：
  * - 作為彈出視窗的主要入口點，協調各功能模組
@@ -536,13 +536,8 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 初始化所有事件處理器
   setupEventHandlers();
 
-  // 11. 初始化同步功能
-  if (typeof SettingsIO !== 'undefined') {
-    settingsIO = new SettingsIO();
-    initializeSyncFeatures();
-  } else {
-    console.warn('SettingsIO 未載入，同步功能將不可用');
-  }
+  // 11. 初始化同步功能（現在通過background處理）
+  initializeSyncFeatures();
 
   // 10. 功能按鈕事件處理
   rewriteButton.addEventListener('click', function() {
@@ -1702,13 +1697,121 @@ document.addEventListener('DOMContentLoaded', async function() {
     return new Date().toISOString();
   }
 
-  // 初始化同步功能
+  // 認證操作包裝器（需要在popup環境中處理OAuth）
+  const authOperations = {
+    async authenticateWithGoogle(interactive = false) {
+      // OAuth認證必須在popup環境中進行，因為需要用戶交互
+      if (!settingsIO) {
+        if (typeof SettingsIO !== 'undefined') {
+          settingsIO = new SettingsIO();
+        } else {
+          throw new Error('SettingsIO 未載入');
+        }
+      }
+      return await settingsIO.authenticateWithGoogle(interactive);
+    }
+  };
+
+  // 同步操作包裝器 - 通過background處理
+  const syncOperations = {
+    async manualSync() {
+      return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          action: 'settingsSync',
+          command: 'manualSync'
+        }, response => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(response);
+          }
+        });
+      });
+    },
+
+    async toggleAutoSync(enabled) {
+      return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          action: 'settingsSync',
+          command: 'toggleAutoSync',
+          enabled: enabled
+        }, response => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(response);
+          }
+        });
+      });
+    },
+
+    async getSyncStatus() {
+      return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          action: 'settingsSync',
+          command: 'getSyncStatus'
+        }, response => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(response);
+          }
+        });
+      });
+    },
+
+    async resetSyncStatus() {
+      return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          action: 'settingsSync',
+          command: 'resetSyncStatus'
+        }, response => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(response);
+          }
+        });
+      });
+    },
+
+    async signOut() {
+      return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          action: 'settingsSync',
+          command: 'signOut'
+        }, response => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(response);
+          }
+        });
+      });
+    },
+
+    async forceUpload() {
+      return new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({
+          action: 'settingsSync',
+          command: 'forceUpload'
+        }, response => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(response);
+          }
+        });
+      });
+    }
+  };
+
+  // 初始化同步功能UI（實際同步邏輯在background處理）
   async function initializeSyncFeatures() {
-    console.log(`[popup.js][${getCurrentTimeString()}] 初始化同步功能`);
+    console.log(`[popup.js][${getCurrentTimeString()}] 初始化同步功能UI`);
     
     try {
-      // 初始化 SettingsIO
-      await settingsIO.init();
+      // 注意：同步邏輯已移到background，這裡只處理UI交互
       
       // 設置同步相關事件監聽器
       setupSyncEventHandlers();
@@ -1716,9 +1819,9 @@ document.addEventListener('DOMContentLoaded', async function() {
       // 更新初始狀態顯示
       await updateSyncStatus();
       
-      console.log(`[popup.js][${getCurrentTimeString()}] 同步功能初始化完成`);
+      console.log(`[popup.js][${getCurrentTimeString()}] 同步功能UI初始化完成`);
     } catch (error) {
-      console.error(`[popup.js][${getCurrentTimeString()}] 同步功能初始化失敗:`, error);
+      console.error(`[popup.js][${getCurrentTimeString()}] 同步功能UI初始化失敗:`, error);
     }
   }
 
@@ -1732,7 +1835,8 @@ document.addEventListener('DOMContentLoaded', async function() {
           authButton.disabled = true;
           authButton.textContent = '認證中...';
           
-          const result = await settingsIO.authenticateWithGoogle(true);
+          // Google OAuth需要在popup環境中進行交互式認證
+          const result = await authOperations.authenticateWithGoogle(true);
           if (result.success) {
             console.log(`[popup.js][${getCurrentTimeString()}] 認證成功`);
             await updateSyncStatus();
@@ -1754,7 +1858,10 @@ document.addEventListener('DOMContentLoaded', async function() {
       signoutButton.addEventListener('click', async () => {
         console.log(`[popup.js][${getCurrentTimeString()}] 開始登出`);
         try {
-          await settingsIO.signOut();
+          const result = await syncOperations.signOut();
+          if (!result.success) {
+            throw new Error(result.error);
+          }
           await updateSyncStatus();
           console.log(`[popup.js][${getCurrentTimeString()}] 登出成功`);
         } catch (error) {
@@ -1772,7 +1879,7 @@ document.addEventListener('DOMContentLoaded', async function() {
           manualSyncButton.disabled = true;
           manualSyncButton.textContent = '同步中...';
           
-          const result = await settingsIO.manualSync();
+          const result = await syncOperations.manualSync();
           if (result.success) {
             console.log(`[popup.js][${getCurrentTimeString()}] 手動同步成功`);
             clearSyncError();
@@ -1798,7 +1905,10 @@ document.addEventListener('DOMContentLoaded', async function() {
           const enabled = autoSyncToggle.classList.contains('active');
           const newState = !enabled;
           
-          await settingsIO.toggleAutoSync(newState);
+          const result = await syncOperations.toggleAutoSync(newState);
+          if (!result.success) {
+            throw new Error(result.error);
+          }
           
           if (newState) {
             autoSyncToggle.classList.add('active');
@@ -1821,7 +1931,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (confirm('確定要重置同步設定嗎？這將清除所有同步相關資料。')) {
           console.log(`[popup.js][${getCurrentTimeString()}] 重置同步設定`);
           try {
-            await settingsIO.resetSyncStatus();
+            const result = await syncOperations.resetSyncStatus();
+            if (!result.success) {
+              throw new Error(result.error);
+            }
             await updateSyncStatus();
             console.log(`[popup.js][${getCurrentTimeString()}] 同步設定重置完成`);
           } catch (error) {
@@ -1835,12 +1948,16 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // 更新同步狀態顯示
   async function updateSyncStatus() {
-    if (!settingsIO || !syncStatus) {
+    if (!syncStatus) {
       return;
     }
 
     try {
-      const status = await settingsIO.getSyncStatus();
+      const result = await syncOperations.getSyncStatus();
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+      const status = result.status;
       
       // 更新狀態圖示和文字
       if (statusIcon && statusText) {
