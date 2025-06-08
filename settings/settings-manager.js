@@ -68,6 +68,7 @@ class SettingsFileManager {
 
   // 處理匯入檔案事件
   async handleImport(event) {
+    let progressDialog = null;
     try {
       const file = event.target.files[0];
       if (!file) {
@@ -75,33 +76,50 @@ class SettingsFileManager {
         return;
       }
 
+      // 顯示進度指示器
+      progressDialog = this.ui.showProgress('正在讀取檔案...');
+
       const importedData = await FileManager.readJSONFile(file);
       
       if (!this.validateSettingsFile(importedData)) {
         throw new Error('無效的設定檔：不是本插件的設定檔');
       }
       
-      // 使用分級降級策略嘗試匯入
-      const importResult = await this.tryImportWithFallback(importedData.settings);
+      // 更新進度
+      this.ui.updateProgress(progressDialog, '正在處理設定資料...');
+      
+      // 使用非阻塞方式進行匯入
+      const importResult = await this.tryImportWithFallbackNonBlocking(importedData.settings, progressDialog);
+      
+      // 關閉進度指示器
+      this.ui.hideProgress(progressDialog);
       
       if (importResult.success) {
         const shouldReload = this.ui.showSuccess(importResult.message);
         if (shouldReload) {
           sendLog('success', '設定匯入完成，準備重新載入頁面');
-          location.reload();
+          // 延遲重新載入，確保用戶看到成功訊息
+          setTimeout(() => location.reload(), 500);
         }
       } else {
         this.ui.showError(importResult.error);
         throw new Error(importResult.error);
       }
     } catch (error) {
+      // 確保關閉進度指示器
+      if (progressDialog) {
+        this.ui.hideProgress(progressDialog);
+      }
       sendLog('error', '匯入設定時發生錯誤', error);
       ErrorHandler.handle(error);
+    } finally {
+      // 清空檔案輸入
+      event.target.value = '';
     }
   }
 
-  // 分級降級匯入策略
-  async tryImportWithFallback(settings) {
+  // 非阻塞分級降級匯入策略
+  async tryImportWithFallbackNonBlocking(settings, progressDialog) {
     const totalAttempts = 5;
     const attempts = [
       {
@@ -131,12 +149,18 @@ class SettingsFileManager {
       }
     ];
 
-    sendLog('info', `開始分級降級匯入策略，共 ${totalAttempts} 種方案`);
+    sendLog('info', `開始非阻塞分級降級匯入策略，共 ${totalAttempts} 種方案`);
 
     for (let i = 0; i < attempts.length; i++) {
       const attempt = attempts[i];
       try {
         sendLog('info', `[${i + 1}/${totalAttempts}] 嘗試${attempt.name}...`);
+        
+        // 更新進度
+        this.ui.updateProgress(progressDialog, `[${i + 1}/${totalAttempts}] ${attempt.name}...`);
+        
+        // 讓出控制權，防止阻塞
+        await new Promise(resolve => setTimeout(resolve, 100));
         
         // 準備要匯入的設定資料
         const filteredSettings = this.filterSettings(attempt.data, attempt.excludeKeys);
@@ -150,8 +174,10 @@ class SettingsFileManager {
           sendLog('info', `排除了 ${attempt.excludeKeys.length} 個項目: ${attempt.excludeKeys.slice(0, 3).join(', ')}${attempt.excludeKeys.length > 3 ? '...' : ''}`);
         }
         
-        // 嘗試套用設定
-        await this.settings.applySettings(filteredSettings);
+        // 使用非阻塞方式套用設定
+        await this.settings.applySettingsNonBlocking(filteredSettings, (progress) => {
+          this.ui.updateProgress(progressDialog, `${attempt.name} - ${progress}`);
+        });
         
         // 成功時的訊息
         let message = '設定匯入成功！';
@@ -180,7 +206,8 @@ class SettingsFileManager {
           };
         }
         
-        // 否則繼續下一個策略
+        // 讓出控制權後繼續下一個策略
+        await new Promise(resolve => setTimeout(resolve, 100));
         continue;
       }
     }
@@ -493,6 +520,86 @@ class SettingsUI {
 
   showError(message) {
     alert(`錯誤：${message}`);
+  }
+
+  showProgress(message) {
+    // 創建進度對話框
+    const overlay = document.createElement('div');
+    overlay.style.cssText = `
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 10000;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    `;
+    
+    const dialog = document.createElement('div');
+    dialog.style.cssText = `
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      text-align: center;
+      min-width: 300px;
+      max-width: 400px;
+    `;
+    
+    const spinner = document.createElement('div');
+    spinner.style.cssText = `
+      width: 40px;
+      height: 40px;
+      border: 4px solid #f3f3f3;
+      border-top: 4px solid #007cff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 15px;
+    `;
+    
+    const messageElement = document.createElement('div');
+    messageElement.style.cssText = `
+      color: #333;
+      font-size: 14px;
+      line-height: 1.4;
+    `;
+    messageElement.textContent = message;
+    
+    // 添加 CSS 動畫
+    if (!document.getElementById('progress-spinner-style')) {
+      const style = document.createElement('style');
+      style.id = 'progress-spinner-style';
+      style.textContent = `
+        @keyframes spin {
+          0% { transform: rotate(0deg); }
+          100% { transform: rotate(360deg); }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+    
+    dialog.appendChild(spinner);
+    dialog.appendChild(messageElement);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+    
+    return { overlay, messageElement };
+  }
+
+  updateProgress(progressDialog, message) {
+    if (progressDialog && progressDialog.messageElement) {
+      progressDialog.messageElement.textContent = message;
+    }
+  }
+
+  hideProgress(progressDialog) {
+    if (progressDialog && progressDialog.overlay && progressDialog.overlay.parentNode) {
+      progressDialog.overlay.parentNode.removeChild(progressDialog.overlay);
+    }
   }
 }
 

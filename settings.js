@@ -1084,6 +1084,183 @@ const GlobalSettings = {
     }
   },
 
+  // 非阻塞式套用設定（防止 popup 卡死）
+  async applySettingsNonBlocking(settings, progressCallback) {
+    try {
+      console.group('非阻塞式儲存匯入的設定');
+      
+      if (!settings || Object.keys(settings).length === 0) {
+        throw new Error('無效的設定資料');
+      }
+
+      // 進度回調
+      const updateProgress = (message) => {
+        if (progressCallback) progressCallback(message);
+      };
+
+      updateProgress('正在處理 API 金鑰...');
+      
+      // 向後兼容性處理：遷移舊版本的 API 金鑰格式
+      if (settings.apiKeys) {
+        console.log('檢查並遷移舊版本的 API 金鑰格式...');
+        
+        // 如果存在舊的 gemini-2.0-flash-exp 金鑰，遷移到新的 gemini 格式
+        if (settings.apiKeys['gemini-2.0-flash-exp'] && !settings.apiKeys['gemini']) {
+          console.log('發現舊版本 Gemini API 金鑰，正在遷移...');
+          settings.apiKeys['gemini'] = settings.apiKeys['gemini-2.0-flash-exp'];
+          delete settings.apiKeys['gemini-2.0-flash-exp'];
+          console.log('Gemini API 金鑰遷移完成');
+        }
+        
+        // 清理其他可能的舊版本硬編碼金鑰
+        const oldKeys = Object.keys(settings.apiKeys).filter(key => 
+          key.includes('2.0-flash-exp') || key.includes('1.5-pro') || 
+          key.includes('-1.5-') || key.includes('-2.0-') || key.includes('-latest')
+        );
+        
+        if (oldKeys.length > 0) {
+          console.log('清理舊版本硬編碼金鑰:', oldKeys);
+          oldKeys.forEach(oldKey => {
+            // 只有當沒有通用金鑰時，才將舊金鑰值遷移到通用金鑰
+            if (oldKey.startsWith('gemini') && !settings.apiKeys['gemini'] && settings.apiKeys[oldKey]) {
+              settings.apiKeys['gemini'] = settings.apiKeys[oldKey];
+              console.log(`將 ${oldKey} 的值遷移到 gemini`);
+            }
+            delete settings.apiKeys[oldKey];
+          });
+        }
+        
+        // 最後清理空值或無效值
+        Object.keys(settings.apiKeys).forEach(key => {
+          const value = settings.apiKeys[key];
+          if (!value || value === '' || value === 'undefined' || value === 'null' || 
+              (typeof value === 'string' && (value === '已設置' || value === '未設置'))) {
+            console.log(`清理無效金鑰: ${key}`);
+            delete settings.apiKeys[key];
+          }
+        });
+      }
+
+      // 讓出控制權
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      updateProgress('正在清空舊設定...');
+
+      // 非阻塞式清空儲存空間
+      console.log('清空同步儲存空間...');
+      await new Promise((resolve) => chrome.storage.sync.clear(resolve));
+      
+      // 讓出控制權
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      console.log('清空本地儲存空間...');
+      await new Promise((resolve) => chrome.storage.local.clear(resolve));
+      
+      // 讓出控制權
+      await new Promise(resolve => setTimeout(resolve, 50));
+      
+      console.log('儲存空間已清空');
+
+      updateProgress('正在分類設定資料...');
+
+      // 分類設定
+      const { replaceSettings, localSettings, syncSettings } = this._categorizeSettings(settings);
+      
+      console.log('分類後的設定：');
+      console.log('- sync 設定:', Object.keys(syncSettings));
+      console.log('- local 設定:', Object.keys(localSettings));
+      console.log('- 替換規則:', Object.keys(replaceSettings));
+
+      // 檢查 sync settings 的大小
+      const syncSettingsSize = new TextEncoder().encode(JSON.stringify(syncSettings)).length;
+      console.log('sync settings 大小:', syncSettingsSize, 'bytes');
+      if (syncSettingsSize > 100000) {
+        throw new Error('同步設定總大小超過限制 (100KB)');
+      }
+
+      // 讓出控制權
+      await new Promise(resolve => setTimeout(resolve, 50));
+
+      updateProgress('正在儲存同步設定...');
+
+      // 分批儲存設定
+      if (Object.keys(syncSettings).length > 0) {
+        console.log('開始儲存同步設定...');
+        await this._setChromeStorage(syncSettings, 'sync');
+        // 讓出控制權
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      updateProgress('正在儲存本地設定...');
+
+      if (Object.keys(localSettings).length > 0) {
+        console.log('開始儲存本地設定...');
+        await this._setChromeStorageInBatches(localSettings, 'local', updateProgress);
+        // 讓出控制權
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      updateProgress('正在儲存替換規則...');
+
+      if (Object.keys(replaceSettings).length > 0) {
+        console.log('開始儲存替換規則...');
+        await this._setChromeStorageInBatches(replaceSettings, 'local', updateProgress);
+        // 讓出控制權
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+
+      updateProgress('正在還原自定義模型...');
+
+      // 特別處理自定義模型的還原
+      if (settings.customModels) {
+        console.log('還原自定義模型...');
+        this.customModels = settings.customModels;
+        
+        // 將自定義模型重新載入到 API.models 中
+        Object.entries(this.customModels).forEach(([key, model]) => {
+          this.API.models[key] = model.displayName;
+          console.log(`已還原自定義模型: ${key} -> ${model.displayName}`);
+        });
+        
+        console.log(`共還原 ${Object.keys(this.customModels).length} 個自定義模型`);
+        
+        // 讓出控制權
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+
+      updateProgress('設定匯入完成');
+
+      console.log('設定儲存完成');
+      console.groupEnd();
+    } catch (error) {
+      console.error('儲存設定時出錯:', error);
+      console.groupEnd();
+      throw error;
+    }
+  },
+
+  // 分批儲存到 Chrome storage，避免阻塞
+  async _setChromeStorageInBatches(data, type = 'local', progressCallback, batchSize = 5) {
+    const entries = Object.entries(data);
+    const totalBatches = Math.ceil(entries.length / batchSize);
+    
+    for (let i = 0; i < entries.length; i += batchSize) {
+      const batchNumber = Math.floor(i / batchSize) + 1;
+      const batch = Object.fromEntries(entries.slice(i, i + batchSize));
+      
+      if (progressCallback) {
+        progressCallback(`儲存批次 ${batchNumber}/${totalBatches}...`);
+      }
+      
+      await this._setChromeStorage(batch, type);
+      
+      // 每批次之間讓出控制權
+      if (i + batchSize < entries.length) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    }
+  },
+
   // Chrome storage 操作的包裝方法，處理 Promise 化
   _getChromeStorage(type = 'sync') {
     return new Promise((resolve, reject) => {
