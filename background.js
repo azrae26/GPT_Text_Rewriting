@@ -1,27 +1,22 @@
-// background.js - 2025/01/02 重大更新：將模擬同步功能替換為真實同步功能 🔥 重要修復
-// 2025/06/08 修復：解決 SettingsIO.toggleAutoSync 返回值格式不匹配問題
+// background.js - 背景服務工作器
+// 2025/01/02 更新：集成 SettingsIO 雲端同步功能
+// 2025/06/08 修復：解決 SettingsIO.toggleAutoSync 返回值格式問題
+// 2025/01/23 清理：移除過時代碼，簡化日誌輸出
 // 
 // 功能：
-// - 背景服務工作器，處理插件的核心邏輯
-// - 股票爬蟲管理：在背景運行股票清單爬取功能
-// - 跨域請求處理：處理 MOPS 網站的數據爬取
-// - 狀態持久化：維護爬蟲狀態，支援插件重新啟動後恢復
+// - 股票爬蟲管理：背景運行股票清單爬取
+// - 雲端同步管理：整合 SettingsIO 的 Google Drive 同步
 // - 消息路由：處理來自 popup 和 content scripts 的消息
-// - 長連接管理：提供實時狀態更新給 popup
-// - **真實同步管理**：集成完整 SettingsIO 功能，提供真正的 Google Drive 同步
+// - 狀態持久化：維護爬蟲和同步狀態
 // 
 // 職責：
-// - 管理 BackgroundStockCrawlerManager 執行定時和單次股票爬取
+// - 管理 BackgroundStockCrawlerManager 的定時和單次爬取
+// - 管理 BackgroundSyncManager 的雲端同步
 // - 處理 chrome.storage 數據持久化
 // - 維護與 popup 的雙向通信
-// - 提供跨域網路請求服務
-// - 管理插件生命週期和狀態恢復
-// - 管理真實的 SettingsIO 實例，提供完整的 Google Drive 雲端同步服務
 // 
 // 依賴：
 // - Chrome Extensions API (runtime, storage, tabs)
-// - Fetch API for 跨域請求
-// - StockCrawlerUrls 配置
 // - settings.js：全域設定管理
 // - SettingsIO/settings-io.js：雲端同步功能
 
@@ -69,16 +64,9 @@ class BackgroundSyncManager {
       // 以 sync storage 的設定為準，但也確保 local storage 同步
       const enabled = syncResult.autoSyncEnabled || false;
       
-      console.log('[BackgroundSync][init] 同步狀態檢查:', {
-        localEnabled: localResult.syncEnabled,
-        syncEnabled: syncResult.autoSyncEnabled,
-        finalEnabled: enabled
-      });
-      
       // 確保兩個 storage 同步
       if (localResult.syncEnabled !== enabled) {
         await chrome.storage.local.set({ syncEnabled: enabled });
-        console.log('[BackgroundSync][init] 已同步 local storage 設定');
       }
       
       if (enabled) {
@@ -283,12 +271,7 @@ class BackgroundSyncManager {
       // 結合背景計時器狀態
       const actuallyEnabled = this.syncIntervalId !== null;
       
-      console.log('[BackgroundSync][status] 狀態檢查:', {
-        settingsIOStatus: statusResult,
-        actuallyEnabled: actuallyEnabled,
-        hasTimer: this.syncIntervalId !== null,
-        timerId: this.syncIntervalId
-      });
+      
       
       return {
         success: true,
@@ -403,7 +386,6 @@ class BackgroundSyncManager {
       
       // 檢查是否啟用自動同步
       const result = await chrome.storage.local.get(['syncEnabled']);
-      console.log(`[BackgroundSync][periodic][${timestamp}] 📋 檢查同步狀態: ${result.syncEnabled ? '啟用' : '停用'}`);
       
       if (!result.syncEnabled) {
         console.log(`[BackgroundSync][periodic][${timestamp}] ⏸️ 自動同步已停用，跳過執行`);
@@ -488,10 +470,6 @@ const STOCK_CRAWLER_CONFIG = {
   PROGRESS_COMPLETED: 100
 };
 
-// 用於追踪內容腳本是否已準備就緒的標誌
-let contentScriptReady = false;
-// 用於存儲待處理的改寫請求
-let pendingRewriteRequest = null;
 // 用於追踪每個標籤頁的內容腳本狀態
 const tabContentScriptStatus = new Map();
 
@@ -1055,14 +1033,11 @@ const BackgroundStockCrawlerManager = {
       intervalMinutes: this.intervalMinutes
     };
     
-    console.log('發送爬蟲狀態更新:', message);
-    
     // 發送給所有監聽的 popup
     this.statusListeners.forEach(sendResponse => {
       try {
         sendResponse(message);
       } catch (error) {
-        console.log('監聽器已失效，移除:', error.message);
         this.statusListeners.delete(sendResponse);
       }
     });
@@ -1072,7 +1047,6 @@ const BackgroundStockCrawlerManager = {
    * 添加狀態監聽器
    */
   addStatusListener(sendResponse) {
-    console.log('添加狀態監聽器');
     this.statusListeners.add(sendResponse);
     
     // 立即發送當前狀態
@@ -1091,12 +1065,9 @@ const BackgroundStockCrawlerManager = {
       intervalMinutes: currentStatus.intervalMinutes
     };
     
-    console.log('發送初始狀態到監聽器:', statusMessage);
-    
     try {
       sendResponse(statusMessage);
     } catch (error) {
-      console.log('發送初始狀態失敗:', error.message);
       this.statusListeners.delete(sendResponse);
     }
   },
@@ -1108,43 +1079,7 @@ const BackgroundStockCrawlerManager = {
     this.statusListeners.delete(sendResponse);
   },
 
-  /**
-   * 處理來自 settings-io.js 的調試訊息
-   */
-  logSyncDebug(type, message, data = {}) {
-    const timestamp = new Date().toISOString();
-    console.log(`[SettingsSync][${timestamp}][${type}] ${message}`, data);
-    
-    // 也可以保存到 storage 供查看
-    this._saveSyncLog(type, message, data, timestamp);
-  },
 
-  /**
-   * 保存同步日誌
-   */
-  async _saveSyncLog(type, message, data, timestamp) {
-    try {
-      const result = await chrome.storage.local.get(['syncDebugLogs']);
-      const logs = result.syncDebugLogs || [];
-      
-      // 添加新日誌
-      logs.push({
-        type,
-        message,
-        data,
-        timestamp
-      });
-      
-      // 只保留最近 50 條日誌
-      if (logs.length > 50) {
-        logs.splice(0, logs.length - 50);
-      }
-      
-      await chrome.storage.local.set({ syncDebugLogs: logs });
-    } catch (error) {
-      console.error('保存同步日誌失敗:', error);
-    }
-  },
 
   /**
    * 獲取當前狀態
@@ -1253,21 +1188,15 @@ function loadDependencies() {
 // 初始化背景服務
 async function initializeBackgroundServices() {
   try {
-    console.log('[Background][init] 🚀 開始初始化背景服務...');
+    console.log('[Background][init] 🚀 初始化背景服務...');
     
     // 初始化背景爬蟲管理器
     BackgroundStockCrawlerManager.init();
-    console.log('[Background][init] ✅ 股票爬蟲管理器初始化完成');
     
-    // 初始化背景同步功能（關鍵修復：從模擬改為真實實現）
+    // 初始化背景同步功能
     await initializeBackgroundSync();
-    console.log('[Background][init] ✅ 同步功能初始化完成');
     
-    console.log('[Background][init] 🎉 所有背景服務初始化完成');
-    console.log('[Background][init] 📋 本次重要修復：');
-    console.log('[Background][init]    - ❌ 移除了之前的模擬同步功能');
-    console.log('[Background][init]    - ✅ 集成了真實的 SettingsIO 雲端同步');
-    console.log('[Background][init]    - 🔄 現在定期同步會執行真正的 Google Drive 操作');
+    console.log('[Background][init] ✅ 背景服務初始化完成');
   } catch (error) {
     console.error('[Background][init] ❌ 背景服務初始化失敗:', error);
   }
@@ -1278,15 +1207,12 @@ initializeBackgroundServices();
 
 // 處理來自 popup 的長連接
 chrome.runtime.onConnect.addListener((port) => {
-  console.log('建立連接:', port.name);
-  
   if (port.name === 'stockCrawlerStatus') {
     // 將 port 添加到狀態監聽器
     const portListener = (message) => {
       try {
         port.postMessage(message);
       } catch (error) {
-        console.log('端口連接已失效:', error.message);
         BackgroundStockCrawlerManager.statusListeners.delete(portListener);
       }
     };
@@ -1312,12 +1238,11 @@ chrome.runtime.onConnect.addListener((port) => {
     try {
       port.postMessage(statusMessage);
     } catch (error) {
-      console.log('發送初始狀態失敗:', error.message);
+      // 忽略錯誤
     }
     
     // 監聽端口斷開
     port.onDisconnect.addListener(() => {
-      console.log('端口連接已斷開');
       BackgroundStockCrawlerManager.statusListeners.delete(portListener);
     });
   }
@@ -1469,43 +1394,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
    return true; // 表示會異步發送回應
   }
 
-  // 處理同步調試訊息
-  if (request.action === 'syncDebug') {
-    const timestamp = new Date().toLocaleTimeString();
-    
-    // 根據類型簡化日誌輸出
-    switch (request.type) {
-      case 'sync_result':
-        console.log(`[同步][${timestamp}] 🔄 ${request.message}`);
-        break;
-      case 'upload_result':
-        console.log(`[同步][${timestamp}] ⬆️ ${request.message}`);
-        break;
-      default:
-        console.log(`[同步][${timestamp}] ${request.message}`);
-    }
-    
-    sendResponse({ success: true });
-    return false;
-  }
-  
-  // 獲取同步日誌
-  if (request.action === 'getSyncLogs') {
-    chrome.storage.local.get(['syncDebugLogs'])
-      .then(result => {
-        sendResponse({ 
-          success: true, 
-          logs: result.syncDebugLogs || [] 
-        });
-      })
-      .catch(error => {
-        sendResponse({ 
-          success: false, 
-          error: error.message 
-        });
-      });
-    return true;
-  }
+
 
   // 處理原有的 URL 爬取請求（保持向後兼容）
   if (request.action === 'fetchUrl') {
@@ -1573,67 +1462,26 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const tabId = sender.tab?.id;
     if (tabId) {
         tabContentScriptStatus.set(tabId, true);
-        console.log(`標籤頁 ${tabId} 的內容腳本已準備就緒`);
     }
     sendResponse({received: true});
   }
-  // 檢查內容腳本是否準備就緒
-  else if (request.action === "checkContentScriptReady") {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        const tabId = tabs[0]?.id;
-        const isReady = tabId ? tabContentScriptStatus.get(tabId) : false;
-        sendResponse({ ready: isReady });
-    });
-    return true;
-  }
-  // 處理改寫請求
-  else if (request.action === "rewrite") {
-    console.log("收到改寫請求，正在存儲");
-    pendingRewriteRequest = request;
-    sendResponse({received: true});
-  }
-  // 處理彈出窗口準備就緒的通知
-  else if (request.action === "popupReady") {
-    console.log("彈出窗口已準備就緒");
-    // 如果有待處理的改寫請求，則轉發給彈出窗口
-    if (pendingRewriteRequest) {
-      console.log("轉發待處理的改寫請求到彈出窗口");
-      chrome.runtime.sendMessage(pendingRewriteRequest, (response) => {
-        console.log("收到彈出窗口的回應:", response);
-        pendingRewriteRequest = null;
-      });
-    }
-    sendResponse({received: true});
-  }
-  // 處理獲取存儲數據的請求
-  else if (request.action === "getStorageData") {
-    chrome.storage.sync.get(request.keys, sendResponse);
-    return true;  // 表示我們會異步發送響應
-  }
-  // 處理設置存儲數據的請求
-  else if (request.action === "setStorageData") {
-    chrome.storage.sync.set(request.data, sendResponse);
-    return true;  // 表示我們會異步發送響應
-  }
+
+
   // 處理更新內容腳本的請求
   else if (request.action === "updateContentScript") {
-    console.log("轉發更新請求到內容腳本", request);
     // 查找當前活動的標籤頁
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       if (tabs[0]) {
         // 向內容腳本發送消息
         chrome.tabs.sendMessage(tabs[0].id, request, (response) => {
-          console.log("收到內容腳本的回應:", response);
           // 錯誤處理
           if (chrome.runtime.lastError) {
-            console.error("向內容腳本發送消息時出錯:", chrome.runtime.lastError);
             sendResponse({error: "與內容腳本通信失敗", details: chrome.runtime.lastError.message});
           } else {
             sendResponse(response);
           }
         });
       } else {
-        console.error("未找到活動的標籤頁");
         sendResponse({error: "未找到活動的標籤頁"});
       }
     });
@@ -1666,7 +1514,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // 監聽插件啟動事件
 chrome.runtime.onInstalled.addListener((details) => {
-  console.log('插件已安裝或更新', details);
   if(details.reason === "install"){
     chrome.storage.sync.set({ isFirstTime: true });
   }
@@ -1680,4 +1527,4 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
     }
 });
 
-console.log("背景腳本已加載");
+
