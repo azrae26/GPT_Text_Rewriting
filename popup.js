@@ -113,7 +113,6 @@ document.addEventListener('DOMContentLoaded', async function() {
   const signoutButton = document.getElementById('signout-button');
   const manualSyncButton = document.getElementById('manual-sync-button');
   const autoSyncToggle = document.getElementById('auto-sync-toggle');
-  const resetSyncButton = document.getElementById('reset-sync-button');
   const syncError = document.getElementById('sync-error');
 
   // 初始化設定
@@ -1549,25 +1548,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       });
     }
 
-    // 重置同步按鈕
-    if (resetSyncButton) {
-      resetSyncButton.addEventListener('click', async () => {
-        if (confirm('確定要重置同步設定嗎？這將清除所有同步相關資料。')) {
-          console.log(`[popup.js][${getCurrentTimeString()}] 重置同步設定`);
-          try {
-            const result = await syncOperations.resetSyncStatus();
-            if (!result.success) {
-              throw new Error(result.error);
-            }
-            await updateSyncStatus();
-            console.log(`[popup.js][${getCurrentTimeString()}] 同步設定重置完成`);
-          } catch (error) {
-            console.error(`[popup.js][${getCurrentTimeString()}] 重置同步設定失敗:`, error);
-            showSyncError('重置失敗: ' + error.message);
-          }
-        }
-      });
-    }
+
   }
 
   // 更新同步狀態顯示
@@ -1592,7 +1573,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       // 更新狀態圖示和文字
       if (statusIcon && statusText) {
         statusIcon.className = 'status-icon';
-        syncStatus.className = 'sync-status';
+        syncStatus.className = 'sync-status-display';
         
         if (syncStatusData.enabled && !syncStatusData.error) {
           statusIcon.classList.add('connected');
