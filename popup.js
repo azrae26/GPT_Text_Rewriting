@@ -121,6 +121,15 @@ document.addEventListener('DOMContentLoaded', async function() {
   let settingsIO = null;
   let settings = await GlobalSettings.loadSettings();
   
+  // 初始化並暴露 SettingsIO 實例
+  if (typeof SettingsIO !== 'undefined') {
+    settingsIO = new SettingsIO();
+    window.settingsIO = settingsIO; // 暴露到全局，供 settings-manager.js 使用
+    console.log(`[popup.js][${getCurrentTimeString()}] SettingsIO 實例已初始化並暴露到 window`);
+  } else {
+    console.warn(`[popup.js][${getCurrentTimeString()}] SettingsIO 類別未載入`);
+  }
+  
   // 檢查是否為首次使用，如果是則應用預設設定
   const hasUserSettings = settings.instruction || settings.translateInstruction || 
                           settings.stockList || settings.zhEnMapping ||

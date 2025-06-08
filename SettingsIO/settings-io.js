@@ -1,9 +1,10 @@
 /**
  * settings-io.js - 設定同步和雲端儲存管理
  * 功能：OAuth2 認證、Google Drive 同步、設定衝突處理、多分頁協調
- * 職責：管理雲端同步邏輯、處理本地時間戳記異常
+ * 職責：管理雲端同步邏輯、處理本地時間戳記異常、固定檔名檔案發現
  * 依賴：Chrome Extensions API、Google Drive API v3、GlobalSettings
- * 更新：2025-06-08 修復時間戳同步問題、排除UI狀態避免不必要同步
+ * 更新：2025-06-08 修復時間戳同步問題、排除UI狀態避免不必要同步、移除過時的檔案ID共享機制
+ *       修復內部更新檢測邏輯缺陷、修正時間戳優先級邏輯、解決同步循環問題
  */
 
 class SettingsIO {
@@ -97,7 +98,7 @@ class SettingsIO {
     console.log(`[SettingsIO][${getCurrentTimeString()}] 偵測到設定變更:`, relevantChanges);
 
     // 檢查是否是由同步系統自己觸發的變更（比如從雲端下載後的設定更新）
-    if (this.syncInProgress && this.isInternalSyncUpdate) {
+    if (this.isInternalSyncUpdate) {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 忽略同步系統內部更新`);
       return;
     }
@@ -331,9 +332,18 @@ class SettingsIO {
       
       if (needsReload) {
         console.log(`[SettingsIO][${getCurrentTimeString()}] 更新本地設定並重新載入`);
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🔄 準備保存設定，時間戳: ${mergedSettings.lastModified}`);
+        
         this.isInternalSyncUpdate = true; // 標記為內部更新
         await this.saveSettings(mergedSettings);
         this.isInternalSyncUpdate = false; // 重置標記
+        
+        // 驗證時間戳是否成功保存
+        const [savedSyncData, savedLocalData] = await Promise.all([
+          chrome.storage.sync.get(['lastModified']),
+          chrome.storage.local.get(['lastModified'])
+        ]);
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 📊 保存後驗證 - sync: ${savedSyncData.lastModified}, local: ${savedLocalData.lastModified}`);
         
         if (typeof location !== 'undefined' && location.reload) {
           location.reload();
@@ -397,7 +407,8 @@ class SettingsIO {
     const localKeyCount = localKeys.length;
     const driveKeyCount = driveKeys.length;
     
-    this.sendSyncDebug(`過濾後內容: 本地鍵值數=${localKeyCount}, 雲端鍵值數=${driveKeyCount}`, 'compare', 'filtered_content');
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 🔧 修復後的過濾結果: 本地=${localKeyCount}鍵, 雲端=${driveKeyCount}鍵`);
+    this.sendSyncDebug(`修復後過濾: 本地鍵值數=${localKeyCount}, 雲端鍵值數=${driveKeyCount}`, 'compare', 'filtered_content_fixed');
     
     // 檢查鍵值差異
     const missingInDrive = localKeys.filter(key => !driveKeys.includes(key));
@@ -441,9 +452,22 @@ class SettingsIO {
     this.sendSyncDebug(`內容比較結果: ${hasContentDifference ? '有差異' : '無差異'}, 鍵值差異=${missingInDrive.length + missingInLocal.length}, 值差異=${differentValues.length}`, 'compare', 'final_result');
     
     if (!hasContentDifference) {
-      console.log(`[SettingsIO][${getCurrentTimeString()}] 設定內容相同，跳過同步`);
-      this.sendSyncDebug('設定相同，無需同步', 'none', 'no_difference');
+      console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 設定內容相同（修復成功），跳過同步`);
+      this.sendSyncDebug('設定相同，無需同步（過濾邏輯已修復）', 'none', 'no_difference_fixed');
       return { needsReload: false, needsUpload: false, mergedSettings: localSettings };
+    }
+
+    // 修正：時間戳相同時的處理邏輯
+    if (driveLastModified === localLastModified) {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 時間戳相同但內容有差異（正常情況），使用雲端版本`);
+      this.sendSyncDebug('時間戳相同，使用雲端版本（已修復過濾邏輯）', 'download', 'timestamp_same_fixed');
+      
+      // 修復：保持原始時間戳，不要修改
+      return {
+        needsReload: true,
+        needsUpload: false,
+        mergedSettings: { ...driveSettings, lastModified: driveLastModified }
+      };
     }
 
     const useCloudVersion = !isLocalRecent && driveLastModified > localLastModified;
@@ -468,13 +492,15 @@ class SettingsIO {
     }
   }
 
-  // 過濾設定用於比較（移除時間戳和UI狀態）
+  // 過濾設定用於比較（移除時間戳和不會被同步的內容）
   filterSettingsForComparison(settings) {
     const filtered = { ...settings };
     delete filtered.lastModified;
     
+    // 修復：使用與上傳時相同的 'cloud' 模式過濾
+    // 確保比較的內容和實際會被同步的內容一致，避免循環
     Object.keys(filtered).forEach(key => {
-      if (this.shouldExcludeFromSync(key, 'comparison')) {
+      if (this.shouldExcludeFromSync(key, 'cloud')) {
         delete filtered[key];
       }
     });
@@ -522,7 +548,10 @@ class SettingsIO {
 
       const allSettings = await GlobalSettings.getAllSettings();
       const settings = this.cleanSettingsForUpload(allSettings);
-      settings.lastModified = Date.now();
+      // 只有在沒有時間戳時才設置，保持原有時間戳的完整性
+      if (!settings.lastModified) {
+        settings.lastModified = Date.now();
+      }
       
       await this.updateDriveFile(token, fileId, settings);
       
@@ -563,55 +592,7 @@ class SettingsIO {
       }
     }
 
-    // 🎯 聰明解法：如果本地沒有檔案ID，檢查 Chrome Sync Storage 是否有其他設備保存的檔案ID
-    if (!fileId) {
-      console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 檢查其他設備是否已有檔案ID...`);
-      
-      // 先檢查整個 sync storage 來調試
-      const allSyncData = await new Promise((resolve) => {
-        chrome.storage.sync.get(null, (result) => resolve(result));
-      });
-      console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 Chrome Sync Storage 內容:`, Object.keys(allSyncData));
-      console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 Chrome Sync Storage 大小:`, JSON.stringify(allSyncData).length, 'bytes');
-      
-      const syncResult = await new Promise((resolve) => {
-        chrome.storage.sync.get(['sharedDriveFileId'], (result) => resolve(result));
-      });
-      
-      console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 檢查結果: sharedDriveFileId =`, syncResult.sharedDriveFileId || '(空值)');
-      
-      if (syncResult.sharedDriveFileId) {
-        console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 發現其他設備的檔案ID: ${syncResult.sharedDriveFileId}`);
-        try {
-          // 驗證這個檔案ID是否有效
-          await this.getDriveFileMetadata(token, syncResult.sharedDriveFileId);
-          fileId = syncResult.sharedDriveFileId;
-          
-          // 將找到的檔案ID保存到本地
-          await chrome.storage.local.set({
-            [SettingsIO.CONSTANTS.KEYS.DRIVE_FILE_ID]: fileId
-          });
-          console.log(`[SettingsIO][${getCurrentTimeString()}] 🎉 成功使用其他設備的檔案ID`);
-          return fileId;
-        } catch (error) {
-          console.log(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 其他設備的檔案ID無效:`, error.message);
-          
-          // 清理無效的檔案ID
-          console.log(`[SettingsIO][${getCurrentTimeString()}] 🧹 清理無效的檔案ID...`);
-          await Promise.all([
-            chrome.storage.local.remove([SettingsIO.CONSTANTS.KEYS.DRIVE_FILE_ID]),
-            new Promise((resolve) => {
-              chrome.storage.sync.remove(['sharedDriveFileId'], () => {
-                console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 已清理無效的檔案ID`);
-                resolve();
-              });
-            })
-          ]);
-        }
-      } else {
-        console.log(`[SettingsIO][${getCurrentTimeString()}] ❌ 未找到其他設備的檔案ID`);
-      }
-    }
+    // 如果本地沒有檔案ID，直接搜尋現有檔案
 
     // 如果還是沒有檔案ID，搜尋現有檔案
     try {
@@ -631,32 +612,20 @@ class SettingsIO {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 創建新檔案`);
       const allSettings = await GlobalSettings.getAllSettings();
       const settings = this.cleanSettingsForUpload(allSettings);
-      settings.lastModified = Date.now();
+      // 只有在沒有時間戳時才設置，保持原有時間戳的完整性
+      if (!settings.lastModified) {
+        settings.lastModified = Date.now();
+      }
       
       fileId = await this.createDriveFile(token, settings);
     }
 
-    // 🎯 聰明解法：將檔案ID同時保存到本地和同步儲存，供其他設備使用
-    await Promise.all([
-      chrome.storage.local.set({
-        [SettingsIO.CONSTANTS.KEYS.DRIVE_FILE_ID]: fileId
-      }),
-      new Promise((resolve, reject) => {
-        chrome.storage.sync.set({ 
-          sharedDriveFileId: fileId 
-        }, () => {
-          if (chrome.runtime.lastError) {
-            console.error(`[SettingsIO][${getCurrentTimeString()}] ❌ 保存檔案ID到 Chrome Sync Storage 失敗:`, chrome.runtime.lastError);
-            reject(chrome.runtime.lastError);
-          } else {
-            console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 檔案ID已成功保存到 Chrome Sync Storage: ${fileId}`);
-            resolve();
-          }
-        });
-      })
-    ]);
+    // 保存檔案ID到本地緩存
+    await chrome.storage.local.set({
+      [SettingsIO.CONSTANTS.KEYS.DRIVE_FILE_ID]: fileId
+    });
     
-    console.log(`[SettingsIO][${getCurrentTimeString()}] 📤 檔案ID已共享給其他設備: ${fileId}`);
+    console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 檔案ID已保存到本地緩存: ${fileId}`);
 
     return fileId;
   }
@@ -664,10 +633,9 @@ class SettingsIO {
   async createDriveFile(token, settings) {
     console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 正在創建新的雲端檔案...`);
     
-    // 不使用 appDataFolder，改用用戶Drive中的特定資料夾
+    // 使用固定檔名創建在根目錄中
     const metadata = {
       name: SettingsIO.CONSTANTS.SETTINGS_FILENAME
-      // 移除 parents: ['appDataFolder']，讓檔案創建在根目錄
     };
 
     const form = new FormData();
@@ -750,6 +718,16 @@ class SettingsIO {
         syncSettings[key] = value;
       }
     });
+
+    // 特殊處理：如果 lastModified 被分配到 local storage，要清理 sync storage 中的舊值
+    if ('lastModified' in localSettings) {
+      try {
+        await chrome.storage.sync.remove(['lastModified']);
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🧹 已清理 sync storage 中的舊時間戳`);
+      } catch (error) {
+        console.warn(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 清理 sync storage 時間戳失敗:`, error);
+      }
+    }
 
     if (Object.keys(syncSettings).length > 0) {
       await chrome.storage.sync.set(syncSettings);
@@ -870,17 +848,17 @@ class SettingsIO {
 
       const token = typeof authResult.token === 'object' ? authResult.token.token : authResult.token;
       
-      // 🔍 先嘗試搜尋現有檔案，不創建新檔案
+      // 先嘗試搜尋現有檔案，不創建新檔案
       let fileId = await this.searchExistingDriveFile(token);
       
       if (!fileId) {
         console.log(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 未找到現有雲端檔案，可能是首次使用`);
-        // 如果真的沒有檔案，才創建一個空檔案
+        // 如果真的沒有檔案，才創建一個新檔案
         fileId = await this.getOrCreateDriveFile(token);
         console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 創建新檔案ID: ${fileId}`);
       } else {
         console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 找到現有雲端檔案，檔案ID: ${fileId}`);
-        // 儲存找到的檔案ID
+        // 儲存找到的檔案ID到本地緩存
         await chrome.storage.local.set({
           [SettingsIO.CONSTANTS.KEYS.DRIVE_FILE_ID]: fileId
         });
@@ -920,7 +898,7 @@ class SettingsIO {
     }
   }
 
-  // 🔍 新增：專門搜尋現有檔案的方法（不創建）
+  // 專門搜尋現有檔案的方法（使用固定檔名）
   async searchExistingDriveFile(token) {
     try {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 搜尋現有雲端檔案...`);

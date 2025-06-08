@@ -151,6 +151,9 @@ class SettingsFileManager {
 
     sendLog('info', `開始非阻塞分級降級匯入策略，共 ${totalAttempts} 種方案`);
 
+    // 等待足夠時間，確保匯出觸發的計時器都已完成
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     for (let i = 0; i < attempts.length; i++) {
       const attempt = attempts[i];
       try {
@@ -174,10 +177,24 @@ class SettingsFileManager {
           sendLog('info', `排除了 ${attempt.excludeKeys.length} 個項目: ${attempt.excludeKeys.slice(0, 3).join(', ')}${attempt.excludeKeys.length > 3 ? '...' : ''}`);
         }
         
-        // 使用非阻塞方式套用設定
-        await this.settings.applySettingsNonBlocking(filteredSettings, (progress) => {
-          this.ui.updateProgress(progressDialog, `${attempt.name} - ${progress}`);
-        });
+        // 設置同步保護標記，防止 SettingsIO 處理匯入過程中的 storage 變更
+        if (window.settingsIO && window.settingsIO.isInternalSyncUpdate !== undefined) {
+          window.settingsIO.isInternalSyncUpdate = true;
+          sendLog('info', '已設置同步保護標記，防止匯入過程中的同步衝突');
+        }
+        
+        try {
+          // 使用非阻塞方式套用設定
+          await this.settings.applySettingsNonBlocking(filteredSettings, (progress) => {
+            this.ui.updateProgress(progressDialog, `${attempt.name} - ${progress}`);
+          });
+        } finally {
+          // 重置同步保護標記
+          if (window.settingsIO && window.settingsIO.isInternalSyncUpdate !== undefined) {
+            window.settingsIO.isInternalSyncUpdate = false;
+            sendLog('info', '已重置同步保護標記');
+          }
+        }
         
         // 成功時的訊息
         let message = '設定匯入成功！';
@@ -195,6 +212,12 @@ class SettingsFileManager {
         };
         
       } catch (error) {
+        // 確保在錯誤情況下也重置同步保護標記
+        if (window.settingsIO && window.settingsIO.isInternalSyncUpdate !== undefined) {
+          window.settingsIO.isInternalSyncUpdate = false;
+          sendLog('info', '錯誤情況下已重置同步保護標記');
+        }
+        
         sendLog('warn', `[${i + 1}/${totalAttempts}] ${attempt.name}失敗: ${error.message}`);
         
         // 如果這是最後一次嘗試，返回失敗

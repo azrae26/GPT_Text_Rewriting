@@ -740,7 +740,11 @@ const GlobalSettings = {
       // 新增：手動替換值
       'manualReplaceValues_0',
       'manualReplaceValues_1',
-      'manualReplaceValues_2'
+      'manualReplaceValues_2',
+      // 修正：同步開關狀態必須使用 local storage
+      'syncEnabled',
+      // 修正：時間戳必須使用 local storage（避免設備間時間戳污染）
+      'lastModified'
     ];
     
     // 檢查是否為需要使用 local storage 的大型設定
@@ -894,10 +898,11 @@ const GlobalSettings = {
         this._getChromeStorage('local')
       ]);
       
-      // 排除同步系統內部狀態（這些不應該同步到雲端）
+      // 排除同步系統內部狀態（這些不應該匯出）
       const internalStateKeys = [
         'syncStatus', 'syncError', 'syncDebugLogs', 'stockCrawlerState',
-        'lastSyncTime', 'driveFileId', 'syncEnabled'
+        'lastSyncTime', 'driveFileId'
+        // 注意：移除 'syncEnabled'，允許它被匯出（但不被雲端同步）
       ];
       
       // 從 localData 中移除內部狀態
@@ -943,9 +948,6 @@ const GlobalSettings = {
         importantSettings.customModels = syncData.customModels;
       }
       
-      // 優先使用 sync storage 的關鍵設定
-      const syncPriorityKeys = ['lastModified', 'apiKeys', 'autoSyncEnabled'];
-      
       // 合併所有資料，但確保關鍵設定不被 local storage 覆蓋
       const allData = { 
         ...syncData, 
@@ -954,7 +956,9 @@ const GlobalSettings = {
         ...importantSettings
       };
       
-      // 恢復關鍵設定的 sync storage 值
+      // 優先使用 sync storage 的關鍵設定（排除時間戳，避免時間戳混亂）
+      const syncPriorityKeys = ['apiKeys', 'autoSyncEnabled'];
+      
       syncPriorityKeys.forEach(key => {
         if (syncData[key] !== undefined) {
           const beforeValue = allData[key];

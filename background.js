@@ -61,11 +61,14 @@ class BackgroundSyncManager {
         chrome.storage.sync.get(['autoSyncEnabled'])
       ]);
       
-      // 以 sync storage 的設定為準，但也確保 local storage 同步
-      const enabled = syncResult.autoSyncEnabled || false;
+      // 修正：以 local storage 為準（因為 SettingsIO 使用 local storage）
+      // 如果 local storage 有值，使用它；否則使用 sync storage 的值
+      const enabled = localResult.syncEnabled !== undefined ? 
+        localResult.syncEnabled : 
+        (syncResult.autoSyncEnabled || false);
       
-      // 確保兩個 storage 同步
-      if (localResult.syncEnabled !== enabled) {
+      // 確保 local storage 有正確的值（這是 SettingsIO 讀取的位置）
+      if (localResult.syncEnabled === undefined) {
         await chrome.storage.local.set({ syncEnabled: enabled });
       }
       
@@ -135,11 +138,9 @@ class BackgroundSyncManager {
       
       async toggleAutoSync(enabled) {
         console.log('[FallbackSettingsIO] 切換自動同步（備用）:', enabled);
-        await Promise.all([
-          chrome.storage.local.set({ syncEnabled: enabled }),
-          chrome.storage.sync.set({ autoSyncEnabled: enabled })
-        ]);
-        return { success: true, enabled };
+        // 修正：只更新 local storage，與 SettingsIO 保持一致
+        await chrome.storage.local.set({ syncEnabled: enabled });
+        return enabled; // 返回值與真實 SettingsIO 保持一致
       }
       
       async getSyncStatus() {
@@ -157,10 +158,8 @@ class BackgroundSyncManager {
       
       async resetSyncStatus() {
         console.log('[FallbackSettingsIO] 重置同步狀態（備用）');
-        await Promise.all([
-          chrome.storage.local.remove(['syncEnabled', 'lastSyncTime', 'syncError']),
-          chrome.storage.sync.set({ autoSyncEnabled: false })
-        ]);
+        // 修正：只清理 local storage，與 SettingsIO 保持一致
+        await chrome.storage.local.remove(['syncEnabled', 'lastSyncTime', 'syncError']);
         return { success: true };
       }
       
