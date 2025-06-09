@@ -240,4 +240,63 @@ if (resultEnabled === enabled) { ... }
 3. **添加輸入/輸出日誌來驗證接口行為**
 4. **考慮使用 TypeScript 或詳細的 JSDoc 註釋**
 
+## UI一致性檢查導致重複規則問題 (2025-01-08)
+
+### 問題描述: 同步後取到2倍規則數量
+**症狀:**
+- 日誌顯示重複調用 "從存儲刷新替換組UI"
+- UI一致性檢查總是檢測到UI中有0個規則
+- 但存儲中有實際規則（如12個），導致重複刷新
+
+**根本原因:**
+1. **錯誤的CSS選擇器**: `_extractUIRules()` 方法使用了錯誤的選擇器
+   ```javascript
+   // ❌ 錯誤選擇器
+   const replaceGroups = document.querySelectorAll('.replace-group.manual-replace');
+   const fromInput = group.querySelector('input[placeholder*="尋找"]');
+   ```
+
+2. **重複消息觸發**: 同步完成後同時發送 `settingsUpdated` 和 `checkUIConsistency` 消息
+3. **時序問題**: 第一次刷新還沒完成，就觸發了UI一致性檢查
+
+**修復方案:**
+1. **修正CSS選擇器**:
+   ```javascript
+   // ✅ 正確選擇器
+   const replaceGroups = document.querySelectorAll('.manual-replace-container .replace-extra-group');
+   const fromInput = group.querySelector('.replace-input');
+   const toInput = group.querySelector('.replace-input:last-of-type');
+   ```
+
+2. **添加防重複調用機制**:
+   ```javascript
+   // 在 _checkManualReplaceConsistency 中
+   if (this._consistencyCheckInProgress) {
+     console.log('[ReplaceManager] ⏸️ 一致性檢查已在進行中，跳過此次調用');
+     return;
+   }
+   this._consistencyCheckInProgress = true;
+   
+   // 在 refreshFromStorage 中
+   if (this._refreshInProgress) {
+     console.log('[ManualReplaceManager] ⏸️ UI刷新已在進行中，跳過此次調用');
+     return;
+   }
+   this._refreshInProgress = true;
+   ```
+
+3. **延遲UI檢查**: 確保UI已完全更新後再進行一致性檢查
+   ```javascript
+   await new Promise(resolve => setTimeout(resolve, 150));
+   ```
+
+**重要教訓:**
+- **CSS選擇器必須與實際DOM結構匹配**
+- **防重複調用機制對於非同步操作至關重要**
+- **UI一致性檢查的時機很重要，需要等待DOM更新完成**
+- **日誌分析是診斷時序問題的關鍵工具**
+
+**驗證方法:**
+觀察日誌中是否還會出現重複的 "從存儲刷新替換組UI" 調用，應該看到防重複調用的跳過訊息。
+
 

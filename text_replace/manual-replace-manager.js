@@ -893,6 +893,13 @@ const ManualReplaceManager = {
    * 用於同步後更新UI，保持主組不變，重新創建額外組
    */
   refreshFromStorage() {
+    // 🆕 防重複調用機制：如果正在刷新中，跳過此次調用
+    if (this._refreshInProgress) {
+      console.log('[ManualReplaceManager] ⏸️ UI刷新已在進行中，跳過此次調用');
+      return;
+    }
+    
+    this._refreshInProgress = true;
     console.log('[ManualReplaceManager] 🔄 從存儲刷新替換組UI');
     
     const textArea = document.querySelector('textarea[name="content"]');
@@ -900,6 +907,7 @@ const ManualReplaceManager = {
     
     if (!textArea || !manualContainer) {
       console.log('[ManualReplaceManager] ⚠️ 找不到必要的DOM元素，跳過刷新');
+      this._refreshInProgress = false; // 重置標記
       return;
     }
 
@@ -939,6 +947,9 @@ const ManualReplaceManager = {
         setTimeout(() => {
           this._updatePreviews();
           console.log('[ManualReplaceManager] ✅ 替換組UI刷新完成');
+          
+          // 🆕 重置刷新標記，允許後續刷新
+          this._refreshInProgress = false;
         }, 100);
       });
     });

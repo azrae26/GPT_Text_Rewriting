@@ -1211,11 +1211,22 @@ const ReplaceManager = {
     try {
       console.log('[ReplaceManager] 🔍 開始檢查手動替換規則UI一致性...');
       
+      // 🆕 防重複調用機制：如果正在檢查中，跳過此次調用
+      if (this._consistencyCheckInProgress) {
+        console.log('[ReplaceManager] ⏸️ 一致性檢查已在進行中，跳過此次調用');
+        return;
+      }
+      
+      this._consistencyCheckInProgress = true;
+      
       // 檢查是否有 ManualReplaceManager 實例
       if (!window.ManualReplaceManager) {
         console.log('[ReplaceManager] ⚠️ ManualReplaceManager 未找到，跳過一致性檢查');
         return;
       }
+      
+      // 🆕 延遲一點檢查，確保UI已完全更新
+      await new Promise(resolve => setTimeout(resolve, 150));
       
       // 從存儲中讀取當前的替換規則
       const currentStorageRules = await this._loadStorageRules();
@@ -1241,6 +1252,11 @@ const ReplaceManager = {
       
     } catch (error) {
       console.error('[ReplaceManager] ❌ UI一致性檢查失敗:', error);
+    } finally {
+      // 🆕 重置檢查標記，允許後續檢查
+      setTimeout(() => {
+        this._consistencyCheckInProgress = false;
+      }, 500);
     }
   },
   
@@ -1270,15 +1286,13 @@ const ReplaceManager = {
     const rules = [];
     
     try {
-      // 查找所有手動替換組（排除主組）
-      const replaceGroups = document.querySelectorAll('.replace-group.manual-replace');
+      // 🔧 修正選擇器：查找手動替換容器中的所有額外組
+      const replaceGroups = document.querySelectorAll('.manual-replace-container .replace-extra-group');
       
       replaceGroups.forEach((group, index) => {
-        // 跳過第一個組（主組）
-        if (index === 0) return;
-        
-        const fromInput = group.querySelector('input[placeholder*="尋找"]');
-        const toInput = group.querySelector('input[placeholder*="替換"]');
+        // 🔧 修正選擇器：使用正確的CSS類名查找輸入框
+        const fromInput = group.querySelector('.replace-input');
+        const toInput = group.querySelector('.replace-input:last-of-type');
         
         if (fromInput && toInput) {
           const fromValue = fromInput.value.trim();
