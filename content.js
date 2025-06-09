@@ -235,6 +235,44 @@ function initializeExtension() {
 
   console.log('Content script fully loaded and initialized');
 
+  // 🆕 監聽標籤頁變為當前時重整UI
+  document.addEventListener('visibilitychange', function() {
+    if (!document.hidden && shouldEnableFeatures()) {
+      console.log('標籤頁變為當前，重整UI...');
+      
+      // 重新載入設定並更新UI
+      setTimeout(async () => {
+        try {
+          await window.GlobalSettings.loadSettings();
+          
+          // 如果UI已初始化，則更新所有組件
+          if (isInitialized) {
+            // 更新替換規則UI（如果存在）
+            if (window.ManualReplaceManager) {
+              window.ManualReplaceManager.refreshFromStorage();
+            }
+            
+            // 更新高亮功能
+            if (window.TextHighlight) {
+              chrome.storage.sync.get(['highlightWords', 'highlightColors'], function(data) {
+                if (data.highlightWords) {
+                  const words = data.highlightWords.split('\n').filter(word => word.trim());
+                  const colors = data.highlightColors || {};
+                  window.TextHighlight.setTargetWords(words, colors);
+                  window.TextHighlight.forceUpdate();
+                }
+              });
+            }
+            
+            console.log('✅ UI重整完成');
+          }
+        } catch (error) {
+          console.error('❌ UI重整失敗:', error);
+        }
+      }, 200); // 延遲200ms確保頁面完全激活
+    }
+  });
+
   // 向背景腳本發送訊息，通知內容腳本已準備就緒
   chrome.runtime.sendMessage({action: "contentScriptReady"}, function(response) {
     console.log('Content script ready message sent', response);

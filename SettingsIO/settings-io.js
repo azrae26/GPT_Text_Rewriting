@@ -1057,7 +1057,7 @@ class SettingsIO {
             console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 標籤頁 ${tab.id} 消息發送成功`);
           } catch (error) {
             // 忽略無法發送的標籤頁（可能沒有 content script）
-            console.log(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 標籤頁 ${tab.id} 無法接收消息:`, error?.message || 'unknown');
+            console.log(`[SettingsIO][${getCurrentTimeString()}] ℹ️ 標籤頁 ${tab.id} 無法接收消息:`, error?.message || 'unknown');
           }
         });
         
@@ -1076,6 +1076,8 @@ class SettingsIO {
         console.log(`[SettingsIO][${getCurrentTimeString()}] ℹ️ popup 未開啟或無法接收消息:`, error?.message || 'unknown');
       }
       
+
+      
     } else {
       // Popup 環境：使用 runtime message
       try {
@@ -1083,8 +1085,12 @@ class SettingsIO {
       } catch (e) {
         // 忽略錯誤
       }
+      
+
     }
   }
+
+
 
   deepEqual(obj1, obj2) {
     if (obj1 === obj2) return true;
