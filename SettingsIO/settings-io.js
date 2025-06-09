@@ -480,11 +480,42 @@ class SettingsIO {
       
       await this.updateSyncStatus('success');
       
+      // 🆕 UI一致性檢查：確保UI內容與存儲內容一致
+      await this.performUIConsistencyCheck();
+      
     } catch (error) {
       console.error(`[SettingsIO][${getCurrentTimeString()}] 同步失敗:`, error);
       await this.setSyncError(error.message);
     } finally {
       this.syncInProgress = false;
+    }
+  }
+
+  /**
+   * 執行UI一致性檢查
+   * 檢查UI顯示的內容是否與存儲中的內容一致，如果不一致則觸發更新
+   */
+  async performUIConsistencyCheck() {
+    try {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 開始UI一致性檢查...`);
+      
+      // 延遲一點時間確保之前的UI更新已完成
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // 發送檢查消息到content scripts
+      await this._sendMessage({
+        action: 'checkUIConsistency',
+        data: { 
+          reason: 'syncComplete', 
+          timestamp: Date.now(),
+          description: '同步完成後的UI一致性檢查'
+        }
+      });
+      
+      console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ UI一致性檢查消息已發送`);
+      
+    } catch (error) {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] ⚠️ UI一致性檢查失敗:`, error.message);
     }
   }
 
@@ -1004,7 +1035,9 @@ class SettingsIO {
     const isServiceWorker = typeof window === 'undefined' && typeof self !== 'undefined';
     
     if (isServiceWorker) {
-      // Service Worker 環境：發送到所有相關標籤頁的 content scripts
+      // Service Worker 環境：同時發送到 content scripts 和 popup
+      
+      // 1. 發送到 content scripts（原有邏輯）
       try {
         // 先嘗試查詢活動標籤頁，如果沒有則查詢所有標籤頁
         let tabs = await chrome.tabs.query({ active: true });
@@ -1033,6 +1066,16 @@ class SettingsIO {
       } catch (error) {
         console.error(`[SettingsIO][${getCurrentTimeString()}] ❌ 發送消息到標籤頁失敗:`, error);
       }
+      
+      // 🆕 2. 發送到 popup（如果開著的話）
+      try {
+        await chrome.runtime.sendMessage(message);
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 消息已發送到 popup`);
+      } catch (error) {
+        // popup 可能沒有打開，這是正常的
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ℹ️ popup 未開啟或無法接收消息:`, error?.message || 'unknown');
+      }
+      
     } else {
       // Popup 環境：使用 runtime message
       try {

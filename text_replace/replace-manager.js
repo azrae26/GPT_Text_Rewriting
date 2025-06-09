@@ -1202,6 +1202,144 @@ const ReplaceManager = {
       }
     }
   },
+  
+  /**
+   * 檢查手動替換規則的UI一致性
+   * 比較UI顯示的內容和存儲中的內容，如果不一致就觸發刷新
+   */
+  async _checkManualReplaceConsistency() {
+    try {
+      console.log('[ReplaceManager] 🔍 開始檢查手動替換規則UI一致性...');
+      
+      // 檢查是否有 ManualReplaceManager 實例
+      if (!window.ManualReplaceManager) {
+        console.log('[ReplaceManager] ⚠️ ManualReplaceManager 未找到，跳過一致性檢查');
+        return;
+      }
+      
+      // 從存儲中讀取當前的替換規則
+      const currentStorageRules = await this._loadStorageRules();
+      
+      // 從UI中讀取當前顯示的規則
+      const currentUIRules = this._extractUIRules();
+      
+      // 比較兩者是否一致
+      const isConsistent = this._compareRules(currentStorageRules, currentUIRules);
+      
+      if (isConsistent) {
+        console.log('[ReplaceManager] ✅ UI內容與存儲內容一致，無需更新');
+      } else {
+        console.log('[ReplaceManager] ⚠️ 檢測到UI內容與存儲內容不一致，觸發刷新');
+        console.log('[ReplaceManager] 📊 存儲規則數量:', currentStorageRules.length);
+        console.log('[ReplaceManager] 📊 UI規則數量:', currentUIRules.length);
+        
+        // 觸發UI刷新
+        setTimeout(() => {
+          window.ManualReplaceManager.refreshFromStorage();
+        }, 100);
+      }
+      
+    } catch (error) {
+      console.error('[ReplaceManager] ❌ UI一致性檢查失敗:', error);
+    }
+  },
+  
+  /**
+   * 從存儲中讀取替換規則
+   */
+  async _loadStorageRules() {
+    return new Promise((resolve) => {
+      // 優先讀取新格式
+      chrome.storage.local.get(['replace_manualReplaceRules'], (result) => {
+        if (result.replace_manualReplaceRules) {
+          resolve(result.replace_manualReplaceRules);
+        } else {
+          // 舊格式作為後備
+          chrome.storage.local.get(['manualReplaceRules'], (oldResult) => {
+            resolve(oldResult.manualReplaceRules || []);
+          });
+        }
+      });
+    });
+  },
+  
+  /**
+   * 從UI中提取當前顯示的替換規則
+   */
+  _extractUIRules() {
+    const rules = [];
+    
+    try {
+      // 查找所有手動替換組（排除主組）
+      const replaceGroups = document.querySelectorAll('.replace-group.manual-replace');
+      
+      replaceGroups.forEach((group, index) => {
+        // 跳過第一個組（主組）
+        if (index === 0) return;
+        
+        const fromInput = group.querySelector('input[placeholder*="尋找"]');
+        const toInput = group.querySelector('input[placeholder*="替換"]');
+        
+        if (fromInput && toInput) {
+          const fromValue = fromInput.value.trim();
+          const toValue = toInput.value.trim();
+          
+          // 只記錄有內容的規則
+          if (fromValue || toValue) {
+            rules.push({
+              from: fromValue,
+              to: toValue
+            });
+          }
+        }
+      });
+      
+      console.log('[ReplaceManager] 📊 從UI提取到', rules.length, '條規則');
+      
+    } catch (error) {
+      console.error('[ReplaceManager] ❌ 提取UI規則失敗:', error);
+    }
+    
+    return rules;
+  },
+  
+  /**
+   * 比較兩組規則是否一致
+   */
+  _compareRules(storageRules, uiRules) {
+    // 過濾空規則
+    const validStorageRules = storageRules.filter(rule => 
+      rule && (rule.from?.trim() || rule.to?.trim())
+    );
+    const validUIRules = uiRules.filter(rule => 
+      rule && (rule.from?.trim() || rule.to?.trim())
+    );
+    
+    // 數量不同
+    if (validStorageRules.length !== validUIRules.length) {
+      console.log('[ReplaceManager] 🔍 規則數量不同:', {
+        storage: validStorageRules.length,
+        ui: validUIRules.length
+      });
+      return false;
+    }
+    
+    // 逐一比較內容
+    for (let i = 0; i < validStorageRules.length; i++) {
+      const storageRule = validStorageRules[i];
+      const uiRule = validUIRules[i];
+      
+      if (storageRule.from !== uiRule.from || storageRule.to !== uiRule.to) {
+        console.log('[ReplaceManager] 🔍 規則內容不同 at index', i, ':', {
+          storage: storageRule,
+          ui: uiRule
+        });
+        return false;
+      }
+    }
+    
+    return true;
+  }
 };
 
 window.ReplaceManager = ReplaceManager;
@@ -1209,7 +1347,7 @@ window.ReplaceManager = ReplaceManager;
 // 🆕 監聽設定更新消息，用於同步後刷新UI
 if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
   chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    // 只處理設定更新消息
+    // 處理設定更新消息
     if (request.action === 'settingsUpdated') {
       const { reason, changedKeys } = request.data || {};
       
@@ -1231,8 +1369,27 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
       }
     }
     
+    // 🆕 處理UI一致性檢查消息
+    else if (request.action === 'checkUIConsistency') {
+      const { reason, description } = request.data || {};
+      
+      console.log('[ReplaceManager] 🔍 收到UI一致性檢查消息:', { reason, description });
+      
+      // 檢查手動替換規則的UI一致性
+      if (window.ReplaceManager) {
+        window.ReplaceManager._checkManualReplaceConsistency();
+      } else {
+        console.log('[ReplaceManager] ⚠️ ReplaceManager 實例未找到，跳過UI一致性檢查');
+      }
+      
+      // 向背景腳本回應已處理
+      if (sendResponse) {
+        sendResponse({ received: true, checked: true });
+      }
+    }
+    
     return false; // 不保持消息通道開啟
   });
   
-  console.log('[ReplaceManager] 📡 設定更新消息監聽器已設置');
+  console.log('[ReplaceManager] 📡 設定更新和UI一致性檢查監聽器已設置');
 } 
