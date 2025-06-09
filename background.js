@@ -26,8 +26,6 @@ let backgroundSyncInitialized = false;
 
 // 背景同步的真實實現 - 集成完整的 SettingsIO 功能
 class BackgroundSyncManager {
-  static SYNC_INTERVAL_SECONDS = 15; // 同步間隔（秒）
-  
   constructor() {
     this.syncInProgress = false;
     this.syncIntervalId = null;
@@ -74,7 +72,7 @@ class BackgroundSyncManager {
       
       if (enabled) {
         console.log('[BackgroundSync][init] 🔄 檢測到自動同步已啟用，啟動定期同步');
-        this.startPeriodicSync();
+        await this.startPeriodicSync();
       } else {
         console.log('[BackgroundSync][init] ⏸️ 自動同步未啟用');
       }
@@ -240,7 +238,7 @@ class BackgroundSyncManager {
         await chrome.storage.local.set({ syncEnabled: enabled });
         
         if (enabled) {
-          this.startPeriodicSync();
+          await this.startPeriodicSync();
         } else {
           this.stopPeriodicSync();
         }
@@ -351,15 +349,20 @@ class BackgroundSyncManager {
     }
   }
 
-  startPeriodicSync() {
+  async startPeriodicSync() {
     this.stopPeriodicSync(); // 避免重複的計時器
+    
+    // 讀取用戶設定的同步間隔
+    const result = await chrome.storage.sync.get(['syncInterval']);
+    const intervalMinutes = result.syncInterval || 2; // 預設2分鐘
+    const intervalMs = intervalMinutes * 60 * 1000;
     
     this.syncIntervalId = setInterval(async () => {
       console.log('[BackgroundSync][periodic] ⏰ 定期同步計時器觸發');
       await this.performPeriodicSync();
-    }, BackgroundSyncManager.SYNC_INTERVAL_SECONDS * 1000);
+    }, intervalMs);
     
-    console.log(`[BackgroundSync][periodic] ✅ 定期同步已啟動（每${BackgroundSyncManager.SYNC_INTERVAL_SECONDS}秒執行一次）`);
+    console.log(`[BackgroundSync][periodic] ✅ 定期同步已啟動（每${intervalMinutes}分鐘執行一次）`);
   }
 
   stopPeriodicSync() {
@@ -1077,8 +1080,6 @@ const BackgroundStockCrawlerManager = {
     this.statusListeners.delete(sendResponse);
   },
 
-
-
   /**
    * 獲取當前狀態
    */
@@ -1160,6 +1161,7 @@ function loadDependencies() {
     // 載入必要的依賴
     importScripts('default.js');
     importScripts('settings.js');
+    importScripts('settings/settings-key.js');
     importScripts('SettingsIO/settings-io.js');
     
     console.log('[BackgroundSync][loadDependencies] 🎉 真實 SettingsIO 載入完成 - 將提供完整的雲端同步功能');
@@ -1202,6 +1204,50 @@ async function initializeBackgroundServices() {
 
 // 啟動背景服務
 initializeBackgroundServices();
+
+// 監聽同步間隔設定變更
+chrome.storage.sync.onChanged.addListener(async (changes, areaName) => {
+  if (changes.syncInterval && backgroundSettingsIO) {
+    console.log('[BackgroundSync][storage] 偵測到同步間隔變更:', changes.syncInterval.newValue);
+    
+    try {
+      // 直接檢查 storage 中的同步啟用狀態
+      const result = await chrome.storage.local.get(['syncEnabled']);
+      const syncEnabled = result.syncEnabled || false;
+      
+      if (syncEnabled) {
+        console.log('[BackgroundSync][storage] 重新啟動定期同步以應用新間隔');
+        await backgroundSettingsIO.startPeriodicSync();
+      } else {
+        console.log('[BackgroundSync][storage] 自動同步未啟用，跳過重新啟動');
+      }
+    } catch (error) {
+      console.error('[BackgroundSync][storage] 處理同步間隔變更失敗:', error);
+    }
+  }
+});
+
+// 監聽同步間隔設定變更（保留 local storage 監聽以向後兼容）
+chrome.storage.local.onChanged.addListener(async (changes, areaName) => {
+  if (changes.syncInterval && backgroundSettingsIO) {
+    console.log('[BackgroundSync][storage] 偵測到同步間隔變更 (local):', changes.syncInterval.newValue);
+    
+    try {
+      // 直接檢查 storage 中的同步啟用狀態
+      const result = await chrome.storage.local.get(['syncEnabled']);
+      const syncEnabled = result.syncEnabled || false;
+      
+      if (syncEnabled) {
+        console.log('[BackgroundSync][storage] 重新啟動定期同步以應用新間隔');
+        await backgroundSettingsIO.startPeriodicSync();
+      } else {
+        console.log('[BackgroundSync][storage] 自動同步未啟用，跳過重新啟動');
+      }
+    } catch (error) {
+      console.error('[BackgroundSync][storage] 處理同步間隔變更失敗:', error);
+    }
+  }
+});
 
 // 處理來自 popup 的長連接
 chrome.runtime.onConnect.addListener((port) => {
@@ -1392,8 +1438,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
    return true; // 表示會異步發送回應
   }
 
-
-
   // 處理原有的 URL 爬取請求（保持向後兼容）
   if (request.action === 'fetchUrl') {
     const { url } = request;
@@ -1463,7 +1507,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     sendResponse({received: true});
   }
-
 
   // 處理更新內容腳本的請求
   else if (request.action === "updateContentScript") {

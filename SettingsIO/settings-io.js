@@ -5,6 +5,9 @@
  * 依賴：Chrome Extensions API、Google Drive API v3、GlobalSettings
  * 更新：2025-06-08 修復時間戳同步問題、排除UI狀態避免不必要同步、移除過時的檔案ID共享機制
  *       修復內部更新檢測邏輯缺陷、修正時間戳優先級邏輯、解決同步循環問題
+ *       2025-06-09 修復時序同步問題：上傳成功後同步本地時間戳至雲端檔案時間，避免誤判為雲端更新
+ *       修復上傳內容時間戳不一致問題：確保上傳的設定內容包含正確的時間戳，避免下載時發現差異
+ *       修復雙重時間戳問題：統一使用檔案元數據時間戳進行比較，避免內容時間戳與檔案時間戳不一致
  */
 
 class SettingsIO {
@@ -15,7 +18,7 @@ class SettingsIO {
     
     TIMINGS: {
       UPLOAD_DEBOUNCE: 10000,
-      SYNC_INTERVAL: 2*60*1000, // 每2分鐘同步一次
+      DEFAULT_SYNC_INTERVAL: 2*60*1000, // 預設每2分鐘同步一次
       TOKEN_REFRESH_MARGIN: 600000,
       LOCAL_RECENT_THRESHOLD: 5000,
       COMPETITION_DELAY: 100,
@@ -43,12 +46,14 @@ class SettingsIO {
     this.tokenManager = new TokenManager();
     this.syncIntervalId = null;
     this.uploadTimeoutId = null;
+    this.lastModifiedTimeoutId = null; // 時間戳更新防抖動計時器
     this.isInitialized = false;
     this.localChangeDetected = false; // 本地修改保護標記
     this.isInternalSyncUpdate = false; // 同步系統內部更新標記
     
     this.handleStorageChange = this.handleStorageChange.bind(this);
     this.performSync = this.performSync.bind(this);
+    this.updateLastModifiedDebounced = this.updateLastModifiedDebounced.bind(this);
   }
 
   async init() {
@@ -57,11 +62,20 @@ class SettingsIO {
     console.log(`[SettingsIO][${getCurrentTimeString()}] 初始化設定同步系統`);
     
     try {
+      // 一次性遷移：將 local storage 中的 syncInterval 遷移到 sync storage
+      await this.migrateSyncIntervalToSyncStorage();
+      
       this.setupStorageListener();
       
       const syncEnabled = await this.isSyncEnabled();
       if (syncEnabled) {
-        this.startPeriodicSync();
+        // 檢查是否在 Service Worker 環境中
+        if (typeof window === 'undefined' && typeof self !== 'undefined') {
+          console.log(`[SettingsIO][${getCurrentTimeString()}] Service Worker 環境：定期同步由 BackgroundSync 管理`);
+        } else {
+          this.startPeriodicSync();
+          console.log(`[SettingsIO][${getCurrentTimeString()}] Popup 環境：啟動定期同步`);
+        }
         console.log(`[SettingsIO][${getCurrentTimeString()}] 自動同步已啟用`);
       }
       
@@ -69,6 +83,43 @@ class SettingsIO {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 設定同步系統初始化完成`);
     } catch (error) {
       console.error(`[SettingsIO][${getCurrentTimeString()}] 初始化失敗:`, error);
+    }
+  }
+
+  async migrateSyncIntervalToSyncStorage() {
+    try {
+      // 檢查是否已經完成遷移
+      const migrationFlag = await chrome.storage.local.get(['syncIntervalMigrated']);
+      if (migrationFlag.syncIntervalMigrated) {
+        return; // 已經遷移過，跳過
+      }
+
+      // 從 local storage 讀取現有的 syncInterval
+      const localResult = await chrome.storage.local.get(['syncInterval']);
+      if (localResult.syncInterval !== undefined) {
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🔄 遷移同步間隔設定：${localResult.syncInterval} 分鐘 (local → sync)`);
+        
+        // 檢查 sync storage 是否已有值
+        const syncResult = await chrome.storage.sync.get(['syncInterval']);
+        if (syncResult.syncInterval === undefined) {
+          // 只有在 sync storage 沒有值時才遷移
+          await chrome.storage.sync.set({ syncInterval: localResult.syncInterval });
+          console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 同步間隔已遷移到 sync storage`);
+        } else {
+          console.log(`[SettingsIO][${getCurrentTimeString()}] ⚠️ sync storage 已有同步間隔設定，保持現有值`);
+        }
+        
+        // 清除 local storage 中的舊值
+        await chrome.storage.local.remove(['syncInterval']);
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🧹 已清除 local storage 中的舊同步間隔設定`);
+      }
+      
+      // 設置遷移標記
+      await chrome.storage.local.set({ syncIntervalMigrated: true });
+      console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 同步間隔遷移完成`);
+      
+    } catch (error) {
+      console.error(`[SettingsIO][${getCurrentTimeString()}] 同步間隔遷移失敗:`, error);
     }
   }
 
@@ -84,7 +135,8 @@ class SettingsIO {
       SettingsIO.CONSTANTS.KEYS.SETTINGS_HASH,
       SettingsIO.CONSTANTS.KEYS.SYNC_ERROR,
       'syncDebugLogs',
-      'stockCrawlerState'
+      'stockCrawlerState',
+      'lastModified'  // 避免時間戳更新造成的連鎖反應
     ];
 
     const relevantChanges = Object.keys(changes).filter(key => 
@@ -103,12 +155,10 @@ class SettingsIO {
       return;
     }
 
-    // 立即更新時間戳記並發送調試信息
-    const newTimestamp = Date.now();
-    await chrome.storage.local.set({ lastModified: newTimestamp });
+    // 使用防抖動機制更新時間戳，避免頻繁更新
+    this.updateLastModifiedDebounced();
     
-    // 發送調試信息到 background
-    this.sendSyncDebug(`設定變更: ${relevantChanges.join(', ')}, 新時間戳: ${new Date(newTimestamp).toISOString()}`, 'change', 'local_update');
+
     
     // 立即設置本地修改保護標記
     this.localChangeDetected = true;
@@ -116,15 +166,26 @@ class SettingsIO {
     // 如果有同步正在進行，記錄警告
     if (this.syncInProgress) {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 🚨 檢測到本地修改，已設置保護標記`);
-      this.sendSyncDebug('檢測到本地修改，已設置保護標記', 'interrupt', 'protect_local');
     }
     
     this.scheduleUpload();
   }
 
-  // 統一的排除邏輯判斷
+  // 統一的排除邏輯判斷（使用新的 KeyClassifier，保持向後兼容）
   shouldExcludeFromSync(key, context = 'comparison') {
-    // UI 狀態鍵值
+    // 使用新的統一分類器
+    if (typeof KeyClassifier !== 'undefined') {
+      const purposeMap = {
+        'cloud': 'cloudSync',
+        'comparison': 'comparison',
+        'export': 'export'
+      };
+      
+      const purpose = purposeMap[context] || 'comparison';
+      return KeyClassifier.shouldExclude(key, purpose);
+    }
+    
+    // 舊版本的後備邏輯（向後兼容）
     const uiStateKeys = [
       'lastMainTab', 'lastSubTab', 'windowState', 'selectedItem', 
       'expandedSections', 'scrollPosition', 'dialogState', 'panelState',
@@ -132,7 +193,6 @@ class SettingsIO {
       'isFirstTime', 'firstRun', 'autoExport'
     ];
     
-    // 同步系統內部狀態
     const syncInternalKeys = [
       SettingsIO.CONSTANTS.KEYS.LAST_SYNC,
       SettingsIO.CONSTANTS.KEYS.SYNC_STATUS,
@@ -142,7 +202,6 @@ class SettingsIO {
       'syncDebugLogs', 'stockCrawlerState'
     ];
 
-    // 雲端同步排除（更保守）
     const cloudExcludeKeys = [
       ...syncInternalKeys,
       SettingsIO.CONSTANTS.KEYS.SYNC_ENABLED
@@ -159,6 +218,12 @@ class SettingsIO {
   }
 
   isSettingsKey(key) {
+    // 使用新的統一分類器
+    if (typeof KeyClassifier !== 'undefined') {
+      return KeyClassifier.isSettingsKey(key);
+    }
+    
+    // 舊版本的後備邏輯（向後兼容）
     const settingsKeys = [
       'apiKeys', 'instruction', 'shortInstruction', 'autoRewritePatterns',
       'translateInstruction', 'summaryInstruction', 'zhEnMapping',
@@ -174,17 +239,30 @@ class SettingsIO {
       'crawlerInterval', 'highlightWords', 'highlightColors',
       'generationSettingsGroups', 'currentGenerationSettings',
       'customModels', 'removeHash', 'removeStar',
-      // 替換組相關鍵名（支援新舊格式）
       'autoReplaceRules', 'manualReplaceRules'
+      // 注意：syncInterval 已移除 - 使用 Chrome sync storage 即時同步，不需要 SettingsIO 處理
     ];
     
     return settingsKeys.includes(key) || 
            key.startsWith('generation_settings_') ||
-           key.startsWith('replace_');  // 支援 replace_ 前綴的替換規則
+           key.startsWith('replace_');
   }
 
   async updateLastModifiedTime() {
     await chrome.storage.local.set({ lastModified: Date.now() });
+  }
+
+  // 防抖動更新時間戳，避免頻繁更新造成連鎖反應
+  updateLastModifiedDebounced() {
+    if (this.lastModifiedTimeoutId) {
+      clearTimeout(this.lastModifiedTimeoutId);
+    }
+    
+    this.lastModifiedTimeoutId = setTimeout(async () => {
+      const newTimestamp = Date.now();
+      await chrome.storage.local.set({ lastModified: newTimestamp });
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🕐 防抖動更新時間戳: ${new Date(newTimestamp).toISOString()}`);
+    }, 500); // 500ms 防抖動
   }
 
   scheduleUpload() {
@@ -239,7 +317,12 @@ class SettingsIO {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 🔽 首次開啟同步，強制下載雲端設定`);
       const syncResult = await this.forceDownloadFromCloud();
       if (syncResult.success) {
-        this.startPeriodicSync();
+        // 檢查是否在 Service Worker 環境中
+        if (typeof window === 'undefined' && typeof self !== 'undefined') {
+          console.log(`[SettingsIO][${getCurrentTimeString()}] Service Worker 環境：定期同步由 BackgroundSync 管理`);
+        } else {
+          await this.startPeriodicSync();
+        }
       }
     } else {
       this.stopPeriodicSync();
@@ -248,16 +331,19 @@ class SettingsIO {
     return enabled;
   }
 
-  startPeriodicSync() {
+  async startPeriodicSync() {
     this.stopPeriodicSync();
+    
+    const intervalMinutes = await this.getSyncInterval();
+    const intervalMs = intervalMinutes * 60 * 1000;
     
     this.syncIntervalId = setInterval(async () => {
       if (await this.isSyncEnabled()) {
         await this.performSync();
       }
-    }, SettingsIO.CONSTANTS.TIMINGS.SYNC_INTERVAL);
+    }, intervalMs);
     
-    console.log(`[SettingsIO][${getCurrentTimeString()}] 定期同步已啟動`);
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 定期同步已啟動，間隔 ${intervalMinutes} 分鐘`);
   }
 
   stopPeriodicSync() {
@@ -271,6 +357,20 @@ class SettingsIO {
   async isSyncEnabled() {
     const result = await chrome.storage.local.get([SettingsIO.CONSTANTS.KEYS.SYNC_ENABLED]);
     return result[SettingsIO.CONSTANTS.KEYS.SYNC_ENABLED] || false;
+  }
+
+  async getSyncInterval() {
+    const result = await chrome.storage.sync.get(['syncInterval']);
+    return result.syncInterval || 2; // 預設2分鐘
+  }
+
+  async setSyncInterval(intervalMinutes) {
+    await chrome.storage.sync.set({ syncInterval: intervalMinutes });
+    
+    // 如果自動同步已啟用，重新啟動定期同步使用新間隔
+    if (await this.isSyncEnabled()) {
+      this.startPeriodicSync();
+    }
   }
 
   async performSync(token = null) {
@@ -287,7 +387,6 @@ class SettingsIO {
       // 優先檢查是否有本地修改保護標記
       if (this.localChangeDetected) {
         console.log(`[SettingsIO][${getCurrentTimeString()}] 🛡️ 檢測到本地修改保護，直接上傳到雲端`);
-        this.sendSyncDebug('檢測到本地修改保護，強制上傳', 'protect', 'force_upload');
         
         if (!token) {
           const authResult = await this.authenticateWithGoogle(false);
@@ -326,12 +425,18 @@ class SettingsIO {
       const fileId = await this.getOrCreateDriveFile(token);
       console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 使用檔案ID進行同步: ${fileId}`);
       
+      // 🔧 修復雙重時間戳問題：先獲取檔案元數據，使用檔案時間戳作為標準
+      const fileMetadata = await this.getDriveFileMetadata(token, fileId);
+      const driveFileModifiedTime = new Date(fileMetadata.modifiedTime).getTime();
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 📊 雲端檔案時間戳: ${fileMetadata.modifiedTime} (${driveFileModifiedTime})`);
+      
       const driveSettings = await this.downloadSettings(token, fileId);
       const localSettings = await GlobalSettings.getAllSettings();
       
       const { needsReload, needsUpload, mergedSettings } = await this.compareAndMergeSettings(
         localSettings, 
-        driveSettings
+        driveSettings,
+        driveFileModifiedTime  // 🆕 傳遞檔案時間戳
       );
       
       if (needsReload) {
@@ -384,25 +489,23 @@ class SettingsIO {
     }
   }
 
-  async compareAndMergeSettings(localSettings, driveSettings) {
+  async compareAndMergeSettings(localSettings, driveSettings, driveFileModifiedTime = null) {
     const localLastModified = localSettings.lastModified || 0;
-    const driveLastModified = driveSettings.lastModified || 0;
+    
+    // 🔧 修復雙重時間戳問題：優先使用檔案元數據時間戳，而不是內容中的時間戳
+    const actualDriveModifiedTime = driveFileModifiedTime || driveSettings.lastModified || 0;
     const isLocalRecent = (Date.now() - localLastModified) < SettingsIO.CONSTANTS.TIMINGS.LOCAL_RECENT_THRESHOLD;
     
-    console.log(`[SettingsIO][${getCurrentTimeString()}] 比較時間戳記: 本地=${new Date(localLastModified).toISOString()}, 雲端=${new Date(driveLastModified).toISOString()}, 本地最近=${isLocalRecent}`);
-    
-    // 發送時間戳比較信息到 background
-    this.sendSyncDebug(`時間戳比較: 本地=${new Date(localLastModified).toISOString()}, 雲端=${new Date(driveLastModified).toISOString()}, 本地最近=${isLocalRecent}`, 'compare', 'timestamp');
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 比較時間戳記: 本地=${new Date(localLastModified).toISOString()}, 雲端檔案=${new Date(actualDriveModifiedTime).toISOString()}, 本地最近=${isLocalRecent}`);
     
     // 特殊情況：本地時間戳無效
-    if (localLastModified <= 0 && driveLastModified > 0) {
+    if (localLastModified <= 0 && actualDriveModifiedTime > 0) {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 本地時間戳無效，強制使用雲端版本`);
-      this.sendSyncDebug('時間戳無效，強制下載雲端版本', 'download', 'invalid_timestamp');
       
       return {
         needsReload: true,
         needsUpload: false,
-        mergedSettings: { ...driveSettings, lastModified: driveLastModified }
+        mergedSettings: { ...driveSettings, lastModified: actualDriveModifiedTime }
       };
     }
 
@@ -460,27 +563,20 @@ class SettingsIO {
     if (differences.length > 0) {
       const fullDiffMessage = `🔍 設定差異詳情: ${differences.join(' | ')}`;
       console.log(`[SettingsIO][${getCurrentTimeString()}] ${fullDiffMessage}`);
-      this.sendSyncDebug(fullDiffMessage, 'compare', 'detailed_differences');
     } else {
       console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 設定內容完全相同`);
-      this.sendSyncDebug('設定內容完全相同', 'compare', 'no_differences');
     }
     
     const hasContentDifference = !this.deepEqual(localContent, driveContent);
     
-    // 發送最終比較結果到 background
-    this.sendSyncDebug(`內容比較結果: ${hasContentDifference ? '有差異' : '無差異'}, 鍵值差異=${missingInDrive.length + missingInLocal.length}, 值差異=${valueDetails.length}`, 'compare', 'final_result');
-    
     if (!hasContentDifference) {
       console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 設定內容相同（修復成功），跳過同步`);
-      this.sendSyncDebug('設定相同，無需同步（過濾邏輯已修復）', 'none', 'no_difference_fixed');
       return { needsReload: false, needsUpload: false, mergedSettings: localSettings };
     }
 
     // 修正：時間戳相同時的處理邏輯
-    if (driveLastModified === localLastModified) {
+    if (actualDriveModifiedTime === localLastModified) {
       console.log(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 時間戳相同但內容有差異，這可能是過濾邏輯問題`);
-      this.sendSyncDebug('時間戳相同但內容有差異，跳過操作避免循環', 'none', 'timestamp_same_skip_to_avoid_loop');
       
       // 修復：時間戳相同時不應該有內容差異，直接跳過避免循環
       // 如果真的有差異，可能是過濾邏輯的問題，需要進一步調試
@@ -493,18 +589,15 @@ class SettingsIO {
       };
     }
 
-    const useCloudVersion = !isLocalRecent && driveLastModified > localLastModified;
-    const action = useCloudVersion ? 'download' : 'upload';
-    const reason = useCloudVersion ? 'cloud_newer' : 'local_newer';
+    const useCloudVersion = !isLocalRecent && actualDriveModifiedTime > localLastModified;
     
     console.log(`[SettingsIO][${getCurrentTimeString()}] 採用${useCloudVersion ? '雲端' : '本地'}版本`);
-    this.sendSyncDebug(`${useCloudVersion ? '下載雲端' : '上傳本地'}版本`, action, reason);
     
     if (useCloudVersion) {
       return {
         needsReload: true,
         needsUpload: false,
-        mergedSettings: { ...driveSettings, lastModified: driveLastModified }
+        mergedSettings: { ...driveSettings, lastModified: actualDriveModifiedTime }
       };
     } else {
       return {
@@ -517,11 +610,15 @@ class SettingsIO {
 
   // 過濾設定用於比較（移除時間戳和不會被同步的內容）
   filterSettingsForComparison(settings) {
+    // 使用新的統一分類器
+    if (typeof KeyClassifier !== 'undefined') {
+      return KeyClassifier.filterSettings(settings, 'comparison');
+    }
+    
+    // 舊版本的後備邏輯（向後兼容）
     const filtered = { ...settings };
     delete filtered.lastModified;
     
-    // 修復：使用與上傳時相同的 'cloud' 模式過濾
-    // 確保比較的內容和實際會被同步的內容一致，避免循環
     Object.keys(filtered).forEach(key => {
       if (this.shouldExcludeFromSync(key, 'cloud')) {
         delete filtered[key];
@@ -531,17 +628,17 @@ class SettingsIO {
     return filtered;
   }
 
-  // 簡化的調試信息發送
-  sendSyncDebug(message, action, reason) {
-    try {
-      chrome.runtime.sendMessage({
-        action: 'syncDebug',
-        type: 'sync_result',
-        message,
-        data: { action, reason }
-      }).catch(() => {});
-    } catch (e) {}
-  }
+  // 簡化的調試信息發送（已停用）
+  // sendSyncDebug(message, action, reason) {
+  //   try {
+  //     chrome.runtime.sendMessage({
+  //       action: 'syncDebug',
+  //       type: 'sync_result',
+  //       message,
+  //       data: { action, reason }
+  //     }).catch(() => {});
+  //   } catch (e) {}
+  // }
 
   async uploadSettings(token = null, fileId = null) {
     if (this.uploadInProgress) {
@@ -571,12 +668,35 @@ class SettingsIO {
 
       const allSettings = await GlobalSettings.getAllSettings();
       const settings = this.cleanSettingsForUpload(allSettings);
-      // 只有在沒有時間戳時才設置，保持原有時間戳的完整性
-      if (!settings.lastModified) {
-        settings.lastModified = Date.now();
-      }
       
-      await this.updateDriveFile(token, fileId, settings);
+      // 🔧 修復時序同步問題：使用當前時間作為上傳時間戳，確保與雲端檔案修改時間一致
+      const uploadTimestamp = Date.now();
+      settings.lastModified = uploadTimestamp;
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🕐 設置上傳時間戳: ${new Date(uploadTimestamp).toISOString()}`);
+      
+      const { cloudModifiedTime } = await this.updateDriveFile(token, fileId, settings);
+      
+      // 🔧 將雲端檔案的修改時間同步到本地（通常與上傳時間戳接近）
+      if (cloudModifiedTime && !isNaN(cloudModifiedTime)) {
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🔄 同步雲端時間戳：${cloudModifiedTime} (${new Date(cloudModifiedTime).toISOString()})`);
+        await chrome.storage.local.set({ lastModified: cloudModifiedTime });
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 本地時間戳已同步至雲端檔案時間`);
+        
+        // 🆕 關鍵修復：如果雲端時間戳與上傳時間戳不同，需要重新上傳確保檔案內容一致
+        if (Math.abs(cloudModifiedTime - uploadTimestamp) > 1000) { // 差異超過1秒
+          console.log(`[SettingsIO][${getCurrentTimeString()}] 🔄 檢測到時間戳差異，重新上傳確保一致性`);
+          console.log(`[SettingsIO][${getCurrentTimeString()}] 📊 上傳時間戳: ${uploadTimestamp}, 雲端時間戳: ${cloudModifiedTime}`);
+          
+          // 更新設定內容的時間戳並重新上傳
+          settings.lastModified = cloudModifiedTime;
+          await this.updateDriveFile(token, fileId, settings);
+          console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 檔案內容時間戳已更新為雲端時間`);
+        }
+      } else {
+        // 如果無法獲取雲端時間戳，至少確保本地使用上傳時間戳
+        console.warn(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 無法獲取雲端時間戳，使用上傳時間戳`);
+        await chrome.storage.local.set({ lastModified: uploadTimestamp });
+      }
       
       console.log(`[SettingsIO][${getCurrentTimeString()}] 設定上傳完成 (檔案ID: ${fileId})`);
       
@@ -585,26 +705,30 @@ class SettingsIO {
       await this.setSyncError(error.message);
     } finally {
       this.uploadInProgress = false;
+      this.localChangeDetected = false; // 修復：重置本地修改保護標記，避免重複上傳
     }
   }
 
   // 清理設定用於雲端上傳
   cleanSettingsForUpload(settings) {
+    // 使用新的統一分類器
+    if (typeof KeyClassifier !== 'undefined') {
+      return KeyClassifier.filterSettings(settings, 'cloudSync');
+    }
+    
+    // 舊版本的後備邏輯（向後兼容）
     const cleaned = {};
     
-    // 舊格式的替換規則鍵值，應該被排除避免與新格式衝突
     const legacyReplaceKeys = [
       'autoReplaceRules', 'manualReplaceRules', 'replaceContent',
       'manualReplaceValues_0', 'manualReplaceValues_1', 'manualReplaceValues_2'
     ];
     
     Object.entries(settings).forEach(([key, value]) => {
-      // 排除雲端同步的標準排除項
       if (this.shouldExcludeFromSync(key, 'cloud')) {
         return;
       }
       
-      // 排除舊格式的替換規則
       if (legacyReplaceKeys.includes(key)) {
         console.log(`[SettingsIO][${getCurrentTimeString()}] 🧹 排除舊格式替換規則: ${key}`);
         return;
@@ -650,12 +774,35 @@ class SettingsIO {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 創建新檔案`);
       const allSettings = await GlobalSettings.getAllSettings();
       const settings = this.cleanSettingsForUpload(allSettings);
-      // 只有在沒有時間戳時才設置，保持原有時間戳的完整性
-      if (!settings.lastModified) {
-        settings.lastModified = Date.now();
-      }
       
-      fileId = await this.createDriveFile(token, settings);
+      // 🔧 修復時序同步問題：使用當前時間作為創建時間戳
+      const createTimestamp = Date.now();
+      settings.lastModified = createTimestamp;
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🕐 設置新檔案時間戳: ${new Date(createTimestamp).toISOString()}`);
+      
+      const { fileId: newFileId, cloudModifiedTime } = await this.createDriveFile(token, settings);
+      fileId = newFileId;
+      
+      // 🔧 同步新創建檔案的時間戳
+      if (cloudModifiedTime && !isNaN(cloudModifiedTime)) {
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🔄 同步新檔案雲端時間戳：${cloudModifiedTime} (${new Date(cloudModifiedTime).toISOString()})`);
+        await chrome.storage.local.set({ lastModified: cloudModifiedTime });
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 新檔案時間戳已同步`);
+        
+        // 🆕 關鍵修復：如果雲端時間戳與創建時間戳不同，需要重新上傳確保檔案內容一致
+        if (Math.abs(cloudModifiedTime - createTimestamp) > 1000) { // 差異超過1秒
+          console.log(`[SettingsIO][${getCurrentTimeString()}] 🔄 新檔案檢測到時間戳差異，重新上傳確保一致性`);
+          console.log(`[SettingsIO][${getCurrentTimeString()}] 📊 創建時間戳: ${createTimestamp}, 雲端時間戳: ${cloudModifiedTime}`);
+          
+          // 更新設定內容的時間戳並重新上傳
+          settings.lastModified = cloudModifiedTime;
+          await this.updateDriveFile(token, fileId, settings);
+          console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 新檔案內容時間戳已更新為雲端時間`);
+        }
+      } else {
+        console.warn(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 無法獲取新檔案雲端時間戳，使用創建時間戳`);
+        await chrome.storage.local.set({ lastModified: createTimestamp });
+      }
     }
 
     // 保存檔案ID到本地緩存
@@ -692,9 +839,25 @@ class SettingsIO {
     }
 
     const result = await response.json();
+    let cloudModifiedTime = null;
+    
+    try {
+      if (result.modifiedTime) {
+        cloudModifiedTime = new Date(result.modifiedTime).getTime();
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ⏰ 新檔案修改時間: ${result.modifiedTime}`);
+      } else {
+        console.warn(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 新檔案沒有修改時間，使用當前時間`);
+        cloudModifiedTime = Date.now();
+      }
+    } catch (timeError) {
+      console.warn(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 解析新檔案修改時間失敗:`, timeError.message);
+      cloudModifiedTime = Date.now();
+    }
+    
     console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 新檔案創建成功: ${result.id}`);
     console.log(`[SettingsIO][${getCurrentTimeString()}] 📁 設定檔案已保存到您的Google Drive根目錄，檔案名稱: ${SettingsIO.CONSTANTS.SETTINGS_FILENAME}`);
-    return result.id;
+    
+    return { fileId: result.id, cloudModifiedTime };
   }
 
   async updateDriveFile(token, fileId, settings) {
@@ -714,7 +877,26 @@ class SettingsIO {
       throw new Error(`更新檔案失敗: ${response.status} - ${error}`);
     }
 
+    // 獲取更新後的檔案元數據以取得精確的修改時間
+    const fileMetadata = await this.getDriveFileMetadata(token, fileId);
+    let cloudModifiedTime = null;
+    
+    try {
+      if (fileMetadata.modifiedTime) {
+        cloudModifiedTime = new Date(fileMetadata.modifiedTime).getTime();
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ⏰ 雲端檔案修改時間: ${fileMetadata.modifiedTime}`);
+      } else {
+        console.warn(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 無法獲取雲端檔案修改時間，使用當前時間`);
+        cloudModifiedTime = Date.now();
+      }
+    } catch (timeError) {
+      console.warn(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 解析雲端修改時間失敗:`, timeError.message);
+      cloudModifiedTime = Date.now();
+    }
+    
     console.log(`[SettingsIO][${getCurrentTimeString()}] 🆔 檔案更新成功: ${fileId}`);
+    
+    return { cloudModifiedTime };
   }
 
   async downloadSettings(token, fileId) {
@@ -734,7 +916,8 @@ class SettingsIO {
   }
 
   async getDriveFileMetadata(token, fileId) {
-    const response = await fetch(`${SettingsIO.CONSTANTS.DRIVE_API_BASE}/files/${fileId}`, {
+    // 明確指定要返回的字段，包括 modifiedTime
+    const response = await fetch(`${SettingsIO.CONSTANTS.DRIVE_API_BASE}/files/${fileId}?fields=id,name,modifiedTime,size`, {
       headers: { 'Authorization': `Bearer ${token}` }
     });
 
@@ -742,7 +925,15 @@ class SettingsIO {
       throw new Error(`獲取檔案資訊失敗: ${response.status}`);
     }
 
-    return await response.json();
+    const metadata = await response.json();
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 📊 檔案元數據:`, {
+      id: metadata.id,
+      name: metadata.name,
+      modifiedTime: metadata.modifiedTime,
+      size: metadata.size
+    });
+    
+    return metadata;
   }
 
   async saveSettings(settings) {
@@ -912,7 +1103,12 @@ class SettingsIO {
         
         this.isInternalSyncUpdate = true;
         await this.saveSettings(driveSettings);
-        this.isInternalSyncUpdate = false;
+        
+        // 延遲重置標記，確保所有 storage change 事件都已處理
+        setTimeout(() => {
+          this.isInternalSyncUpdate = false;
+          console.log(`[SettingsIO][${getCurrentTimeString()}] 🔓 強制下載內部更新標記已重置`);
+        }, 1000);
         
         // 通知頁面重新載入
         try {

@@ -74,24 +74,67 @@
   min-height: 36px;
 }
 
-/* 按鈕組容器 */
+/* 按鈕組容器 - 佔滿整行 */
 .sync-buttons-group {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 10px;
   height: 36px;
+  width: 100%;
+  flex: 1;
 }
 
 .sync-control-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   height: 36px;
   justify-content: flex-start;
 }
 
+/* 自動同步開關的新行 */
+.sync-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  margin-top: 6px;
+  height: 36px;
+}
+
+/* 同步間隔設置容器 */
+.sync-interval-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 14px;
+}
+
+.sync-interval-container label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #495057;
+  white-space: nowrap;
+}
+
+.sync-interval-input {
+  width: 55px;
+  padding: 4px 6px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  font-size: 14px;
+  height: 26px;
+  text-align: center;
+}
+
+.sync-interval-input:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.2);
+}
+
 .control-label {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
   color: #495057;
   white-space: nowrap;
@@ -100,13 +143,12 @@
 /* 同步控制按鈕 */
 .sync-control-button {
   height: 35px;
-  width: 160px;
   background: #3498db;
   margin-top: 0px;
   color: white;
   border: none;
   border-radius: 4px;
-  font-size: 15px;
+  font-size: 14px;
   font-weight: normal;
   cursor: pointer;
   transition: background-color 0.3s;
@@ -118,6 +160,14 @@
 
 .sync-control-button:hover {
   background: #2980b9;
+}
+
+.sync-control-button.google-button {
+  flex: 1;
+}
+
+.sync-control-button.manual-sync-button {
+  flex: 1;
 }
 
 .sync-control-button:disabled {
@@ -198,8 +248,8 @@
 /* 自動同步切換開關 */
 .sync-toggle {
   position: relative;
-  width: 44px;
-  height: 24px;
+  width: 42px;
+  height: 22px;
   background: #ccc;
   border-radius: 12px;
   cursor: pointer;
@@ -218,8 +268,8 @@
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   background: white;
   border-radius: 50%;
   transition: transform 0.3s ease;
@@ -229,27 +279,3 @@
 .sync-toggle.active::after {
   transform: translateX(20px);
 }
-
-/* 響應式設計 */
-@media (max-width: 400px) {
-  .sync-control-row {
-    flex-direction: column;
-    align-items: stretch;
-    justify-content: stretch;
-    gap: 12px;
-  }
-  
-  .sync-buttons-group {
-    flex-direction: column;
-    gap: 12px;
-  }
-  
-  .sync-control-button {
-    width: 100%;
-  }
-  
-  .sync-control-item {
-    justify-content: space-between;
-    width: 100%;
-  }
-} 

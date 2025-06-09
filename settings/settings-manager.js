@@ -1,5 +1,5 @@
 /**
- * settings/settings-manager.js - 設定檔案管理器模組 (2025/06/08 更新)
+ * settings/settings-manager.js - 設定檔案管理器模組 (2025/06/09 更新)
  * 功能：提供設定的匯入匯出和檔案管理功能
  * 職責：
  * - 設定匯出：將所有設定打包為 JSON 檔案供備份
@@ -12,7 +12,9 @@
  * 
  * 注意：
  * - 2025/06/08 修復了 popup 關閉後同步停止的問題 ✅ 已修復
+ * - 2025/06/09 修復了自動同步間隔不跟 popup 設定的問題 ✅ 已修復
  * - 雲端同步功能現在由 background.js 管理，確保持續運行
+ * - BackgroundSync 現在正確讀取用戶在 popup 中設定的同步間隔
  * - 設定匯出匯入功能不受影響，仍在 popup 環境中正常運行
  * - 修復方法：將必要檔案添加到 manifest.json 背景腳本列表中
  * 
@@ -398,6 +400,7 @@ class SettingsFileManager {
       'lastMainTab': '• 上次主分頁',
       'lastSubTab': '• 上次子分頁',
       'crawlerInterval': '• 爬蟲間隔',
+      'syncInterval': '• 同步間隔',
       'currentGenerationSettings': '• 當前生成設定',
       'isFirstTime': '• 首次使用標記',
       'replacePosition': '• 替換位置',
@@ -452,13 +455,14 @@ class SettingsFileManager {
       'removeHash',
       'removeStar',
       'confirmModel',
-      'firstRun'
+      'firstRun',
+      'syncInterval'  // 保留同步間隔設定
     ];
     
     // 返回所有其他鍵值作為排除列表
     return [
       ...this.getComplexContentKeys(),
-      // 額外排除更多非核心設定
+      // 額外排除更多非核心設定（syncInterval 已移至 coreKeys）
       'lastMainTab',
       'lastSubTab',
       'crawlerInterval',

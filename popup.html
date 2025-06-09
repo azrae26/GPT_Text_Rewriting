@@ -318,22 +318,30 @@
           
           <!-- 控制區域 -->
           <div class="sync-control-row">
-            <div class="sync-control-item">
-              <span class="control-label">自動同步</span>
-              <div id="auto-sync-toggle" class="sync-toggle"></div>
-            </div>
-            
             <div class="sync-buttons-group">
-              <button id="auth-button" class="sync-control-button auth-button">
+              <button id="auth-button" class="sync-control-button google-button auth-button">
                 連接 Google Drive
               </button>
-              <button id="signout-button" class="sync-control-button signout-button" style="display: none;">
+              <button id="signout-button" class="sync-control-button google-button signout-button" style="display: none;">
                 登出
               </button>
               
               <button id="manual-sync-button" class="sync-control-button manual-sync-button">
                 手動同步
               </button>
+            </div>
+          </div>
+          
+          <!-- 自動同步開關的新行 -->
+          <div class="sync-toggle-row">
+            <div class="sync-control-item">
+              <span class="control-label">自動同步</span>
+              <div id="auto-sync-toggle" class="sync-toggle"></div>
+              <div class="sync-interval-container">
+                <label for="sync-interval">間隔</label>
+                <input type="number" id="sync-interval" min="0.1" max="60" step="0.1" value="2" class="sync-interval-input">
+                <label for="sync-interval">分鐘</label>
+              </div>
             </div>
           </div>
         </div>
@@ -403,6 +411,7 @@
     </div>
   </div>
 
+  <script src="settings/settings-key.js"></script>
   <script src="settings/settings-manager.js"></script>
   <script src="text_replace/replace-manager.js"></script>
   <script src="text_replace/manual-replace-manager.js"></script>

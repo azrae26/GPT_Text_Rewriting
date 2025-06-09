@@ -31,6 +31,7 @@
         "text_replace/auto-replace-manager.js",
         "text_replace/replace-manager.js",
         "default.js",
+        "settings/settings-key.js",
         "settings.js",
         "notification.js",
         "undo.js",
@@ -59,6 +60,7 @@
       ],
       "js": [
         "default.js",
+        "settings/settings-key.js",
         "settings.js",
         "text-processor.js",
         "ua_assistant/auto-click.js",
@@ -72,6 +74,7 @@
       ],
       "js": [
         "default.js",
+        "settings/settings-key.js",
         "settings.js",
         "stock_report_helper/quick-copy.js",
         "stock_report_helper/stock-analyzer.js"
@@ -89,7 +92,7 @@
       "matches": ["https://data.uanalyze.twobitto.com/*"]
     },
     {
-      "resources": ["SettingsIO/settings-io.js", "settings/settings-manager.js", "settings.js"],
+      "resources": ["SettingsIO/settings-io.js", "settings/settings-key.js", "settings/settings-manager.js", "settings.js"],
       "matches": ["<all_urls>"]
     }
   ],

@@ -114,8 +114,6 @@ const GlobalSettings = {
 
   /** 同步功能設定 */
   autoSyncEnabled: false,
-  /** 同步間隔（秒）。 */
-  syncInterval: 15,
 
   /** 生成設定組合 */
   generationSettingsGroups: {},
@@ -238,7 +236,6 @@ const GlobalSettings = {
       
       // 載入同步設定
       this.autoSyncEnabled = syncResult.autoSyncEnabled || false;
-      this.syncInterval = syncResult.syncInterval || 15;
       
       // 使用 DefaultSettings 中的預設值
           // 取得適當的全域 DefaultSettings
@@ -394,8 +391,7 @@ const GlobalSettings = {
             generationSettingsGroups: this.generationSettingsGroups,
             currentGenerationSettings: this.currentGenerationSettings,
             crawlerInterval: this.crawlerInterval,
-            autoSyncEnabled: this.autoSyncEnabled,
-            syncInterval: this.syncInterval
+            autoSyncEnabled: this.autoSyncEnabled
           };
           chrome.storage.sync.set(syncSettings, resolve);
         }),
@@ -706,66 +702,39 @@ const GlobalSettings = {
     'backgroundKnowledge'
   ],
 
-  // 檢查是否為需要使用 local storage 的設定
+  // 檢查是否為需要使用 local storage 的設定（使用新的 KeyClassifier，保持向後兼容）
   isLocalStorageKey(key) {
-    // 明確列出需要使用 local storage 的鍵值
+    // 使用新的統一分類器
+    if (typeof KeyClassifier !== 'undefined') {
+      return KeyClassifier.getStorageType(key) === 'local';
+    }
+    
+    // 舊版本的後備邏輯（向後兼容）
     const localStorageKeys = [
-      'instruction',          // 新增：全文改寫指令
-      'shortInstruction',     // 新增：10字內改寫指令
-      'autoRewritePatterns',  // 新增：雙擊改寫匹配模式
-      'translateInstruction',
-      'summaryInstruction', 
-      'zhEnMapping',
-      'reflectInstruction',
-      'optimizeInstruction',
-      'generateInstruction',
-      'reflect1Instruction',
-      'generationOptimize_1_Instruction',
-      'reflect2Instruction',
-      'generationOptimize_2_Instruction',
-      'reflect3Instruction',
-      'generationOptimize_3_Instruction',
-      'backgroundKnowledge',
-      'stockList',
-      // 新增：股票相關的大型數據
-      'stockListData',
-      'stockCrawlerState',
-      'stockNames',
-      'processedStocks',
-      'failedStocks',
-      'retryRecords',
-      // 新增：替換和確認相關的大型內容
-      'replaceContent',
-      'confirmContent',
-      // 新增：手動替換值
-      'manualReplaceValues_0',
-      'manualReplaceValues_1',
-      'manualReplaceValues_2',
-      // 修正：同步開關狀態必須使用 local storage
-      'syncEnabled',
-      // 修正：時間戳必須使用 local storage（避免設備間時間戳污染）
-      'lastModified'
+      'instruction', 'shortInstruction', 'autoRewritePatterns',
+      'translateInstruction', 'summaryInstruction', 'zhEnMapping',
+      'reflectInstruction', 'optimizeInstruction', 'generateInstruction',
+      'reflect1Instruction', 'generationOptimize_1_Instruction',
+      'reflect2Instruction', 'generationOptimize_2_Instruction',
+      'reflect3Instruction', 'generationOptimize_3_Instruction',
+      'backgroundKnowledge', 'stockList', 'stockListData', 'stockCrawlerState',
+      'stockNames', 'processedStocks', 'failedStocks', 'retryRecords',
+      'replaceContent', 'confirmContent', 'manualReplaceValues_0',
+      'manualReplaceValues_1', 'manualReplaceValues_2', 'syncEnabled', 'lastModified'
     ];
     
-    // 檢查是否為需要使用 local storage 的大型設定
     return (
       localStorageKeys.includes(key) ||
-      // 檢查所有替換規則相關的鍵
       key.startsWith('replace_') ||
       key === 'autoReplaceRules' ||
       key === 'manualReplaceRules' ||
-      
-      // 新增：檢查動態生成的大型設定
       key.startsWith('generation_') ||
       key.startsWith('instructions_') ||
-      
-      // 檢查其他大型文字內容
       key.startsWith('instruction_') ||
       key.startsWith('background_') ||
       key.startsWith('custom_') ||
       key.startsWith('template_') ||
       key.startsWith('history_') ||
-      // 檢查是否包含大型文字的關鍵詞
       key.includes('Content') ||
       key.includes('Templates') ||
       key.includes('Texts')
@@ -898,22 +867,35 @@ const GlobalSettings = {
         this._getChromeStorage('local')
       ]);
       
-      // 排除同步系統內部狀態（這些不應該匯出）
-      const internalStateKeys = [
-        'syncStatus', 'syncError', 'syncDebugLogs', 'stockCrawlerState',
-        'lastSyncTime', 'driveFileId'
-        // 注意：移除 'syncEnabled'，允許它被匯出（但不被雲端同步）
-      ];
-      
-      // 從 localData 中移除內部狀態
-      internalStateKeys.forEach(key => {
-        if (key in localData) {
-          delete localData[key];
-        }
-        if (key in syncData) {
-          delete syncData[key];
-        }
-      });
+      // 使用新的統一分類器來過濾匯出設定
+      if (typeof KeyClassifier !== 'undefined') {
+        // 從 localData 和 syncData 中移除不應該匯出的項目
+        Object.keys(localData).forEach(key => {
+          if (KeyClassifier.shouldExclude(key, 'export')) {
+            delete localData[key];
+          }
+        });
+        Object.keys(syncData).forEach(key => {
+          if (KeyClassifier.shouldExclude(key, 'export')) {
+            delete syncData[key];
+          }
+        });
+      } else {
+        // 舊版本的後備邏輯（向後兼容）
+        const internalStateKeys = [
+          'syncStatus', 'syncError', 'syncDebugLogs', 'stockCrawlerState',
+          'lastSyncTime', 'driveFileId'
+        ];
+        
+        internalStateKeys.forEach(key => {
+          if (key in localData) {
+            delete localData[key];
+          }
+          if (key in syncData) {
+            delete syncData[key];
+          }
+        });
+      }
       
       // 保留替換規則的原始格式（使用 replace_ 前綴）
       // 不做任何轉換，避免與同步系統的過濾邏輯衝突

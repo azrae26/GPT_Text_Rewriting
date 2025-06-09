@@ -187,6 +187,18 @@ document.addEventListener('DOMContentLoaded', async function() {
     crawlerIntervalInput.value = settings.crawlerInterval || 30;
   }
   
+  // 載入同步間隔設定
+  const syncIntervalInput = document.getElementById('sync-interval');
+  if (syncIntervalInput && settingsIO) {
+    try {
+      const syncInterval = await settingsIO.getSyncInterval();
+      syncIntervalInput.value = syncInterval;
+    } catch (error) {
+      console.warn('載入同步間隔失敗:', error);
+      syncIntervalInput.value = 2; // 預設值
+    }
+  }
+  
   updateApiKeyInput();
 
   // 載入已保存的高亮文字
@@ -1559,6 +1571,36 @@ document.addEventListener('DOMContentLoaded', async function() {
         } catch (error) {
           console.error(`[popup.js][${getCurrentTimeString()}] 切換自動同步失敗:`, error);
           showSyncError('切換自動同步失敗: ' + error.message);
+        }
+      });
+    }
+
+    // 同步間隔輸入框
+    const syncIntervalInput = document.getElementById('sync-interval');
+    if (syncIntervalInput && settingsIO) {
+      syncIntervalInput.addEventListener('change', async () => {
+        try {
+          const intervalMinutes = parseFloat(syncIntervalInput.value);
+          
+          // 驗證輸入值
+          if (isNaN(intervalMinutes) || intervalMinutes < 0.1 || intervalMinutes > 60) {
+            throw new Error('間隔時間必須在 0.1 到 60 分鐘之間');
+          }
+          
+          await settingsIO.setSyncInterval(intervalMinutes);
+          console.log(`[popup.js][${getCurrentTimeString()}] 同步間隔已更新為 ${intervalMinutes} 分鐘`);
+          
+        } catch (error) {
+          console.error(`[popup.js][${getCurrentTimeString()}] 更新同步間隔失敗:`, error);
+          showSyncError('更新同步間隔失敗: ' + error.message);
+          
+          // 重新載入正確的值
+          try {
+            const currentInterval = await settingsIO.getSyncInterval();
+            syncIntervalInput.value = currentInterval;
+          } catch (loadError) {
+            syncIntervalInput.value = 2; // 回到預設值
+          }
         }
       });
     }
