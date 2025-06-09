@@ -887,6 +887,77 @@ const ManualReplaceManager = {
       }
     });
   },
+
+  /**
+   * 從存儲刷新替換組UI
+   * 用於同步後更新UI，保持主組不變，重新創建額外組
+   */
+  refreshFromStorage() {
+    console.log('[ManualReplaceManager] 🔄 從存儲刷新替換組UI');
+    
+    const textArea = document.querySelector('textarea[name="content"]');
+    const manualContainer = document.querySelector('.manual-replace-container');
+    
+    if (!textArea || !manualContainer) {
+      console.log('[ManualReplaceManager] ⚠️ 找不到必要的DOM元素，跳過刷新');
+      return;
+    }
+
+    // 清除所有現有的額外組
+    const existingGroups = manualContainer.querySelectorAll('.replace-extra-group');
+    existingGroups.forEach(group => group.remove());
+    
+    // 清除舊的高亮
+    this.PreviewHighlight.clearAllHighlights();
+
+    // 從存儲重新載入規則
+    const storageKey = 'replace_' + this.CONFIG.MANUAL_REPLACE_KEY;
+    window.ReplaceManager.StorageHelper.loadRules(storageKey, [], (rules) => {
+      console.log('[ManualReplaceManager] 📥 從存儲載入的規則:', rules);
+      
+      // 過濾掉空組
+      const filteredRules = rules.filter(rule => rule.from?.trim() || rule.to?.trim());
+      console.log('[ManualReplaceManager] 🔍 過濾後的規則:', filteredRules);
+      
+      // 如果沒有規則，創建一個空的預設規則
+      const finalRules = filteredRules.length > 0 ? filteredRules : [{ from: '', to: '' }];
+      
+      // 重新創建額外組
+      finalRules.forEach((rule, index) => {
+        const group = this.createReplaceGroup(textArea, false, rule, index);
+        manualContainer.appendChild(group);
+      });
+
+      // 更新內部規則狀態
+      this._rules.extraGroups = finalRules;
+
+      // 重新設置拖曳事件
+      requestAnimationFrame(() => {
+        this._setupAllSortDragEvents();
+        
+        // 更新預覽（延遲一點讓DOM完全更新）
+        setTimeout(() => {
+          this._updatePreviews();
+          console.log('[ManualReplaceManager] ✅ 替換組UI刷新完成');
+        }, 100);
+      });
+    });
+  },
+
+  /**
+   * 檢查是否需要刷新UI
+   * @param {string[]} changedKeys - 變化的設定鍵值
+   * @returns {boolean} - 是否需要刷新
+   */
+  shouldRefresh(changedKeys) {
+    // 檢查是否包含手動替換相關的鍵值
+    const relevantKeys = [
+      'manualReplaceRules',
+      'replace_manualReplaceRules'
+    ];
+    
+    return changedKeys.some(key => relevantKeys.includes(key));
+  },
 };
 
 window.ManualReplaceManager = ManualReplaceManager; 

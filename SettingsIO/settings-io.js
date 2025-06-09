@@ -433,7 +433,7 @@ class SettingsIO {
       const driveSettings = await this.downloadSettings(token, fileId);
       const localSettings = await GlobalSettings.getAllSettings();
       
-      const { needsReload, needsUpload, mergedSettings } = await this.compareAndMergeSettings(
+      const { needsReload, needsUpload, mergedSettings, changedKeys } = await this.compareAndMergeSettings(
         localSettings, 
         driveSettings,
         driveFileModifiedTime  // 🆕 傳遞檔案時間戳
@@ -445,12 +445,6 @@ class SettingsIO {
         
         this.isInternalSyncUpdate = true; // 標記為內部更新
         await this.saveSettings(mergedSettings);
-        
-        // 延遲重置標記，確保所有 storage change 事件都已處理
-        setTimeout(() => {
-          this.isInternalSyncUpdate = false;
-          console.log(`[SettingsIO][${getCurrentTimeString()}] 🔓 內部更新標記已重置`);
-        }, 1000);
         
         // 驗證時間戳是否成功保存
         const [savedSyncData, savedLocalData] = await Promise.all([
@@ -464,12 +458,17 @@ class SettingsIO {
         } else {
           console.log(`[SettingsIO][${getCurrentTimeString()}] Service Worker 環境：設定已更新`);
           
-          try {
-            chrome.runtime.sendMessage({
+          // 先重置內部更新標記，再發送消息
+          setTimeout(async () => {
+            this.isInternalSyncUpdate = false;
+            console.log(`[SettingsIO][${getCurrentTimeString()}] 🔓 內部更新標記已重置`);
+            
+            // 發送消息到 content scripts，確保標記已重置
+            await this._sendMessage({
               action: 'settingsUpdated',
-              data: { reason: 'cloudSync', timestamp: Date.now() }
-            }).catch(() => {});
-          } catch (e) {}
+              data: { reason: 'cloudSync', timestamp: Date.now(), changedKeys: changedKeys }
+            });
+          }, 100); // 縮短延遲時間到 100ms，確保快速響應
         }
       } else if (needsUpload) {
         console.log(`[SettingsIO][${getCurrentTimeString()}] 本地設定較新，上傳到雲端`);
@@ -505,13 +504,17 @@ class SettingsIO {
       return {
         needsReload: true,
         needsUpload: false,
-        mergedSettings: { ...driveSettings, lastModified: actualDriveModifiedTime }
+        mergedSettings: { ...driveSettings, lastModified: actualDriveModifiedTime },
+        changedKeys: Object.keys(driveSettings).filter(key => key !== 'lastModified')
       };
     }
 
     // 比較實際內容 - 詳細差異分析
     const localContent = this.filterSettingsForComparison(localSettings);
     const driveContent = this.filterSettingsForComparison(driveSettings);
+    
+    // 🆕 記錄變化的鍵值
+    const changedKeys = new Set();
     
     // 詳細差異分析
     const localKeys = Object.keys(localContent).sort();
@@ -526,9 +529,11 @@ class SettingsIO {
     
     if (missingInDrive.length > 0) {
       differences.push(`本地多出: [${missingInDrive.join(', ')}]`);
+      missingInDrive.forEach(key => changedKeys.add(key));
     }
     if (missingInLocal.length > 0) {
       differences.push(`雲端多出: [${missingInLocal.join(', ')}]`);
+      missingInLocal.forEach(key => changedKeys.add(key));
     }
     
     // 2. 值差異（只列出實際不同的）
@@ -537,6 +542,7 @@ class SettingsIO {
     
     for (const key of commonKeys) {
       if (!this.deepEqual(localContent[key], driveContent[key])) {
+        changedKeys.add(key);
         const localValue = localContent[key];
         const driveValue = driveContent[key];
         
@@ -571,7 +577,7 @@ class SettingsIO {
     
     if (!hasContentDifference) {
       console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 設定內容相同（修復成功），跳過同步`);
-      return { needsReload: false, needsUpload: false, mergedSettings: localSettings };
+      return { needsReload: false, needsUpload: false, mergedSettings: localSettings, changedKeys: [] };
     }
 
     // 修正：時間戳相同時的處理邏輯
@@ -585,7 +591,8 @@ class SettingsIO {
       return {
         needsReload: false,
         needsUpload: false,
-        mergedSettings: localSettings
+        mergedSettings: localSettings,
+        changedKeys: []
       };
     }
 
@@ -597,13 +604,15 @@ class SettingsIO {
       return {
         needsReload: true,
         needsUpload: false,
-        mergedSettings: { ...driveSettings, lastModified: actualDriveModifiedTime }
+        mergedSettings: { ...driveSettings, lastModified: actualDriveModifiedTime },
+        changedKeys: Array.from(changedKeys)
       };
     } else {
       return {
         needsReload: false,
         needsUpload: true,
-        mergedSettings: localSettings
+        mergedSettings: localSettings,
+        changedKeys: Array.from(changedKeys)
       };
     }
   }
@@ -989,6 +998,51 @@ class SettingsIO {
     });
   }
 
+  // 統一的消息發送方法，自動處理不同環境
+  async _sendMessage(message) {
+    // 檢查是否在 Service Worker 環境中
+    const isServiceWorker = typeof window === 'undefined' && typeof self !== 'undefined';
+    
+    if (isServiceWorker) {
+      // Service Worker 環境：發送到所有相關標籤頁的 content scripts
+      try {
+        // 先嘗試查詢活動標籤頁，如果沒有則查詢所有標籤頁
+        let tabs = await chrome.tabs.query({ active: true });
+        
+        if (tabs.length === 0) {
+          console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 未找到活動標籤頁，查詢所有標籤頁`);
+          tabs = await chrome.tabs.query({});
+        }
+        
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 找到 ${tabs.length} 個標籤頁，開始發送消息`);
+        
+        const successfulSends = [];
+        const promises = tabs.map(async (tab) => {
+          try {
+            await chrome.tabs.sendMessage(tab.id, message);
+            successfulSends.push(tab.id);
+            console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 標籤頁 ${tab.id} 消息發送成功`);
+          } catch (error) {
+            // 忽略無法發送的標籤頁（可能沒有 content script）
+            console.log(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 標籤頁 ${tab.id} 無法接收消息:`, error?.message || 'unknown');
+          }
+        });
+        
+        await Promise.all(promises);
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 📤 消息已發送到 ${successfulSends.length}/${tabs.length} 個標籤頁 (成功: ${successfulSends.join(', ')})`);
+      } catch (error) {
+        console.error(`[SettingsIO][${getCurrentTimeString()}] ❌ 發送消息到標籤頁失敗:`, error);
+      }
+    } else {
+      // Popup 環境：使用 runtime message
+      try {
+        chrome.runtime.sendMessage(message).catch(() => {});
+      } catch (e) {
+        // 忽略錯誤
+      }
+    }
+  }
+
   deepEqual(obj1, obj2) {
     if (obj1 === obj2) return true;
     if (obj1 == null || obj2 == null) return obj1 === obj2;
@@ -1104,19 +1158,21 @@ class SettingsIO {
         this.isInternalSyncUpdate = true;
         await this.saveSettings(driveSettings);
         
-        // 延遲重置標記，確保所有 storage change 事件都已處理
-        setTimeout(() => {
+        // 延遲重置標記並發送消息，確保所有 storage change 事件都已處理
+        setTimeout(async () => {
           this.isInternalSyncUpdate = false;
           console.log(`[SettingsIO][${getCurrentTimeString()}] 🔓 強制下載內部更新標記已重置`);
-        }, 1000);
-        
-        // 通知頁面重新載入
-        try {
-          chrome.runtime.sendMessage({
+          
+          // 發送消息，確保標記已重置
+          await this._sendMessage({
             action: 'settingsUpdated',
-            data: { reason: 'forceDownload', timestamp: Date.now() }
-          }).catch(() => {});
-        } catch (e) {}
+            data: { 
+              reason: 'forceDownload', 
+              timestamp: Date.now(),
+              changedKeys: Object.keys(driveSettings).filter(key => key !== 'lastModified')
+            }
+          });
+        }, 100); // 縮短延遲時間到 100ms，確保快速響應
         
         console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 雲端設定下載完成 (檔案ID: ${fileId})`);
       } else {

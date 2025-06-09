@@ -1204,4 +1204,35 @@ const ReplaceManager = {
   },
 };
 
-window.ReplaceManager = ReplaceManager; 
+window.ReplaceManager = ReplaceManager;
+
+// 🆕 監聽設定更新消息，用於同步後刷新UI
+if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage) {
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    // 只處理設定更新消息
+    if (request.action === 'settingsUpdated') {
+      const { reason, changedKeys } = request.data || {};
+      
+      console.log('[ReplaceManager] 🔔 收到設定更新消息:', { reason, changedKeys });
+      
+      // 檢查是否需要刷新手動替換組
+      if (changedKeys && window.ManualReplaceManager && window.ManualReplaceManager.shouldRefresh(changedKeys)) {
+        console.log('[ReplaceManager] 🔄 檢測到手動替換規則變化，開始刷新UI');
+        
+        // 延遲一點執行，確保設定已經完全保存
+        setTimeout(() => {
+          window.ManualReplaceManager.refreshFromStorage();
+        }, 200);
+      }
+      
+      // 向背景腳本回應已處理
+      if (sendResponse) {
+        sendResponse({ received: true, processed: true });
+      }
+    }
+    
+    return false; // 不保持消息通道開啟
+  });
+  
+  console.log('[ReplaceManager] 📡 設定更新消息監聽器已設置');
+} 
