@@ -267,18 +267,17 @@ class BackgroundSyncManager {
       // 使用真正的 SettingsIO 獲取同步狀態（直接返回狀態物件）
       const statusResult = await this.settingsIO.getSyncStatus();
       
-      // 結合背景計時器狀態
-      const actuallyEnabled = this.syncIntervalId !== null;
+      // 背景計時器狀態（自動同步是否啟用）
+      const autoSyncActive = this.syncIntervalId !== null;
       
-      
-      
+      // 返回完整的狀態信息，但不混合邏輯
+      // enabled 應該反映認證狀態，不是自動同步狀態
       return {
         success: true,
-        status: {
-          ...statusResult,
-          enabled: actuallyEnabled && statusResult.enabled, // 兩者都要啟用
-          status: statusResult.error ? 'error' : (actuallyEnabled ? 'active' : 'idle')
-        }
+        ...statusResult,  // 直接展開 SettingsIO 的狀態結果
+        autoSyncActive: autoSyncActive,  // 添加背景同步狀態
+        status: statusResult.error ? 'error' : 
+                (statusResult.enabled ? 'connected' : 'disconnected')
       };
     } catch (error) {
       console.error('[BackgroundSync][status] 獲取同步狀態失敗:', error);

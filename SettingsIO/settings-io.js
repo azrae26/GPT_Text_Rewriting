@@ -15,7 +15,7 @@ class SettingsIO {
     
     TIMINGS: {
       UPLOAD_DEBOUNCE: 10000,
-      SYNC_INTERVAL: 0.25*60*1000,
+      SYNC_INTERVAL: 2*60*1000, // 每2分鐘同步一次
       TOKEN_REFRESH_MARGIN: 600000,
       LOCAL_RECENT_THRESHOLD: 5000,
       COMPETITION_DELAY: 100,
@@ -99,7 +99,7 @@ class SettingsIO {
 
     // 檢查是否是由同步系統自己觸發的變更（比如從雲端下載後的設定更新）
     if (this.isInternalSyncUpdate) {
-      console.log(`[SettingsIO][${getCurrentTimeString()}] 忽略同步系統內部更新`);
+      console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 忽略同步系統內部更新 (變更: ${relevantChanges.join(', ')})`);
       return;
     }
 
@@ -173,10 +173,14 @@ class SettingsIO {
       'reflectInstruction', 'optimizeInstruction', 'stockList',
       'crawlerInterval', 'highlightWords', 'highlightColors',
       'generationSettingsGroups', 'currentGenerationSettings',
-      'customModels', 'removeHash', 'removeStar'
+      'customModels', 'removeHash', 'removeStar',
+      // 替換組相關鍵名（支援新舊格式）
+      'autoReplaceRules', 'manualReplaceRules'
     ];
     
-    return settingsKeys.includes(key) || key.startsWith('generation_settings_');
+    return settingsKeys.includes(key) || 
+           key.startsWith('generation_settings_') ||
+           key.startsWith('replace_');  // 支援 replace_ 前綴的替換規則
   }
 
   async updateLastModifiedTime() {
@@ -336,7 +340,12 @@ class SettingsIO {
         
         this.isInternalSyncUpdate = true; // 標記為內部更新
         await this.saveSettings(mergedSettings);
-        this.isInternalSyncUpdate = false; // 重置標記
+        
+        // 延遲重置標記，確保所有 storage change 事件都已處理
+        setTimeout(() => {
+          this.isInternalSyncUpdate = false;
+          console.log(`[SettingsIO][${getCurrentTimeString()}] 🔓 內部更新標記已重置`);
+        }, 1000);
         
         // 驗證時間戳是否成功保存
         const [savedSyncData, savedLocalData] = await Promise.all([
@@ -397,59 +406,70 @@ class SettingsIO {
       };
     }
 
-    // 比較實際內容 - 添加詳細調試
+    // 比較實際內容 - 詳細差異分析
     const localContent = this.filterSettingsForComparison(localSettings);
     const driveContent = this.filterSettingsForComparison(driveSettings);
     
-    // 發送過濾後內容的詳細信息到 background
+    // 詳細差異分析
     const localKeys = Object.keys(localContent).sort();
     const driveKeys = Object.keys(driveContent).sort();
-    const localKeyCount = localKeys.length;
-    const driveKeyCount = driveKeys.length;
     
-    console.log(`[SettingsIO][${getCurrentTimeString()}] 🔧 修復後的過濾結果: 本地=${localKeyCount}鍵, 雲端=${driveKeyCount}鍵`);
-    this.sendSyncDebug(`修復後過濾: 本地鍵值數=${localKeyCount}, 雲端鍵值數=${driveKeyCount}`, 'compare', 'filtered_content_fixed');
+    // 找出具體的差異並組合成一條詳細的調試信息
+    const differences = [];
     
-    // 檢查鍵值差異
+    // 1. 鍵值差異
     const missingInDrive = localKeys.filter(key => !driveKeys.includes(key));
     const missingInLocal = driveKeys.filter(key => !localKeys.includes(key));
     
     if (missingInDrive.length > 0) {
-      this.sendSyncDebug(`雲端缺少的鍵值: ${missingInDrive.slice(0, 10).join(', ')}${missingInDrive.length > 10 ? '...' : ''}`, 'compare', 'missing_keys');
+      differences.push(`本地多出: [${missingInDrive.join(', ')}]`);
     }
     if (missingInLocal.length > 0) {
-      this.sendSyncDebug(`本地缺少的鍵值: ${missingInLocal.slice(0, 10).join(', ')}${missingInLocal.length > 10 ? '...' : ''}`, 'compare', 'missing_keys');
+      differences.push(`雲端多出: [${missingInLocal.join(', ')}]`);
     }
     
-    // 檢查相同鍵值的值差異
+    // 2. 值差異（只列出實際不同的）
     const commonKeys = localKeys.filter(key => driveKeys.includes(key));
-    const differentValues = [];
+    const valueDetails = [];
     
     for (const key of commonKeys) {
       if (!this.deepEqual(localContent[key], driveContent[key])) {
         const localValue = localContent[key];
         const driveValue = driveContent[key];
-        const localType = typeof localValue;
-        const driveType = typeof driveValue;
         
-        if (localType === 'string' && driveType === 'string') {
-          const localLength = localValue.length;
-          const driveLength = driveValue.length;
-          differentValues.push(`${key}(本地長度:${localLength}, 雲端長度:${driveLength})`);
+        // 特別關注替換規則的差異
+        if (key.includes('replace') || key.includes('Replace')) {
+          const localArray = Array.isArray(localValue) ? localValue : [];
+          const driveArray = Array.isArray(driveValue) ? driveValue : [];
+          valueDetails.push(`${key}: 本地${localArray.length}條vs雲端${driveArray.length}條`);
+        } else if (Array.isArray(localValue) && Array.isArray(driveValue)) {
+          valueDetails.push(`${key}: 本地${localValue.length}項vs雲端${driveValue.length}項`);
         } else {
-          differentValues.push(`${key}(本地:${localType}, 雲端:${driveType})`);
+          const localStr = typeof localValue === 'string' ? `"${localValue.substring(0, 50)}${localValue.length > 50 ? '...' : ''}"` : localValue;
+          const driveStr = typeof driveValue === 'string' ? `"${driveValue.substring(0, 50)}${driveValue.length > 50 ? '...' : ''}"` : driveValue;
+          valueDetails.push(`${key}: 本地=${localStr} vs 雲端=${driveStr}`);
         }
       }
     }
     
-    if (differentValues.length > 0) {
-      this.sendSyncDebug(`值不同的鍵: ${differentValues.slice(0, 5).join(', ')}${differentValues.length > 5 ? '...' : ''}`, 'compare', 'different_values');
+    if (valueDetails.length > 0) {
+      differences.push(`值差異: ${valueDetails.join('; ')}`);
+    }
+    
+    // 組合成一條完整的差異調試信息
+    if (differences.length > 0) {
+      const fullDiffMessage = `🔍 設定差異詳情: ${differences.join(' | ')}`;
+      console.log(`[SettingsIO][${getCurrentTimeString()}] ${fullDiffMessage}`);
+      this.sendSyncDebug(fullDiffMessage, 'compare', 'detailed_differences');
+    } else {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 設定內容完全相同`);
+      this.sendSyncDebug('設定內容完全相同', 'compare', 'no_differences');
     }
     
     const hasContentDifference = !this.deepEqual(localContent, driveContent);
     
     // 發送最終比較結果到 background
-    this.sendSyncDebug(`內容比較結果: ${hasContentDifference ? '有差異' : '無差異'}, 鍵值差異=${missingInDrive.length + missingInLocal.length}, 值差異=${differentValues.length}`, 'compare', 'final_result');
+    this.sendSyncDebug(`內容比較結果: ${hasContentDifference ? '有差異' : '無差異'}, 鍵值差異=${missingInDrive.length + missingInLocal.length}, 值差異=${valueDetails.length}`, 'compare', 'final_result');
     
     if (!hasContentDifference) {
       console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 設定內容相同（修復成功），跳過同步`);
@@ -459,14 +479,17 @@ class SettingsIO {
 
     // 修正：時間戳相同時的處理邏輯
     if (driveLastModified === localLastModified) {
-      console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 時間戳相同但內容有差異（正常情況），使用雲端版本`);
-      this.sendSyncDebug('時間戳相同，使用雲端版本（已修復過濾邏輯）', 'download', 'timestamp_same_fixed');
+      console.log(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 時間戳相同但內容有差異，這可能是過濾邏輯問題`);
+      this.sendSyncDebug('時間戳相同但內容有差異，跳過操作避免循環', 'none', 'timestamp_same_skip_to_avoid_loop');
       
-      // 修復：保持原始時間戳，不要修改
+      // 修復：時間戳相同時不應該有內容差異，直接跳過避免循環
+      // 如果真的有差異，可能是過濾邏輯的問題，需要進一步調試
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🔧 為避免同步循環，跳過此次操作`);
+      
       return {
-        needsReload: true,
+        needsReload: false,
         needsUpload: false,
-        mergedSettings: { ...driveSettings, lastModified: driveLastModified }
+        mergedSettings: localSettings
       };
     }
 
@@ -569,10 +592,25 @@ class SettingsIO {
   cleanSettingsForUpload(settings) {
     const cleaned = {};
     
+    // 舊格式的替換規則鍵值，應該被排除避免與新格式衝突
+    const legacyReplaceKeys = [
+      'autoReplaceRules', 'manualReplaceRules', 'replaceContent',
+      'manualReplaceValues_0', 'manualReplaceValues_1', 'manualReplaceValues_2'
+    ];
+    
     Object.entries(settings).forEach(([key, value]) => {
-      if (!this.shouldExcludeFromSync(key, 'cloud')) {
-        cleaned[key] = value;
+      // 排除雲端同步的標準排除項
+      if (this.shouldExcludeFromSync(key, 'cloud')) {
+        return;
       }
+      
+      // 排除舊格式的替換規則
+      if (legacyReplaceKeys.includes(key)) {
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 🧹 排除舊格式替換規則: ${key}`);
+        return;
+      }
+      
+      cleaned[key] = value;
     });
     
     return cleaned;
@@ -801,7 +839,8 @@ class SettingsIO {
       SettingsIO.CONSTANTS.KEYS.DRIVE_FILE_ID,
       SettingsIO.CONSTANTS.KEYS.SYNC_STATUS,
       SettingsIO.CONSTANTS.KEYS.SYNC_ERROR,
-      SettingsIO.CONSTANTS.KEYS.LAST_SYNC
+      SettingsIO.CONSTANTS.KEYS.LAST_SYNC,
+      SettingsIO.CONSTANTS.KEYS.SYNC_ENABLED
     ]);
 
     await this.tokenManager.clearToken();
@@ -992,6 +1031,13 @@ class TokenManager {
 
   async getToken(interactive = false) {
     if (this.isTokenValid()) {
+      // 即使 token 有效，在互動式認證時也要確保設置同步狀態
+      if (interactive) {
+        await chrome.storage.local.set({
+          [SettingsIO.CONSTANTS.KEYS.SYNC_ENABLED]: true
+        });
+        console.log(`[TokenManager][${getCurrentTimeString()}] 同步狀態已啟用 (緩存token)`);
+      }
       return { success: true, token: this.cachedToken };
     }
 
@@ -1036,6 +1082,12 @@ class TokenManager {
       this.tokenExpiry = Date.now() + SettingsIO.CONSTANTS.TIMINGS.TOKEN_REFRESH_MARGIN;
       
       console.log(`[TokenManager][${getCurrentTimeString()}] 認證成功`);
+      
+      // 認證成功後設置同步啟用狀態
+      await chrome.storage.local.set({
+        [SettingsIO.CONSTANTS.KEYS.SYNC_ENABLED]: true
+      });
+      console.log(`[TokenManager][${getCurrentTimeString()}] 同步狀態已啟用`);
       
       this.pendingRequests.forEach(({ resolve }) => {
         resolve({ success: true, token: actualToken });
@@ -1088,6 +1140,12 @@ class TokenManager {
       this.cachedToken = accessToken;
       this.tokenExpiry = Date.now() + SettingsIO.CONSTANTS.TIMINGS.TOKEN_REFRESH_MARGIN;
 
+      // 認證成功後設置同步啟用狀態
+      await chrome.storage.local.set({
+        [SettingsIO.CONSTANTS.KEYS.SYNC_ENABLED]: true
+      });
+      console.log(`[TokenManager][${getCurrentTimeString()}] 同步狀態已啟用 (WebAuthFlow)`);
+
       this.pendingRequests.forEach(({ resolve }) => {
         resolve({ success: true, token: accessToken });
       });
@@ -1137,4 +1195,4 @@ globalScope.TokenManager = TokenManager;
 
 if (typeof module !== 'undefined' && module.exports) {
   module.exports = { SettingsIO, TokenManager };
-} 
+}

@@ -650,7 +650,7 @@ input[type="checkbox"] {
 .settings-section h3 {
   margin: 0 0 8px 0;
   color: #333;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
 }
 
@@ -668,7 +668,7 @@ input[type="checkbox"] {
   font-size: 15px;           /* 與改寫按鈕相同的字體大小 */
   padding: 6px 16px;
   border-radius: 4px;
-  height: 36px;              /* 與改寫按鈕相同的高度 */
+  height: 35px;              /* 與改寫按鈕相同的高度 */
   transition: background-color 0.3s;  /* 添加過渡效果 */
   margin-top: 0;             /* 移除上邊距 */
 }

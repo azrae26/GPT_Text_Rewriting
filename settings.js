@@ -915,14 +915,8 @@ const GlobalSettings = {
         }
       });
       
-      // 特別處理替換規則，移除前綴
-      const replaceSettings = {};
-      Object.entries(localData).forEach(([key, value]) => {
-        if (key.startsWith('replace_')) {
-          replaceSettings[key.replace('replace_', '')] = value;
-          delete localData[key];
-        }
-      });
+      // 保留替換規則的原始格式（使用 replace_ 前綴）
+      // 不做任何轉換，避免與同步系統的過濾邏輯衝突
       
       // 確保重要的設定被包含
       const importantSettings = {};
@@ -952,7 +946,6 @@ const GlobalSettings = {
       const allData = { 
         ...syncData, 
         ...localData,
-        ...replaceSettings,
         ...importantSettings
       };
       

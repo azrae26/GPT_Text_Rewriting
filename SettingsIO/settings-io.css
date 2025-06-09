@@ -6,13 +6,13 @@
 }
 
 .sync-section {
-  margin-bottom: 20px;
+  margin-bottom: 3px;
 }
 
 .sync-section h3 {
   margin: 0 0 8px 0;
   color: #333;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
 }
 
@@ -24,20 +24,18 @@
   gap: 8px;
   padding: 18px 16px;
   border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
   margin: 8px 0 12px 0;
   width: 100%;
   min-height: 120px;
   box-sizing: border-box;
+  line-height: 1.2;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .sync-status-display.connected {
   background: #d4edda;
   color: #155724;
-  line-height: 1.2;
-  font-size: 16px;
-  font-weight: 600;
 }
 
 .sync-status-display.disconnected {
@@ -101,7 +99,7 @@
 
 /* 同步控制按鈕 */
 .sync-control-button {
-  height: 36px;
+  height: 35px;
   width: 160px;
   background: #3498db;
   margin-top: 0px;

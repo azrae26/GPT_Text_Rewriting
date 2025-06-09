@@ -1319,10 +1319,25 @@ document.addEventListener('DOMContentLoaded', async function() {
   };
 
   window.CustomModelManager = CustomModelManager;
+  
+  // 初始化自動替換組（在popup環境中）
   const autoReplaceContainer = document.querySelector('#auto-replace-tab .auto-replace-container');
-  if (autoReplaceContainer) {
-    // 直接使用已載入的 AutoReplaceManager
-    AutoReplaceManager.initializeAutoReplaceGroups(autoReplaceContainer, document.createElement('textarea'));
+  if (autoReplaceContainer && window.AutoReplaceManager) {
+    console.log('[popup.js] 開始初始化自動替換組...');
+    
+    // 創建一個模擬的textarea用於popup環境
+    const mockTextArea = document.createElement('textarea');
+    mockTextArea.value = ''; // popup環境中不需要真實內容
+    
+    try {
+      // 直接使用已載入的 AutoReplaceManager
+      AutoReplaceManager.initializeAutoReplaceGroups(autoReplaceContainer, mockTextArea);
+      console.log('[popup.js] ✅ 自動替換組初始化完成');
+    } catch (error) {
+      console.error('[popup.js] ❌ 自動替換組初始化失敗:', error);
+    }
+  } else {
+    console.warn('[popup.js] ⚠️ 找不到自動替換容器或AutoReplaceManager未載入');
   }
 
   // 同步功能
@@ -1563,8 +1578,8 @@ document.addEventListener('DOMContentLoaded', async function() {
       if (!result.success) {
         throw new Error(result.error);
       }
-      // 正確解析狀態數據結構
-      const syncStatusData = result.status;
+      // 正確解析狀態數據結構（修正：狀態現在直接在 result 中）
+      const syncStatusData = result;
       console.log(`[popup.js][${getCurrentTimeString()}] updateSyncStatus: enabled=${syncStatusData.enabled}, status=${syncStatusData.status}`, {
         fullResult: result,
         syncStatusData: syncStatusData
@@ -1605,10 +1620,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
       }
 
-      // 更新自動同步開關
+      // 更新自動同步開關（使用 autoSyncActive 屬性）
       if (autoSyncToggle) {
-        console.log(`[popup.js][${getCurrentTimeString()}] 更新自動同步開關狀態: ${syncStatusData.enabled}`);
-        if (syncStatusData.enabled) {
+        console.log(`[popup.js][${getCurrentTimeString()}] 更新自動同步開關狀態: ${syncStatusData.autoSyncActive}`);
+        if (syncStatusData.autoSyncActive) {
           autoSyncToggle.classList.add('active');
         } else {
           autoSyncToggle.classList.remove('active');
