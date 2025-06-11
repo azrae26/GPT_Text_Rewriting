@@ -832,7 +832,12 @@ const GlobalSettings = {
         'currentRetries',
         'extraManualGroups',
         'manualGroups',
-        'replaceGroups'
+        'replaceGroups',
+        // 🆕 測試垃圾鍵值
+        'testSetting', 'testKey', 'syncSignal', 'syncTrigger', 
+        'deviceId', 'testData', 'debugInfo', 'uiUpdateTrigger',
+        'deviceUniqueId',           // 設備唯一ID（測試時產生的無效鍵值）
+        'lastProcessedSignalId'     // 最後處理的訊號ID（測試時產生的無效鍵值）
       ];
       
       // 從 sync storage 清理

@@ -48,7 +48,10 @@ class KeyClassifier {
       'syncStatus', 'lastSyncTime', 'driveFileId', 'syncError',
       'syncDebugLogs', 'stockCrawlerState', 'settingsHash',
       'authToken', 'tokenExpiry', 'exportToken', 'lastExportTime',
-      'syncIntervalMigrated'  // 同步間隔遷移標記
+      'syncIntervalMigrated',  // 同步間隔遷移標記
+      'cloudUpdateSignal',     // 雲端更新訊號（用於通知其他設備同步）
+      'crawlerAutoEnabled',    // 爬蟲自動啟用狀態（sync storage 即時同步）
+      'crawlerInterval'        // 爬蟲間隔分鐘數（sync storage 即時同步）
     ],
 
     // 用戶數據：替換規則、自定義模型、高亮設定等
@@ -63,6 +66,14 @@ class KeyClassifier {
     OBJECT_PROPERTIES: [
       'API', 'LOCAL_STORAGE_KEYS', 'SETTINGS_IDENTIFIER',
       'finalOptimizeInstruction', 'finalOptimizeModel'
+    ],
+
+    // 測試垃圾：開發測試時產生的無效鍵值，應該被清理
+    TEST_GARBAGE: [
+      'testSetting', 'testKey', 'syncSignal', 'syncTrigger', 
+      'deviceId', 'testData', 'debugInfo', 'uiUpdateTrigger',
+      'deviceUniqueId',           // 設備唯一ID（測試時產生的無效鍵值）
+      'lastProcessedSignalId'     // 最後處理的訊號ID（測試時產生的無效鍵值）
     ]
   };
 
@@ -194,8 +205,8 @@ class KeyClassifier {
 
     const category = this.getKeyCategory(key);
     
-    // 物件內部屬性永遠排除，不顯示警告
-    if (category === 'OBJECT_PROPERTIES') {
+    // 物件內部屬性和測試垃圾永遠排除，不顯示警告
+    if (category === 'OBJECT_PROPERTIES' || category === 'TEST_GARBAGE') {
       return false;
     }
     

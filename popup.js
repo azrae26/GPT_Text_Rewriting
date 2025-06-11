@@ -35,9 +35,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (message.action === 'settingsUpdated') {
       console.log(`[popup.js][${getCurrentTimeString()}] 收到設定更新通知:`, message.data);
       
-      // 當雲端同步更新設定時，重新載入 popup 的設定
-      if (message.data.reason === 'cloudSync') {
-        console.log(`[popup.js][${getCurrentTimeString()}] 雲端同步已更新設定，正在重新載入...`);
+      // 當雲端同步或強制下載更新設定時，重新載入 popup 的設定
+      if (message.data.reason === 'cloudSync' || message.data.reason === 'forceDownload') {
+        console.log(`[popup.js][${getCurrentTimeString()}] ${message.data.reason === 'cloudSync' ? '雲端同步' : '強制下載'}已更新設定，正在重新載入...`);
         
         // 延遲一下再重新載入，確保儲存完成
         setTimeout(async () => {

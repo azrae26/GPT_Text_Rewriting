@@ -71,8 +71,10 @@ class BackgroundSyncManager {
       }
       
       if (enabled) {
-        console.log('[BackgroundSync][init] 🔄 檢測到自動同步已啟用，啟動定期同步');
-        await this.startPeriodicSync();
+        // 🆕 改為訊號驅動，不再使用定期同步
+        console.log('[BackgroundSync][init] 🔄 檢測到自動同步已啟用，使用訊號驅動模式');
+        console.log('[BackgroundSync][init] 💡 雲端更新訊號由 SettingsIO 直接處理');
+        // await this.startPeriodicSync(); // 停用定期同步
       } else {
         console.log('[BackgroundSync][init] ⏸️ 自動同步未啟用');
       }
@@ -83,6 +85,8 @@ class BackgroundSyncManager {
     this.isInitialized = true;
     console.log('[BackgroundSync][init] ✅ 背景同步管理器初始化完成');
   }
+
+
 
   // 載入 SettingsIO 類別（依賴於 importScripts）
   loadSettingsIO() {
@@ -238,9 +242,11 @@ class BackgroundSyncManager {
         await chrome.storage.local.set({ syncEnabled: enabled });
         
         if (enabled) {
-          await this.startPeriodicSync();
+          // 🆕 改為訊號驅動，不再使用定期同步
+          console.log('[BackgroundSync][auto] 訊號驅動同步已啟用，無需定期計時器');
+          // await this.startPeriodicSync(); // 停用定期同步
         } else {
-          this.stopPeriodicSync();
+          this.stopPeriodicSync(); // 確保停止任何現有的定期同步
         }
         
         console.log(`[BackgroundSync][auto] 切換自動同步成功: ${enabled}`);
@@ -265,8 +271,9 @@ class BackgroundSyncManager {
       // 使用真正的 SettingsIO 獲取同步狀態（直接返回狀態物件）
       const statusResult = await this.settingsIO.getSyncStatus();
       
-      // 背景計時器狀態（自動同步是否啟用）
-      const autoSyncActive = this.syncIntervalId !== null;
+      // 🔧 修復：在訊號驅動模式下，autoSyncActive 應該基於 syncEnabled 而不是計時器
+      // const autoSyncActive = this.syncIntervalId !== null; // ❌ 舊邏輯：基於定期同步計時器
+      const autoSyncActive = statusResult.enabled || false; // ✅ 新邏輯：基於實際同步啟用狀態
       
       // 返回完整的狀態信息，但不混合邏輯
       // enabled 應該反映認證狀態，不是自動同步狀態
@@ -532,24 +539,105 @@ const BackgroundStockCrawlerManager = {
 
   /**
    * 初始化爬蟲管理器，恢復持久化狀態
+   * 🆕 修復：優先從 sync storage 載入啟動狀態，實現跨設備同步
    */
   async init() {
     console.log('初始化背景股票爬蟲管理器');
     try {
-      const result = await chrome.storage.local.get(['stockCrawlerState']);
-      const state = result.stockCrawlerState || {};
+      // 🆕 優先從 sync storage 讀取可同步的狀態
+      const syncResult = await chrome.storage.sync.get(['crawlerAutoEnabled', 'crawlerInterval']);
+      const localResult = await chrome.storage.local.get(['stockCrawlerState']);
       
-      console.log('恢復的爬蟲狀態:', state);
+      const syncState = {
+        isScheduled: syncResult.crawlerAutoEnabled || false,
+        intervalMinutes: syncResult.crawlerInterval || 30
+      };
+      
+      const localState = localResult.stockCrawlerState || {};
+      
+      // 合併狀態，sync storage 優先
+      const state = {
+        ...localState,
+        ...syncState
+      };
+      
+      console.log('恢復的爬蟲狀態:', state, {
+        fromSync: syncState,
+        fromLocal: localState
+      });
       
       if (state.isScheduled && state.intervalMinutes) {
-        console.log(`恢復定時爬取，間隔 ${state.intervalMinutes} 分鐘`);
+        console.log(`恢復定時爬取，間隔 ${state.intervalMinutes} 分鐘（來源：sync storage）`);
         this.intervalMinutes = state.intervalMinutes; // 重要：先設置 intervalMinutes
         await this._startScheduledCrawl(state.intervalMinutes, false); // false = 不立即執行
       }
       
+      // 🆕 監聽 sync storage 的變化，實現跨設備即時同步
+      chrome.storage.sync.onChanged.addListener((changes, areaName) => {
+        console.log('🔍 BackgroundStockCrawlerManager 收到 sync storage 變更:', {
+          areaName,
+          changeKeys: Object.keys(changes),
+          hasCrawlerEnabled: !!changes.crawlerAutoEnabled,
+          hasCrawlerInterval: !!changes.crawlerInterval
+        });
+        
+        // 🔧 修復：由於 areaName 可能是 undefined，改為直接檢查相關鍵值
+        if (changes.crawlerAutoEnabled || changes.crawlerInterval) {
+          console.log('🔄 檢測到爬蟲同步狀態變更:', changes);
+          this._handleSyncStorageChange(changes);
+        } else {
+          console.log('⏸️ 不是爬蟲相關的變更，忽略');
+        }
+      });
+      
       console.log('背景股票爬蟲管理器初始化完成');
     } catch (error) {
       console.error('初始化背景股票爬蟲管理器失敗:', error);
+    }
+  },
+
+  /**
+   * 🆕 處理同步儲存變更，實現跨設備即時同步
+   */
+  async _handleSyncStorageChange(changes) {
+    try {
+      let needsUpdate = false;
+      let newEnabled = null;
+      let newInterval = null;
+      
+      // 檢查啟用狀態變更
+      if (changes.crawlerAutoEnabled) {
+        newEnabled = changes.crawlerAutoEnabled.newValue;
+        console.log(`⚡ 爬蟲啟用狀態變更: ${changes.crawlerAutoEnabled.oldValue} → ${newEnabled}`);
+        needsUpdate = true;
+      }
+      
+      // 檢查間隔變更
+      if (changes.crawlerInterval) {
+        newInterval = changes.crawlerInterval.newValue;
+        console.log(`⚡ 爬蟲間隔變更: ${changes.crawlerInterval.oldValue} → ${newInterval}`);
+        needsUpdate = true;
+      }
+      
+      if (!needsUpdate) return;
+      
+      // 取得目前的完整狀態
+      const syncResult = await chrome.storage.sync.get(['crawlerAutoEnabled', 'crawlerInterval']);
+      const isEnabled = syncResult.crawlerAutoEnabled;
+      const interval = syncResult.crawlerInterval || 30;
+      
+      console.log(`🔄 應用新的爬蟲設定: 啟用=${isEnabled}, 間隔=${interval}分鐘`);
+      
+      if (isEnabled && interval) {
+        // 啟動定時爬取
+        await this._startScheduledCrawl(interval, false);
+      } else {
+        // 停止定時爬取
+        await this.stopScheduledCrawl();
+      }
+      
+    } catch (error) {
+      console.error('處理同步儲存變更失敗:', error);
     }
   },
 
@@ -1013,10 +1101,38 @@ const BackgroundStockCrawlerManager = {
 
   /**
    * 保存狀態到儲存空間
+   * 🆕 修復：使用 sync storage 儲存爬蟲啟動狀態，實現跨設備同步
    */
   async _saveState(state) {
     try {
-      await chrome.storage.local.set({ stockCrawlerState: state });
+      // 分離可同步的狀態和本地狀態
+      const syncableState = {
+        isScheduled: state.isScheduled,
+        intervalMinutes: state.intervalMinutes
+      };
+      
+      const localState = {
+        isRunning: state.isRunning,
+        progress: state.progress || 0,
+        lastCrawlTime: state.lastCrawlTime
+      };
+      
+      // 同步狀態使用 sync storage（跨設備同步）
+      await chrome.storage.sync.set({ 
+        crawlerAutoEnabled: syncableState.isScheduled,
+        crawlerInterval: syncableState.intervalMinutes || 30
+      });
+      
+      // 執行狀態使用 local storage（設備獨立）
+      await chrome.storage.local.set({ 
+        stockCrawlerState: {
+          ...state,
+          // 確保本地狀態完整
+          ...localState,
+          ...syncableState
+        }
+      });
+      
     } catch (error) {
       console.error('保存爬蟲狀態失敗:', error);
     }
@@ -1204,50 +1320,6 @@ async function initializeBackgroundServices() {
 
 // 啟動背景服務
 initializeBackgroundServices();
-
-// 監聽同步間隔設定變更
-chrome.storage.sync.onChanged.addListener(async (changes, areaName) => {
-  if (changes.syncInterval && backgroundSettingsIO) {
-    console.log('[BackgroundSync][storage] 偵測到同步間隔變更:', changes.syncInterval.newValue);
-    
-    try {
-      // 直接檢查 storage 中的同步啟用狀態
-      const result = await chrome.storage.local.get(['syncEnabled']);
-      const syncEnabled = result.syncEnabled || false;
-      
-      if (syncEnabled) {
-        console.log('[BackgroundSync][storage] 重新啟動定期同步以應用新間隔');
-        await backgroundSettingsIO.startPeriodicSync();
-      } else {
-        console.log('[BackgroundSync][storage] 自動同步未啟用，跳過重新啟動');
-      }
-    } catch (error) {
-      console.error('[BackgroundSync][storage] 處理同步間隔變更失敗:', error);
-    }
-  }
-});
-
-// 監聽同步間隔設定變更（保留 local storage 監聽以向後兼容）
-chrome.storage.local.onChanged.addListener(async (changes, areaName) => {
-  if (changes.syncInterval && backgroundSettingsIO) {
-    console.log('[BackgroundSync][storage] 偵測到同步間隔變更 (local):', changes.syncInterval.newValue);
-    
-    try {
-      // 直接檢查 storage 中的同步啟用狀態
-      const result = await chrome.storage.local.get(['syncEnabled']);
-      const syncEnabled = result.syncEnabled || false;
-      
-      if (syncEnabled) {
-        console.log('[BackgroundSync][storage] 重新啟動定期同步以應用新間隔');
-        await backgroundSettingsIO.startPeriodicSync();
-      } else {
-        console.log('[BackgroundSync][storage] 自動同步未啟用，跳過重新啟動');
-      }
-    } catch (error) {
-      console.error('[BackgroundSync][storage] 處理同步間隔變更失敗:', error);
-    }
-  }
-});
 
 // 處理來自 popup 的長連接
 chrome.runtime.onConnect.addListener((port) => {
@@ -1603,6 +1675,34 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     
     sendResponse({ status: 'success' });
   }
+
+  // 🆕 處理雲端訊號調試信息
+  if (request.action === 'cloudSignalDebug') {
+    const { message: debugMessage, data } = request;
+    console.log(`[BackgroundSync][CloudSignalDebug][${data.currentTime}] ${debugMessage}:`, data);
+    
+    // 特別記錄重要的訊號事件
+    if (data.action === 'sendSignal') {
+      console.log(`[BackgroundSync][CloudSignalDebug] 📡 設備 ${data.deviceId} 發送訊號:`, data.signal);
+    } else if (data.action === 'receiveSignal') {
+      console.log(`[BackgroundSync][CloudSignalDebug] 📥 設備 ${data.myDeviceId} 收到來自 ${data.signal.source} 的訊號`);
+    } else if (data.action === 'ignoreSelfSignal') {
+      console.log(`[BackgroundSync][CloudSignalDebug] 🔄 設備 ${data.myDeviceId} 忽略自己的訊號`);
+    } else if (data.action === 'syncDisabled') {
+      console.log(`[BackgroundSync][CloudSignalDebug] ⏸️ 設備同步已停用，忽略訊號`);
+    } else if (data.action === 'scheduleSync') {
+      console.log(`[BackgroundSync][CloudSignalDebug] ⏰ 排程 ${data.intervalMinutes} 分鐘後同步`);
+    } else if (data.action === 'startSync') {
+      console.log(`[BackgroundSync][CloudSignalDebug] 🚀 開始執行訊號驅動同步`);
+    } else if (data.action === 'syncSuccess') {
+      console.log(`[BackgroundSync][CloudSignalDebug] ✅ 訊號驅動同步成功完成`);
+    } else if (data.action === 'syncError') {
+      console.log(`[BackgroundSync][CloudSignalDebug] ❌ 訊號驅動同步失敗: ${data.error}`);
+    }
+    
+    return Promise.resolve({ success: true });
+  }
+
   return true; // 表示我們會異步發送回應
 });
 

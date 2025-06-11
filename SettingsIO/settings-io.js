@@ -47,9 +47,11 @@ class SettingsIO {
     this.syncIntervalId = null;
     this.uploadTimeoutId = null;
     this.lastModifiedTimeoutId = null; // 時間戳更新防抖動計時器
+    this.signalSyncTimeoutId = null; // 訊號驅動同步計時器
     this.isInitialized = false;
     this.localChangeDetected = false; // 本地修改保護標記
     this.isInternalSyncUpdate = false; // 同步系統內部更新標記
+    this.lastSentSignalTimestamp = null; // 記住自己發送的訊號時間戳
     
     this.handleStorageChange = this.handleStorageChange.bind(this);
     this.performSync = this.performSync.bind(this);
@@ -69,14 +71,15 @@ class SettingsIO {
       
       const syncEnabled = await this.isSyncEnabled();
       if (syncEnabled) {
-        // 檢查是否在 Service Worker 環境中
-        if (typeof window === 'undefined' && typeof self !== 'undefined') {
-          console.log(`[SettingsIO][${getCurrentTimeString()}] Service Worker 環境：定期同步由 BackgroundSync 管理`);
-        } else {
-          this.startPeriodicSync();
-          console.log(`[SettingsIO][${getCurrentTimeString()}] Popup 環境：啟動定期同步`);
-        }
-        console.log(`[SettingsIO][${getCurrentTimeString()}] 自動同步已啟用`);
+        // 🆕 改為訊號驅動，不再啟動定期同步
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 自動同步已啟用，使用訊號驅動模式`);
+        // 不再啟動定期同步：
+        // if (typeof window === 'undefined' && typeof self !== 'undefined') {
+        //   console.log(`[SettingsIO][${getCurrentTimeString()}] Service Worker 環境：定期同步由 BackgroundSync 管理`);
+        // } else {
+        //   this.startPeriodicSync();
+        //   console.log(`[SettingsIO][${getCurrentTimeString()}] Popup 環境：啟動定期同步`);
+        // }
       }
       
       this.isInitialized = true;
@@ -126,6 +129,9 @@ class SettingsIO {
   setupStorageListener() {
     chrome.storage.local.onChanged.addListener(this.handleStorageChange);
     chrome.storage.sync.onChanged.addListener(this.handleStorageChange);
+    
+    // 🆕 專門監聽雲端更新訊號
+    chrome.storage.sync.onChanged.addListener(this.handleCloudUpdateSignal.bind(this));
   }
 
   async handleStorageChange(changes, areaName) {
@@ -136,7 +142,8 @@ class SettingsIO {
       SettingsIO.CONSTANTS.KEYS.SYNC_ERROR,
       'syncDebugLogs',
       'stockCrawlerState',
-      'lastModified'  // 避免時間戳更新造成的連鎖反應
+      'lastModified',  // 避免時間戳更新造成的連鎖反應
+      'cloudUpdateSignal'  // 🆕 排除雲端更新訊號，避免觸發新的上傳
     ];
 
     const relevantChanges = Object.keys(changes).filter(key => 
@@ -317,12 +324,14 @@ class SettingsIO {
       console.log(`[SettingsIO][${getCurrentTimeString()}] 🔽 首次開啟同步，強制下載雲端設定`);
       const syncResult = await this.forceDownloadFromCloud();
       if (syncResult.success) {
-        // 檢查是否在 Service Worker 環境中
-        if (typeof window === 'undefined' && typeof self !== 'undefined') {
-          console.log(`[SettingsIO][${getCurrentTimeString()}] Service Worker 環境：定期同步由 BackgroundSync 管理`);
-        } else {
-          await this.startPeriodicSync();
-        }
+        // 🆕 改為訊號驅動，不再啟動定期同步
+        console.log(`[SettingsIO][${getCurrentTimeString()}] 自動同步已啟用，使用訊號驅動模式`);
+        // 不再啟動定期同步：
+        // if (typeof window === 'undefined' && typeof self !== 'undefined') {
+        //   console.log(`[SettingsIO][${getCurrentTimeString()}] Service Worker 環境：定期同步由 BackgroundSync 管理`);
+        // } else {
+        //   await this.startPeriodicSync();
+        // }
       }
     } else {
       this.stopPeriodicSync();
@@ -367,10 +376,14 @@ class SettingsIO {
   async setSyncInterval(intervalMinutes) {
     await chrome.storage.sync.set({ syncInterval: intervalMinutes });
     
-    // 如果自動同步已啟用，重新啟動定期同步使用新間隔
-    if (await this.isSyncEnabled()) {
-      this.startPeriodicSync();
-    }
+    // 🔧 修復：在訊號驅動模式下，不再自動啟動定期同步
+    // 同步間隔只用於訊號驅動的延遲時間，不啟動定期計時器
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 同步間隔已更新為 ${intervalMinutes} 分鐘 (訊號驅動模式)`);
+    
+    // ❌ 移除舊邏輯：不再自動啟動定期同步
+    // if (await this.isSyncEnabled()) {
+    //   this.startPeriodicSync();
+    // }
   }
 
   async performSync(token = null) {
@@ -740,6 +753,9 @@ class SettingsIO {
       
       console.log(`[SettingsIO][${getCurrentTimeString()}] 設定上傳完成 (檔案ID: ${fileId})`);
       
+      // 🆕 發送雲端更新訊號給其他設備
+      await this.sendCloudUpdateSignal();
+      
     } catch (error) {
       console.error(`[SettingsIO][${getCurrentTimeString()}] 上傳設定失敗:`, error);
       await this.setSyncError(error.message);
@@ -1091,6 +1107,227 @@ class SettingsIO {
   }
 
 
+
+  /**
+   * 發送雲端更新訊號給其他設備
+   * 透過 Chrome sync storage 通知其他設備有雲端更新
+   */
+  async sendCloudUpdateSignal() {
+    try {
+      const signalTimestamp = Date.now();
+      const signal = {
+        timestamp: signalTimestamp,
+        action: 'cloudUpdated'
+      };
+      
+      // 記住自己發送的訊號時間戳
+      this.lastSentSignalTimestamp = signalTimestamp;
+      
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 📡 發送雲端更新訊號:`, signal);
+      
+      // 🆕 發送調試信息到 background
+      this._sendDebugToBackground('發送雲端更新訊號', {
+        signal,
+        action: 'sendSignal'
+      });
+      
+      // 先檢查當前的 sync storage 狀態
+      const currentSyncData = await chrome.storage.sync.get(['cloudUpdateSignal']);
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 📊 發送前 sync storage 狀態:`, currentSyncData);
+      
+      await chrome.storage.sync.set({
+        cloudUpdateSignal: signal
+      });
+      
+      // 驗證設置是否成功
+      const verifyResult = await chrome.storage.sync.get(['cloudUpdateSignal']);
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 📊 發送後 sync storage 狀態:`, verifyResult);
+      
+      const isSuccessful = verifyResult.cloudUpdateSignal && 
+                          verifyResult.cloudUpdateSignal.timestamp === signal.timestamp;
+      
+      if (isSuccessful) {
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 雲端更新訊號已發送並驗證成功`);
+        this._sendDebugToBackground('雲端更新訊號發送成功', {
+          signal,
+          action: 'sendSuccess'
+        });
+      } else {
+        console.warn(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 雲端更新訊號發送驗證失敗`);
+        this._sendDebugToBackground('雲端更新訊號發送驗證失敗', {
+          signal,
+          action: 'sendFailed'
+        });
+      }
+      
+    } catch (error) {
+      console.warn(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 發送雲端更新訊號失敗:`, error);
+      this._sendDebugToBackground('發送雲端更新訊號失敗', {
+        error: error.message,
+        action: 'sendError'
+      });
+    }
+  }
+
+  /**
+   * 處理雲端更新訊號
+   * 當收到其他設備的雲端更新訊號時，根據設定間隔延遲執行同步
+   */
+  async handleCloudUpdateSignal(changes, areaName) {
+    // 🆕 詳細的調試日誌
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 handleCloudUpdateSignal 被調用:`, {
+      areaName,
+      hasCloudUpdateSignal: !!changes.cloudUpdateSignal,
+      allChangeKeys: Object.keys(changes)
+    });
+    
+    // 發送調試信息到 background
+    this._sendDebugToBackground('收到 storage 變更', {
+      areaName,
+      changeKeys: Object.keys(changes),
+      hasCloudUpdateSignal: !!changes.cloudUpdateSignal,
+      action: 'storageChange'
+    });
+    
+    // 只處理包含 cloudUpdateSignal 的變更
+    if (!changes.cloudUpdateSignal) {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] ⏸️ 跳過非相關變更 (no cloudUpdateSignal)`);
+      return;
+    }
+
+    // 如果 areaName 存在且不是 'sync'，則跳過
+    if (areaName && areaName !== 'sync') {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] ⏸️ 跳過非 sync storage 變更 (areaName: ${areaName})`);
+      return;
+    }
+
+    const signal = changes.cloudUpdateSignal.newValue;
+    const oldSignal = changes.cloudUpdateSignal.oldValue;
+    
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 📡 雲端更新訊號變更詳情:`, {
+      newValue: signal,
+      oldValue: oldSignal
+    });
+    
+    if (!signal || typeof signal !== 'object') {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] ⚠️ 無效的訊號格式:`, signal);
+      this._sendDebugToBackground('無效的訊號格式', {
+        signal,
+        action: 'invalidSignal'
+      });
+      return;
+    }
+
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 📡 收到雲端更新訊號:`, signal);
+
+    // 🎯 聰明跳過：檢查是否是自己發送的訊號
+    if (this.lastSentSignalTimestamp && signal.timestamp === this.lastSentSignalTimestamp) {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🔄 跳過自己發送的訊號 (時間戳: ${signal.timestamp})`);
+      this._sendDebugToBackground('跳過自己的訊號', {
+        signal,
+        lastSentTimestamp: this.lastSentSignalTimestamp,
+        action: 'skipOwnSignal'
+      });
+      return;
+    }
+
+    this._sendDebugToBackground('收到其他設備訊號', {
+        signal,
+        action: 'receiveSignal'
+      });
+
+    // 檢查是否啟用自動同步
+    const syncEnabled = await this.isSyncEnabled();
+    console.log(`[SettingsIO][${getCurrentTimeString()}] 🔍 檢查同步狀態: ${syncEnabled ? '已啟用' : '已停用'}`);
+    
+    if (!syncEnabled) {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] ⏸️ 自動同步已停用，忽略雲端更新訊號`);
+      this._sendDebugToBackground('同步已停用，忽略訊號', {
+        signal,
+        syncEnabled,
+        action: 'syncDisabled'
+      });
+      return;
+    }
+
+    // 取得同步間隔設定
+    const intervalMinutes = await this.getSyncInterval();
+    const delayMs = intervalMinutes * 60 * 1000;
+
+    console.log(`[SettingsIO][${getCurrentTimeString()}] ⏰ 將在 ${intervalMinutes} 分鐘後執行訊號驅動同步 (延遲: ${delayMs}ms)`);
+    
+    this._sendDebugToBackground('準備延遲同步', {
+      signal,
+      intervalMinutes,
+      delayMs,
+      action: 'scheduleSync'
+    });
+
+    // 清除之前的延遲同步（如果有的話）
+    if (this.signalSyncTimeoutId) {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🔄 清除之前的延遲同步計時器`);
+      clearTimeout(this.signalSyncTimeoutId);
+    }
+
+    // 設定延遲同步
+    this.signalSyncTimeoutId = setTimeout(async () => {
+      console.log(`[SettingsIO][${getCurrentTimeString()}] 🚀 執行訊號驅動同步`);
+      this._sendDebugToBackground('開始執行訊號驅動同步', {
+        signal,
+        action: 'startSync'
+      });
+      
+      try {
+        await this.performSync();
+        console.log(`[SettingsIO][${getCurrentTimeString()}] ✅ 訊號驅動同步完成`);
+        this._sendDebugToBackground('訊號驅動同步完成', {
+          signal,
+          action: 'syncSuccess'
+        });
+      } catch (error) {
+        console.error(`[SettingsIO][${getCurrentTimeString()}] ❌ 訊號驅動同步失敗:`, error);
+        this._sendDebugToBackground('訊號驅動同步失敗', {
+          signal,
+          error: error.message,
+          action: 'syncError'
+        });
+      }
+    }, delayMs);
+    
+    console.log(`[SettingsIO][${getCurrentTimeString()}] ⏰ 延遲同步計時器已設置，ID: ${this.signalSyncTimeoutId}`);
+  }
+
+  /**
+   * 發送調試信息到 background.js
+   */
+  _sendDebugToBackground(message, data = {}) {
+    try {
+      const debugMessage = {
+        action: 'cloudSignalDebug',
+        timestamp: Date.now(),
+        message,
+        data: {
+          ...data,
+          currentTime: getCurrentTimeString()
+        }
+      };
+      
+      // 在 Service Worker 環境中，直接記錄到 console
+      // 在其他環境中，嘗試發送到 background
+      if (typeof window === 'undefined' && typeof self !== 'undefined') {
+        // Service Worker 環境 - 直接記錄
+        console.log(`[SettingsIO-Debug][${getCurrentTimeString()}] ${message}:`, data);
+      } else {
+        // 其他環境 - 發送到 background
+        chrome.runtime.sendMessage(debugMessage).catch(() => {
+          // 如果發送失敗，至少記錄到本地 console
+          console.log(`[SettingsIO-Debug][${getCurrentTimeString()}] ${message}:`, data);
+        });
+      }
+    } catch (error) {
+      console.warn(`[SettingsIO][${getCurrentTimeString()}] 發送調試信息失敗:`, error);
+    }
+  }
 
   deepEqual(obj1, obj2) {
     if (obj1 === obj2) return true;
