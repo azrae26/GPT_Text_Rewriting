@@ -73,7 +73,8 @@ class KeyClassifier {
       'testSetting', 'testKey', 'syncSignal', 'syncTrigger', 
       'deviceId', 'testData', 'debugInfo', 'uiUpdateTrigger',
       'deviceUniqueId',           // 設備唯一ID（測試時產生的無效鍵值）
-      'lastProcessedSignalId'     // 最後處理的訊號ID（測試時產生的無效鍵值）
+      'lastProcessedSignalId',    // 最後處理的訊號ID（測試時產生的無效鍵值）
+      'crawlerEnabled'            // 無效的爬蟲鍵值（應使用 crawlerAutoEnabled）
     ]
   };
 

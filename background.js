@@ -28,15 +28,37 @@ let backgroundSyncInitialized = false;
 class BackgroundSyncManager {
   constructor() {
     this.syncInProgress = false;
-    this.syncIntervalId = null;
     this.isInitialized = false;
     this.settingsIO = null;
+  }
+
+  // 通用的錯誤處理和日誌記錄方法
+  async _executeWithErrorHandling(methodName, asyncFn, returnSuccess = true) {
+    const prefix = BACKGROUND_CONSTANTS.LOG_PREFIXES.SYNC;
+    console.log(`${prefix}[${methodName}] 開始執行`);
+    
+    try {
+      if (!this.settingsIO) {
+        throw new Error(BACKGROUND_CONSTANTS.MESSAGES.SETTINGS_IO_NOT_INIT);
+      }
+      
+      const result = await asyncFn();
+      console.log(`${prefix}[${methodName}] 執行成功`);
+      
+      if (returnSuccess && typeof result === 'object' && result.success !== undefined) {
+        return result;
+      }
+      return returnSuccess ? { success: true, ...(result || {}) } : result;
+    } catch (error) {
+      console.error(`${prefix}[${methodName}] 執行失敗:`, error);
+      return { success: false, error: error.message };
+    }
   }
 
   async init() {
     if (this.isInitialized) return;
     
-    console.log('[BackgroundSync][init] 🔧 初始化背景同步管理器...');
+    console.log(`${BACKGROUND_CONSTANTS.LOG_PREFIXES.SYNC}[init] 🔧 初始化背景同步管理器...`);
     
     try {
       // 創建 SettingsIO 實例（真實或備用）
@@ -74,7 +96,6 @@ class BackgroundSyncManager {
         // 🆕 改為訊號驅動，不再使用定期同步
         console.log('[BackgroundSync][init] 🔄 檢測到自動同步已啟用，使用訊號驅動模式');
         console.log('[BackgroundSync][init] 💡 雲端更新訊號由 SettingsIO 直接處理');
-        // await this.startPeriodicSync(); // 停用定期同步
       } else {
         console.log('[BackgroundSync][init] ⏸️ 自動同步未啟用');
       }
@@ -85,8 +106,6 @@ class BackgroundSyncManager {
     this.isInitialized = true;
     console.log('[BackgroundSync][init] ✅ 背景同步管理器初始化完成');
   }
-
-
 
   // 載入 SettingsIO 類別（依賴於 importScripts）
   loadSettingsIO() {
@@ -182,286 +201,138 @@ class BackgroundSyncManager {
       async forceUploadToCloud() {
         return await this.forceUpload();
       }
-      
-      async performSync() {
-        if (this.syncInProgress) return;
-        
-        this.syncInProgress = true;
-        try {
-          console.log('[FallbackSettingsIO] ⚠️ 執行備用定期同步（僅模擬）');
-          await new Promise(resolve => setTimeout(resolve, 500));
-          await chrome.storage.local.set({ 
-            lastSyncTime: Date.now(),
-            syncError: null 
-          });
-        } finally {
-          this.syncInProgress = false;
-        }
-      }
     };
   }
 
   async manualSync() {
-    console.log('[BackgroundSync][manual] 執行手動同步');
-    
-    try {
-      if (!this.settingsIO) {
-        throw new Error('SettingsIO 實例未初始化');
-      }
-      
-      // 使用真正的 SettingsIO 進行手動同步
+    return await this._executeWithErrorHandling('manual', async () => {
       const result = await this.settingsIO.manualSync();
-      
       if (result.success) {
-        console.log('[BackgroundSync][manual] 真實手動同步完成');
-        return { success: true, message: result.message || '手動同步完成' };
+        return { message: result.message || '手動同步完成' };
       } else {
         throw new Error(result.error || '手動同步失敗');
       }
-    } catch (error) {
-      console.error('[BackgroundSync][manual] 手動同步失敗:', error);
-      return { success: false, error: error.message };
-    }
+    });
   }
 
   async toggleAutoSync(enabled) {
-    console.log('[BackgroundSync][auto] 切換自動同步:', enabled);
-    
-    try {
-      if (!this.settingsIO) {
-        throw new Error('SettingsIO 實例未初始化');
-      }
+    return await this._executeWithErrorHandling('auto', async () => {
+      console.log('切換自動同步:', enabled);
       
-      // 使用真正的 SettingsIO 進行自動同步切換
-      // 注意：SettingsIO.toggleAutoSync 返回的是 enabled 值，不是 success 對象
       const resultEnabled = await this.settingsIO.toggleAutoSync(enabled);
       
-      // 驗證返回值是否符合預期
       if (resultEnabled === enabled) {
-        // 同時儲存到 local storage（用於背景狀態檢查）
         await chrome.storage.local.set({ syncEnabled: enabled });
         
         if (enabled) {
-          // 🆕 改為訊號驅動，不再使用定期同步
-          console.log('[BackgroundSync][auto] 訊號驅動同步已啟用，無需定期計時器');
-          // await this.startPeriodicSync(); // 停用定期同步
-        } else {
-          this.stopPeriodicSync(); // 確保停止任何現有的定期同步
+          console.log('訊號驅動同步已啟用，無需定期計時器');
         }
         
-        console.log(`[BackgroundSync][auto] 切換自動同步成功: ${enabled}`);
-        return { success: true, enabled };
+        return { enabled };
       } else {
         throw new Error(`切換自動同步失敗：期望 ${enabled}，實際返回 ${resultEnabled}`);
       }
-    } catch (error) {
-      console.error('[BackgroundSync][auto] 切換自動同步失敗:', error);
-      return { success: false, error: error.message };
-    }
+    });
   }
 
   async getSyncStatus() {
-    console.log('[BackgroundSync][status] 獲取同步狀態');
-    
-    try {
-      if (!this.settingsIO) {
-        throw new Error('SettingsIO 實例未初始化');
-      }
-      
-      // 使用真正的 SettingsIO 獲取同步狀態（直接返回狀態物件）
+    return await this._executeWithErrorHandling('status', async () => {
       const statusResult = await this.settingsIO.getSyncStatus();
+      const autoSyncActive = statusResult.enabled || false;
       
-      // 🔧 修復：在訊號驅動模式下，autoSyncActive 應該基於 syncEnabled 而不是計時器
-      // const autoSyncActive = this.syncIntervalId !== null; // ❌ 舊邏輯：基於定期同步計時器
-      const autoSyncActive = statusResult.enabled || false; // ✅ 新邏輯：基於實際同步啟用狀態
-      
-      // 返回完整的狀態信息，但不混合邏輯
-      // enabled 應該反映認證狀態，不是自動同步狀態
       return {
-        success: true,
-        ...statusResult,  // 直接展開 SettingsIO 的狀態結果
-        autoSyncActive: autoSyncActive,  // 添加背景同步狀態
-        status: statusResult.error ? 'error' : 
+        ...statusResult,
+        autoSyncActive: autoSyncActive,
+        status: statusResult.error ? BACKGROUND_CONSTANTS.STATUS_TYPES.ERROR : 
                 (statusResult.enabled ? 'connected' : 'disconnected')
       };
-    } catch (error) {
-      console.error('[BackgroundSync][status] 獲取同步狀態失敗:', error);
-      return { success: false, error: error.message };
-    }
+    });
   }
 
   async resetSyncStatus() {
-    console.log('[BackgroundSync][reset] 重置同步狀態');
-    
-    try {
-      if (!this.settingsIO) {
-        throw new Error('SettingsIO 實例未初始化');
-      }
-      
-      // 使用真正的 SettingsIO 重置同步狀態（void 方法）
+    return await this._executeWithErrorHandling('reset', async () => {
       await this.settingsIO.resetSyncStatus();
-      
-      // 同時清除 local storage 中的同步設定
       await chrome.storage.local.remove(['syncEnabled', 'lastSyncTime', 'syncError']);
-      this.stopPeriodicSync();
-      return { success: true };
-    } catch (error) {
-      console.error('[BackgroundSync][reset] 重置同步狀態失敗:', error);
-      return { success: false, error: error.message };
-    }
+    });
   }
 
   async signOut() {
-    console.log('[BackgroundSync][signout] 登出同步功能');
-    
-    try {
-      if (!this.settingsIO) {
-        throw new Error('SettingsIO 實例未初始化');
-      }
-      
-      // 使用真正的 SettingsIO 登出（void 方法）
+    return await this._executeWithErrorHandling('signout', async () => {
       await this.settingsIO.signOut();
-      
-      this.stopPeriodicSync();
-      return { success: true };
-    } catch (error) {
-      console.error('[BackgroundSync][signout] 登出失敗:', error);
-      return { success: false, error: error.message };
-    }
+    });
   }
 
   async forceUpload() {
-    console.log('[BackgroundSync][upload] 強制上傳設定');
-    
-    try {
-      if (!this.settingsIO) {
-        throw new Error('SettingsIO 實例未初始化');
-      }
-      
-      // 使用真正的 SettingsIO 進行強制上傳
+    return await this._executeWithErrorHandling('upload', async () => {
       const result = await this.settingsIO.forceUploadToCloud();
       
       if (result.success) {
-        console.log('[BackgroundSync][upload] 真實強制上傳完成');
-        return { 
-          success: true, 
-          message: result.message || '強制上傳完成' 
-        };
+        return { message: result.message || '強制上傳完成' };
       } else {
         throw new Error(result.error || '強制上傳失敗');
       }
-    } catch (error) {
-      console.error('[BackgroundSync][upload] 強制上傳失敗:', error);
-      return { success: false, error: error.message };
-    }
-  }
-
-  async startPeriodicSync() {
-    this.stopPeriodicSync(); // 避免重複的計時器
-    
-    // 讀取用戶設定的同步間隔
-    const result = await chrome.storage.sync.get(['syncInterval']);
-    const intervalMinutes = result.syncInterval || 2; // 預設2分鐘
-    const intervalMs = intervalMinutes * 60 * 1000;
-    
-    this.syncIntervalId = setInterval(async () => {
-      console.log('[BackgroundSync][periodic] ⏰ 定期同步計時器觸發');
-      await this.performPeriodicSync();
-    }, intervalMs);
-    
-    console.log(`[BackgroundSync][periodic] ✅ 定期同步已啟動（每${intervalMinutes}分鐘執行一次）`);
-  }
-
-  stopPeriodicSync() {
-    if (this.syncIntervalId) {
-      clearInterval(this.syncIntervalId);
-      this.syncIntervalId = null;
-      console.log('[BackgroundSync][periodic] 定期同步已停止');
-    }
-  }
-
-  async performPeriodicSync() {
-    const timestamp = new Date().toLocaleTimeString();
-    
-    if (this.syncInProgress) {
-      console.log(`[BackgroundSync][periodic][${timestamp}] 🔄 同步進行中，跳過此次執行`);
-      return;
-    }
-
-    try {
-      this.syncInProgress = true;
-      console.log(`[BackgroundSync][periodic][${timestamp}] 🚀 開始執行定期同步`);
-      
-      // 檢查是否啟用自動同步
-      const result = await chrome.storage.local.get(['syncEnabled']);
-      
-      if (!result.syncEnabled) {
-        console.log(`[BackgroundSync][periodic][${timestamp}] ⏸️ 自動同步已停用，跳過執行`);
-        return;
-      }
-
-      if (!this.settingsIO) {
-        console.log(`[BackgroundSync][periodic][${timestamp}] ⚠️ SettingsIO 實例未初始化，跳過執行`);
-        return;
-      }
-
-      // 執行真正的同步操作
-      console.log(`[BackgroundSync][periodic][${timestamp}] 💾 執行真實同步操作...`);
-      
-      try {
-        // 使用真正的 SettingsIO 進行定期同步
-        await this.settingsIO.performSync();
-        console.log(`[BackgroundSync][periodic][${timestamp}] 📥 真實同步完成`);
-        
-        // 更新最後同步時間
-        const syncTime = Date.now();
-        await chrome.storage.local.set({ 
-          lastSyncTime: syncTime,
-          syncError: null // 清除之前的錯誤
-        });
-        
-        // 嘗試通知 popup 更新狀態 
-        try {
-          chrome.runtime.sendMessage({
-            action: 'syncStatusUpdate',
-            data: { lastSync: syncTime, status: 'success' }
-          }).catch(() => {}); // 忽略錯誤（popup可能未開啟）
-        } catch (e) {}
-        
-        console.log(`[BackgroundSync][periodic][${timestamp}] ✅ 定期同步完成 (時間: ${new Date(syncTime).toLocaleTimeString()})`);
-      } catch (syncError) {
-        console.error(`[BackgroundSync][periodic][${timestamp}] ⚠️ 真實同步失敗:`, syncError);
-        
-        await chrome.storage.local.set({ syncError: syncError.message });
-        
-        // 嘗試通知 popup 同步失敗
-        try {
-          chrome.runtime.sendMessage({
-            action: 'syncStatusUpdate',
-            data: { error: syncError.message, status: 'error' }
-          }).catch(() => {}); // 忽略錯誤（popup可能未開啟）
-        } catch (e) {}
-      }
-      
-    } catch (error) {
-      console.error(`[BackgroundSync][periodic][${timestamp}] ❌ 定期同步失敗:`, error);
-      await chrome.storage.local.set({ syncError: error.message });
-      
-      // 嘗試通知 popup 同步失敗
-      try {
-        chrome.runtime.sendMessage({
-          action: 'syncStatusUpdate',
-          data: { error: error.message, status: 'error' }
-        }).catch(() => {}); // 忽略錯誤（popup可能未開啟）
-      } catch (e) {}
-    } finally {
-      this.syncInProgress = false;
-      console.log(`[BackgroundSync][periodic][${timestamp}] 🔓 同步鎖定已釋放`);
-    }
+    });
   }
 }
 
 // === 配置常數 ===
+const BACKGROUND_CONSTANTS = {
+  LOG_PREFIXES: {
+    SYNC: '[BackgroundSync]',
+    CRAWLER: '[BackgroundStockCrawlerManager]'
+  },
+  DELAYS: {
+    STATUS_UPDATE: 100,
+    REINIT_DELAY: 150,
+    UI_REFRESH_DELAY: 200,
+    SYNC_RESET_DELAY: 100
+  },
+  STATUS_TYPES: {
+    RUNNING: 'running',
+    COMPLETED: 'completed',
+    ERROR: 'error',
+    IDLE: 'idle',
+    SCHEDULED: 'scheduled',
+    WARNING: 'warning'
+  },
+  MESSAGES: {
+    SETTINGS_IO_NOT_INIT: 'SettingsIO 實例未初始化',
+    UNKNOWN_COMMAND: '未知命令',
+    SYNC_IN_PROGRESS: '同步正在進行中',
+    AUTH_FAILED: '認證失敗，跳過'
+  },
+  LOG_STYLES: {
+    '#4CAF50': 'color: #2E7D32',
+    '#2196F3': 'color: #1565C0', 
+    '#9C27B0': 'color: #9C27B0; font-weight: bold;',
+    '#F44336': 'color: #F44336; font-weight: bold;',
+    '#FF9800': 'color: #FF9800; font-weight: bold;'
+  },
+  DEBUG_STYLES: {
+    timestamp: { emoji: '⏰', style: 'color: #FF9800; font-weight: bold;' },
+    filtered_content: { emoji: '📊', style: 'color: #2196F3;' },
+    missing_keys: { emoji: '🔑', style: 'color: #FF5722; font-weight: bold;' },
+    different_values: { emoji: '📝', style: 'color: #E91E63; font-weight: bold;' },
+    final_result: { emoji: '🎯', style: 'color: #9C27B0; font-weight: bold;' },
+    local_update: { emoji: '✏️', style: 'color: #FF5722; font-weight: bold;' },
+    protect_local: { emoji: '🛡️', style: 'color: #F44336; font-weight: bold;' },
+    force_upload: { emoji: '🚀', style: 'color: #4CAF50; font-weight: bold;' },
+    download: { emoji: '⬇️', style: 'color: #4CAF50; font-weight: bold;' },
+    upload: { emoji: '⬆️', style: 'color: #3F51B5; font-weight: bold;' },
+    none: { emoji: '✅', style: 'color: #8BC34A;' }
+  },
+  SIGNAL_MESSAGES: {
+    sendSignal: (data) => `📡 設備 ${data.deviceId} 發送訊號:`,
+    receiveSignal: (data) => `📥 設備 ${data.myDeviceId} 收到來自 ${data.signal.source} 的訊號`,
+    ignoreSelfSignal: (data) => `🔄 設備 ${data.myDeviceId} 忽略自己的訊號`,
+    syncDisabled: () => `⏸️ 設備同步已停用，忽略訊號`,
+    scheduleSync: (data) => `⏰ 排程 ${data.intervalMinutes} 分鐘後同步`,
+    startSync: () => `🚀 開始執行訊號驅動同步`,
+    syncSuccess: () => `✅ 訊號驅動同步成功完成`,
+    syncError: (data) => `❌ 訊號驅動同步失敗: ${data.error}`
+  }
+};
+
 const STOCK_CRAWLER_CONFIG = {
   // 安全保護閾值：要刪除的股票數量達到此值時將跳過更新
   SAFETY_DELETE_THRESHOLD: 5,
@@ -536,6 +407,25 @@ const BackgroundStockCrawlerManager = {
   
   /** 狀態更新監聽器 */
   statusListeners: new Set(),
+
+  // 簡化的進度更新方法
+  _updateProgress(status, progress, extraData = {}) {
+    this.currentProgress = progress;
+    this._notifyStatusChange(BACKGROUND_CONSTANTS.STATUS_TYPES.RUNNING, { 
+      status, 
+      progress,
+      ...extraData
+    });
+  },
+
+  // 簡化的狀態更新方法
+  _updateStatus(type, status, extraData = {}) {
+    this._notifyStatusChange(type, { 
+      status,
+      progress: this.currentProgress,
+      ...extraData
+    });
+  },
 
   /**
    * 初始化爬蟲管理器，恢復持久化狀態
@@ -686,7 +576,7 @@ const BackgroundStockCrawlerManager = {
     
     console.log(`新定時器已設置，間隔 ${intervalMinutes} 分鐘 (${intervalMinutes * 60 * 1000}ms)，定時器ID:`, this.intervalTimer);
     
-    this._notifyStatusChange('scheduled', { intervalMinutes });
+    this._updateStatus(BACKGROUND_CONSTANTS.STATUS_TYPES.SCHEDULED, `自動爬取已啟用，間隔 ${intervalMinutes} 分鐘`, { intervalMinutes });
   },
 
   /**
@@ -704,9 +594,7 @@ const BackgroundStockCrawlerManager = {
       intervalMinutes: 0 
     });
     
-    this._notifyStatusChange('scheduledStopped', { 
-      status: '已停止自動爬取' 
-    });
+    this._updateStatus('scheduledStopped', '已停止自動爬取');
   },
 
   /**
@@ -743,12 +631,7 @@ const BackgroundStockCrawlerManager = {
     }
     
     this.running = true;
-    this.currentProgress = 0;
-    
-    this._notifyStatusChange('running', { 
-      status: '初始化爬取程序...', 
-      progress: 0 
-    });
+    this._updateProgress('初始化爬取程序...', 0);
     
     try {
       const urls = StockCrawlerUrls.getAllUrls();
@@ -760,10 +643,7 @@ const BackgroundStockCrawlerManager = {
       }
       
       console.log(`共需爬取 ${totalUrls} 個頁面`);
-      this._notifyStatusChange('running', { 
-        status: `共需爬取 ${totalUrls} 個頁面`, 
-        progress: 0 
-      });
+      this._updateProgress(`共需爬取 ${totalUrls} 個頁面`, 0);
       
       // 依序爬取每個網址
       for (let i = 0; i < urls.length && this.running; i++) {
@@ -773,11 +653,7 @@ const BackgroundStockCrawlerManager = {
         console.log(`[${i + 1}/${totalUrls}] 開始爬取: ${industryName}`);
         
         const progressPercent = Math.round((i / totalUrls) * STOCK_CRAWLER_CONFIG.PROGRESS_CRAWLING_MAX);
-        this.currentProgress = progressPercent;  // 更新當前進度
-        this._notifyStatusChange('running', { 
-          status: `正在爬取 ${industryName} (${i + 1}/${totalUrls})`, 
-          progress: progressPercent 
-        });
+        this._updateProgress(`正在爬取 ${industryName} (${i + 1}/${totalUrls})`, progressPercent);
         
         try {
           const stocks = await this._fetchStockData(url);
@@ -790,10 +666,7 @@ const BackgroundStockCrawlerManager = {
           
         } catch (error) {
           console.error(`爬取 ${industryName} 失敗:`, error);
-          this._notifyStatusChange('running', { 
-            status: `爬取 ${industryName} 失敗: ${error.message}`, 
-            progress: progressPercent 
-          });
+          this._updateProgress(`爬取 ${industryName} 失敗: ${error.message}`, progressPercent);
         }
         
         // 等待指定時間
@@ -805,24 +678,16 @@ const BackgroundStockCrawlerManager = {
       
       if (this.running) {
         console.log(`所有網頁爬取完成，共獲得 ${allStocks.size} 支股票`);
-        this.currentProgress = STOCK_CRAWLER_CONFIG.PROGRESS_UPDATING;  // 更新進度到 95%
-        this._notifyStatusChange('running', { 
-          status: '正在更新股票清單...', 
-          progress: STOCK_CRAWLER_CONFIG.PROGRESS_UPDATING 
-        });
+        this._updateProgress('正在更新股票清單...', STOCK_CRAWLER_CONFIG.PROGRESS_UPDATING);
         
         // 更新股票清單 - 添加安全檢查處理
         try {
           const updateResult = await this._updateStockList(allStocks);
           console.log('股票清單更新結果:', updateResult);
           
-          // 先設置 running 為 false，再發送 completed 狀態
           this.running = false;
-          this.currentProgress = STOCK_CRAWLER_CONFIG.PROGRESS_COMPLETED;  // 設置最終進度為 100%
-          
           const statusMsg = `爬取完成！新增 ${updateResult.added} 支，刪除 ${updateResult.removed} 支股票，總計 ${updateResult.total} 支`;
-          this._notifyStatusChange('completed', { 
-            status: statusMsg, 
+          this._updateStatus(BACKGROUND_CONSTANTS.STATUS_TYPES.COMPLETED, statusMsg, { 
             progress: STOCK_CRAWLER_CONFIG.PROGRESS_COMPLETED,
             result: updateResult
           });
@@ -831,15 +696,10 @@ const BackgroundStockCrawlerManager = {
           // 如果是安全檢查失敗，顯示警告但不讓整個流程失敗
           console.error('股票清單更新被安全檢查阻止:', updateError.message);
           
-          // 先設置 running 為 false
           this.running = false;
-          this.currentProgress = STOCK_CRAWLER_CONFIG.PROGRESS_COMPLETED;  // 設置進度為 100%
-          
-          // 發送警告狀態（使用 completed 但帶有警告訊息）
           const currentTime = new Date().toLocaleString();
           const warningMsg = `[${currentTime}] 爬取完成但未更新：${updateError.message}`;
-          this._notifyStatusChange('warning', { 
-            status: warningMsg, 
+          this._updateStatus(BACKGROUND_CONSTANTS.STATUS_TYPES.WARNING, warningMsg, { 
             progress: STOCK_CRAWLER_CONFIG.PROGRESS_COMPLETED,
             warning: updateError.message,
             crawledCount: allStocks.size
@@ -852,9 +712,8 @@ const BackgroundStockCrawlerManager = {
       
     } catch (error) {
       console.error('背景爬取過程發生錯誤:', error);
-      this._notifyStatusChange('error', { 
-        status: `爬取失敗: ${error.message}`, 
-        progress: 0,  // 確保錯誤狀態也包含進度資料
+      this._updateStatus(BACKGROUND_CONSTANTS.STATUS_TYPES.ERROR, `爬取失敗: ${error.message}`, { 
+        progress: 0,
         error: error.message 
       });
     } finally {
@@ -1190,13 +1049,6 @@ const BackgroundStockCrawlerManager = {
   },
 
   /**
-   * 移除狀態監聽器
-   */
-  removeStatusListener(sendResponse) {
-    this.statusListeners.delete(sendResponse);
-  },
-
-  /**
    * 獲取當前狀態
    */
   getCurrentStatus() {
@@ -1375,199 +1227,99 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // 處理股票爬蟲相關請求
   if (request.action === 'stockCrawler') {
-    switch (request.command) {
-      case 'startSingle':
-        BackgroundStockCrawlerManager.startSingleCrawl()
-          .then(() => sendResponse({ success: true }))
-          .catch(error => sendResponse({ success: false, error: error.message }));
-        return true;
-        
-      case 'startScheduled':
-        BackgroundStockCrawlerManager._startScheduledCrawl(request.intervalMinutes)
-          .then(() => sendResponse({ success: true }))
-          .catch(error => sendResponse({ success: false, error: error.message }));
-        return true;
-        
-      case 'stopScheduled':
-        BackgroundStockCrawlerManager.stopScheduledCrawl()
-          .then(() => sendResponse({ success: true }))
-          .catch(error => sendResponse({ success: false, error: error.message }));
-        return true;
-        
-      case 'stopCrawl':
-        BackgroundStockCrawlerManager.stopCrawl();
-        sendResponse({ success: true });
-        return false;
-        
-      case 'getStatus':
-        sendResponse({ 
-          success: true, 
-          status: BackgroundStockCrawlerManager.getCurrentStatus() 
-        });
-        return false;
-        
-      case 'addListener':
-        BackgroundStockCrawlerManager.addStatusListener(sendResponse);
-        return true; // 保持連接開啟
-        
-      default:
-        sendResponse({ success: false, error: '未知命令' });
-        return false;
+    const crawlerCommands = {
+      startSingle: { method: 'startSingleCrawl', async: true },
+      startScheduled: { method: '_startScheduledCrawl', async: true, args: [request.intervalMinutes] },
+      stopScheduled: { method: 'stopScheduledCrawl', async: true },
+      stopCrawl: { method: 'stopCrawl', async: false },
+      getStatus: { method: 'getCurrentStatus', async: false, transform: status => ({ success: true, status }) },
+      addListener: { method: 'addStatusListener', async: false, args: [sendResponse], keepConnection: true }
+    };
+    
+    const command = crawlerCommands[request.command];
+    if (!command) {
+      sendResponse({ success: false, error: '未知命令' });
+      return false;
     }
+    
+    const args = command.args || [];
+    const result = BackgroundStockCrawlerManager[command.method](...args);
+    
+    if (command.async) {
+      result.then(() => sendResponse({ success: true }))
+            .catch(error => sendResponse({ success: false, error: error.message }));
+      return true;
+    }
+    
+    const response = command.transform ? command.transform(result) : { success: true };
+    sendResponse(response);
+    return command.keepConnection || false;
   }
   
   // 處理設定同步相關請求
   if (request.action === 'settingsSync') {
-         // 異步處理設定同步請求
-     const handleSyncRequest = async () => {
-       if (!backgroundSyncInitialized || !backgroundSettingsIO) {
-         console.log('[BackgroundSync][message] 同步功能未初始化，嘗試重新初始化...');
-         try {
-           await initializeBackgroundSync();
-           if (!backgroundSettingsIO) {
-             sendResponse({ success: false, error: '背景同步管理器初始化失敗' });
-             return;
-           }
-         } catch (error) {
-           sendResponse({ success: false, error: `初始化錯誤: ${error.message}` });
-           return;
-         }
-       }
-    
-         switch (request.command) {
-       case 'manualSync':
-         console.log('[BackgroundSync][message] 處理手動同步請求');
-         try {
-           const result = await backgroundSettingsIO.manualSync();
-           sendResponse(result);
-         } catch (error) {
-           sendResponse({ success: false, error: error.message });
-         }
-         return;
-         
-       case 'toggleAutoSync':
-         console.log('[BackgroundSync][message] 切換自動同步:', request.enabled);
-         try {
-           const enabled = await backgroundSettingsIO.toggleAutoSync(request.enabled);
-           sendResponse({ success: true, enabled });
-         } catch (error) {
-           sendResponse({ success: false, error: error.message });
-         }
-         return;
-         
-       case 'getSyncStatus':
-         console.log('[BackgroundSync][message] 獲取同步狀態');
-         try {
-           const result = await backgroundSettingsIO.getSyncStatus();
-           sendResponse(result); // 直接發送結果，不要重複包裝
-         } catch (error) {
-           sendResponse({ success: false, error: error.message });
-         }
-         return;
-         
-       case 'resetSyncStatus':
-         console.log('[BackgroundSync][message] 重置同步狀態');
-         try {
-           await backgroundSettingsIO.resetSyncStatus();
-           sendResponse({ success: true });
-         } catch (error) {
-           sendResponse({ success: false, error: error.message });
-         }
-         return;
-         
-       case 'signOut':
-         console.log('[BackgroundSync][message] 登出同步功能');
-         try {
-           await backgroundSettingsIO.signOut();
-           sendResponse({ success: true });
-         } catch (error) {
-           sendResponse({ success: false, error: error.message });
-         }
-         return;
-         
-       case 'forceUpload':
-         console.log('[BackgroundSync][message] 強制上傳設定');
-         try {
-           const result = await backgroundSettingsIO.forceUpload();
-           sendResponse(result);
-         } catch (error) {
-           sendResponse({ success: false, error: error.message });
-         }
-         return;
-        
-             default:
-         sendResponse({ success: false, error: '未知的同步命令' });
-         return;
-     }
-   };
-   
-   // 執行異步處理
-   handleSyncRequest().catch(error => {
-     console.error('[BackgroundSync][message] 處理同步請求時發生錯誤:', error);
-     sendResponse({ success: false, error: error.message });
-   });
-   
-   return true; // 表示會異步發送回應
-  }
+    // 統一的同步命令配置
+    const syncCommands = {
+      manualSync: { method: 'manualSync', log: '處理手動同步請求' },
+      toggleAutoSync: { method: 'toggleAutoSync', log: '切換自動同步', args: ['enabled'], response: 'enabled' },
+      getSyncStatus: { method: 'getSyncStatus', log: '獲取同步狀態', directResponse: true },
+      resetSyncStatus: { method: 'resetSyncStatus', log: '重置同步狀態' },
+      signOut: { method: 'signOut', log: '登出同步功能' },
+      forceUpload: { method: 'forceUpload', log: '強制上傳設定' }
+    };
 
-  // 處理原有的 URL 爬取請求（保持向後兼容）
-  if (request.action === 'fetchUrl') {
-    const { url } = request;
-    
-    console.log('開始爬取網址:', url);
-    
-    fetch(url)
-      .then(response => {
-        if (!response.ok) {
-          throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    const handleSyncRequest = async () => {
+      if (!backgroundSyncInitialized || !backgroundSettingsIO) {
+        console.log('[BackgroundSync][message] 同步功能未初始化，嘗試重新初始化...');
+        try {
+          await initializeBackgroundSync();
+          if (!backgroundSettingsIO) {
+            sendResponse({ success: false, error: '背景同步管理器初始化失敗' });
+            return;
+          }
+        } catch (error) {
+          sendResponse({ success: false, error: `初始化錯誤: ${error.message}` });
+          return;
         }
-        return response.text();
-      })
-      .then(data => {
-        console.log('爬取成功，數據長度:', data.length);
-        sendResponse({ success: true, data: data });
-      })
-      .catch(error => {
-        console.error('爬取失敗:', error);
-        sendResponse({ 
-          success: false, 
-          error: error.message || '爬取網頁失敗' 
-        });
-      });
-    
-    return true; // 表示會異步發送回應
+      }
+
+      const command = syncCommands[request.command];
+      if (!command) {
+        sendResponse({ success: false, error: '未知的同步命令' });
+        return;
+      }
+
+      console.log(`[BackgroundSync][message] ${command.log}${command.args?.includes('enabled') ? ': ' + request.enabled : ''}`);
+      
+      try {
+        const args = command.args?.map(arg => request[arg]) || [];
+        const result = await backgroundSettingsIO[command.method](...args);
+        
+        if (command.directResponse) {
+          sendResponse(result);
+        } else if (command.response) {
+          sendResponse({ success: true, [command.response]: result });
+        } else {
+          sendResponse(result.success !== undefined ? result : { success: true });
+        }
+      } catch (error) {
+        sendResponse({ success: false, error: error.message });
+      }
+    };
+
+    handleSyncRequest().catch(error => {
+      console.error('[BackgroundSync][message] 處理同步請求時發生錯誤:', error);
+      sendResponse({ success: false, error: error.message });
+    });
+
+    return true;
   }
 
-  // 處理日誌消息
+  // 處理日誌消息 - 使用統一的日誌配置
   if (request.type === 'LOG') {
-    const timestamp = new Date(request.timestamp).toLocaleTimeString();
-    let style = '';
-    
-    // 根據不同顏色設置不同的樣式
-    switch (request.color) {
-      case '#4CAF50': // 成功
-        style = 'color: #2E7D32'; // 更深的綠色
-        break;
-      case '#2196F3': // 信息
-        style = 'color: #1565C0'; // 更深的藍色
-        break;
-      case '#9C27B0': // 等待/處理中
-        style = 'color: #9C27B0; font-weight: bold;'; // 紫色加粗
-        break;
-      case '#F44336': // 錯誤
-        style = 'color: #F44336; font-weight: bold;'; // 紅色加粗
-        break;
-      case '#FF9800': // 警告
-        style = 'color: #FF9800; font-weight: bold;'; // 橙色加粗
-        break;
-      default:
-        style = request.color ? `color: ${request.color}` : '';
-    }
-    
-    console.log(
-        `%c[${timestamp}] ${request.source}: ${request.message}`,
-        style
-    );
+    const style = BACKGROUND_CONSTANTS.LOG_STYLES[request.color] || 
+                  (request.color ? `color: ${request.color}` : '');
+    console.log(`%c[${new Date(request.timestamp).toLocaleTimeString()}] ${request.source}: ${request.message}`, style);
     return true;
   }
 
@@ -1578,21 +1330,16 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         tabContentScriptStatus.set(tabId, true);
     }
     sendResponse({received: true});
+    return false; // 同步響應，不需要保持連接
   }
-
   // 處理更新內容腳本的請求
-  else if (request.action === "updateContentScript") {
-    // 查找當前活動的標籤頁
+  if (request.action === "updateContentScript") {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       if (tabs[0]) {
-        // 向內容腳本發送消息
         chrome.tabs.sendMessage(tabs[0].id, request, (response) => {
-          // 錯誤處理
-          if (chrome.runtime.lastError) {
-            sendResponse({error: "與內容腳本通信失敗", details: chrome.runtime.lastError.message});
-          } else {
-            sendResponse(response);
-          }
+          sendResponse(chrome.runtime.lastError ? 
+            {error: "與內容腳本通信失敗", details: chrome.runtime.lastError.message} : 
+            response);
         });
       } else {
         sendResponse({error: "未找到活動的標籤頁"});
@@ -1601,109 +1348,50 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
   // 處理設定管理器的日誌
-  else if (request.action === 'settingsLog') {
+  if (request.action === 'settingsLog') {
     const { logType, message: logMessage, data, timestamp } = request;
+    const logMethods = {
+      error: () => console.error(`[設定管理器 ${timestamp}]`, logMessage, data || ''),
+      warn: () => console.warn(`[設定管理器 ${timestamp}]`, logMessage, data || ''),
+      success: () => console.log(`%c[設定管理器 ${timestamp}] ${logMessage}`, 'color: #2E7D32', data || ''),
+      info: () => console.log(`[設定管理器 ${timestamp}]`, logMessage, data || '')
+    };
     
-    // 根據日誌類型使用不同的 console 方法
-    switch (logType) {
-        case 'error':
-            console.error(`[設定管理器 ${timestamp}]`, logMessage, data || '');
-            break;
-        case 'warn':
-            console.warn(`[設定管理器 ${timestamp}]`, logMessage, data || '');
-            break;
-        case 'success':
-            console.log(`%c[設定管理器 ${timestamp}] ${logMessage}`, 
-                'color: #2E7D32', // 更深的綠色
-                data || '');
-            break;
-        case 'info':
-        default:
-            console.log(`[設定管理器 ${timestamp}]`, logMessage, data || '');
-    }
+    (logMethods[logType] || logMethods.info)();
+    return null; // 不需要回應
   }
   // 處理同步調試信息
-  else if (request.action === 'syncDebug') {
-    const timestamp = new Date().toLocaleTimeString();
+  if (request.action === 'syncDebug') {
     const debugType = request.data?.reason || 'general';
     const debugAction = request.data?.action || 'info';
-    
-    // 根據調試類型使用不同的表情符號和顏色
-    let emoji = '🔍';
-    let style = 'color: #666';
-    
-    if (debugType === 'timestamp') {
-      emoji = '⏰';
-      style = 'color: #FF9800; font-weight: bold;';
-    } else if (debugType === 'filtered_content') {
-      emoji = '📊';
-      style = 'color: #2196F3;';
-    } else if (debugType === 'missing_keys') {
-      emoji = '🔑';
-      style = 'color: #FF5722; font-weight: bold;';
-    } else if (debugType === 'different_values') {
-      emoji = '📝';
-      style = 'color: #E91E63; font-weight: bold;';
-    } else if (debugType === 'final_result') {
-      emoji = '🎯';
-      style = 'color: #9C27B0; font-weight: bold;';
-    } else if (debugType === 'local_update') {
-      emoji = '✏️';
-      style = 'color: #FF5722; font-weight: bold;';
-    } else if (debugType === 'protect_local') {
-      emoji = '🛡️';
-      style = 'color: #F44336; font-weight: bold;';
-    } else if (debugType === 'force_upload') {
-      emoji = '🚀';
-      style = 'color: #4CAF50; font-weight: bold;';
-    } else if (debugAction === 'download') {
-      emoji = '⬇️';
-      style = 'color: #4CAF50; font-weight: bold;';
-    } else if (debugAction === 'upload') {
-      emoji = '⬆️';
-      style = 'color: #3F51B5; font-weight: bold;';
-    } else if (debugAction === 'none') {
-      emoji = '✅';
-      style = 'color: #8BC34A;';
-    }
+    const config = BACKGROUND_CONSTANTS.DEBUG_STYLES[debugType] || 
+                  BACKGROUND_CONSTANTS.DEBUG_STYLES[debugAction] || 
+                  { emoji: '🔍', style: 'color: #666' };
     
     console.log(
-      `%c[SyncDebug][${timestamp}] ${emoji} ${request.message}`, 
-      style,
-      request.data || ''
+      `%c[SyncDebug][${new Date().toLocaleTimeString()}] ${config.emoji} ${request.message}`, 
+      config.style, request.data || ''
     );
     
     sendResponse({ status: 'success' });
+    return null;
   }
 
-  // 🆕 處理雲端訊號調試信息
+  // 處理雲端訊號調試信息
   if (request.action === 'cloudSignalDebug') {
     const { message: debugMessage, data } = request;
     console.log(`[BackgroundSync][CloudSignalDebug][${data.currentTime}] ${debugMessage}:`, data);
     
-    // 特別記錄重要的訊號事件
-    if (data.action === 'sendSignal') {
-      console.log(`[BackgroundSync][CloudSignalDebug] 📡 設備 ${data.deviceId} 發送訊號:`, data.signal);
-    } else if (data.action === 'receiveSignal') {
-      console.log(`[BackgroundSync][CloudSignalDebug] 📥 設備 ${data.myDeviceId} 收到來自 ${data.signal.source} 的訊號`);
-    } else if (data.action === 'ignoreSelfSignal') {
-      console.log(`[BackgroundSync][CloudSignalDebug] 🔄 設備 ${data.myDeviceId} 忽略自己的訊號`);
-    } else if (data.action === 'syncDisabled') {
-      console.log(`[BackgroundSync][CloudSignalDebug] ⏸️ 設備同步已停用，忽略訊號`);
-    } else if (data.action === 'scheduleSync') {
-      console.log(`[BackgroundSync][CloudSignalDebug] ⏰ 排程 ${data.intervalMinutes} 分鐘後同步`);
-    } else if (data.action === 'startSync') {
-      console.log(`[BackgroundSync][CloudSignalDebug] 🚀 開始執行訊號驅動同步`);
-    } else if (data.action === 'syncSuccess') {
-      console.log(`[BackgroundSync][CloudSignalDebug] ✅ 訊號驅動同步成功完成`);
-    } else if (data.action === 'syncError') {
-      console.log(`[BackgroundSync][CloudSignalDebug] ❌ 訊號驅動同步失敗: ${data.error}`);
+    const messageFunc = BACKGROUND_CONSTANTS.SIGNAL_MESSAGES[data.action];
+    if (messageFunc) {
+      const logData = data.action === 'sendSignal' ? data.signal : '';
+      console.log(`[BackgroundSync][CloudSignalDebug] ${messageFunc(data)}`, logData);
     }
     
-    return Promise.resolve({ success: true });
+    return null;
   }
 
-  return true; // 表示我們會異步發送回應
+  return false; // 未處理的消息，不需要保持連接
 });
 
 // 監聽插件啟動事件
@@ -1720,59 +1408,3 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         tabContentScriptStatus.set(tabId, false);
     }
 });
-
-// 調試函數：顯示當前Google帳號
-async function debugShowGoogleAccount() {
-  try {
-    console.log('[DEBUG] 開始獲取當前Google帳號信息...');
-    
-    // 獲取認證token（使用Drive API權限）
-    const tokenResult = await chrome.identity.getAuthToken({ 
-      interactive: false,
-      scopes: ['https://www.googleapis.com/auth/drive.appdata']
-    });
-    
-    if (!tokenResult) {
-      console.log('[DEBUG] ❌ 未獲取到認證token，可能未登入Google帳號');
-      return;
-    }
-    
-    const token = typeof tokenResult === 'object' ? tokenResult.token : tokenResult;
-    console.log('[DEBUG] ✅ 成功獲取認證token');
-    
-    // 使用Drive API的about接口獲取用戶信息
-    const response = await fetch('https://www.googleapis.com/drive/v3/about?fields=user', {
-      headers: {
-        'Authorization': `Bearer ${token}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    if (!response.ok) {
-      console.log('[DEBUG] ❌ 獲取用戶信息失敗:', response.status, response.statusText);
-      return;
-    }
-    
-    const data = await response.json();
-    const userInfo = data.user;
-    
-    console.log('=================================');
-    console.log('🔍 當前Google帳號信息:');
-    console.log('📧 Email:', userInfo.emailAddress);
-    console.log('👤 顯示名稱:', userInfo.displayName);
-    console.log('🆔 用戶ID:', userInfo.permissionId);
-    console.log('🖼️ 頭像:', userInfo.photoLink);
-    console.log('=================================');
-    
-    return userInfo;
-    
-  } catch (error) {
-    console.error('[DEBUG] ❌ 獲取Google帳號信息失敗:', error);
-    console.log('提示：可能需要先登入Google帳號或重新認證');
-  }
-}
-
-// 全局暴露調試函數
-self.debugShowGoogleAccount = debugShowGoogleAccount;
-
-
