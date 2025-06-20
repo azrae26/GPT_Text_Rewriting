@@ -301,41 +301,13 @@ window.TranslateManager = {
     return paragraphs;
   },
 
-  /**
-   * 解析中英對照表文本內容
-   * @param {string} content - 要解析的文本內容
-   * @returns {Object} 解析後的中英對照物件
-   */
-  _parseZhEnMappingContent(content) {
-    const mapping = {};
-    const lines = content.split('\n');
-    
-    lines.forEach(line => {
-      const trimmedLine = line.trim();
-      if (!trimmedLine) return;  // 跳過空行
-      if (trimmedLine.startsWith('中國：') || trimmedLine.startsWith('台灣：') || trimmedLine.includes('以下是中英代號對照表')) return;  // 跳過分類標題
-      
-      // 使用逗號分割：中文公司名, 股票代號, 英文簡稱, 英文全名
-      const parts = trimmedLine.split(',').map(part => part.trim());
-      if (parts.length >= 3) {  // 至少需要中文名、代號、英文簡稱
-        const zh = parts[0];  // 中文公司名
-        const stockCode = parts[1];  // 股票代號
-        const en = parts[2];  // 英文簡稱
-        if (zh && en) {
-          // 格式：英文簡稱(代號)
-          mapping[zh] = stockCode ? `${en}(${stockCode})` : en;
-        }
-      }
-    });
-    
-    return mapping;
-  },
+
 
   /**
-   * 解析中英對照表
-   * @returns {Promise<Object>} 解析後的中英對照物件
+   * 獲取原始中英對照表內容
+   * @returns {Promise<string>} 原始的中英對照表文本內容
    */
-  async parseZhEnMapping() {
+  async getRawZhEnMapping() {
     try {
       if (!this.zhEnMappingTextarea) {
         // 嘗試從 popup 頁面獲取
@@ -348,22 +320,22 @@ window.TranslateManager = {
           });
           
           if (result.zhEnMapping) {
-            console.log('[parseZhEnMapping] 從 storage 載入中英對照表');
-            return this._parseZhEnMappingContent(result.zhEnMapping);
+            console.log('[getRawZhEnMapping] 從 storage 載入中英對照表');
+            return result.zhEnMapping;
           }
         }
       }
       
       if (!this.zhEnMappingTextarea) {
-        console.log('[parseZhEnMapping] 找不到中英對照表資料');
-        return {};
+        console.log('[getRawZhEnMapping] 找不到中英對照表資料');
+        return '';
       }
 
-      console.log('[parseZhEnMapping] 從設定頁面載入中英對照表');
-      return this._parseZhEnMappingContent(this.zhEnMappingTextarea.value);
+      console.log('[getRawZhEnMapping] 從設定頁面載入中英對照表');
+      return this.zhEnMappingTextarea.value || '';
     } catch (error) {
-      console.error('[parseZhEnMapping] 解析中英對照表時發生錯誤:', error);
-      return {};
+      console.error('[getRawZhEnMapping] 獲取中英對照表時發生錯誤:', error);
+      return '';
     }
   },
 
@@ -372,23 +344,18 @@ window.TranslateManager = {
    * @returns {Promise<Array>} 包含中英對照表的上下文陣列
    */
   async getTranslationContext() {
-    const mapping = await this.parseZhEnMapping();
-    console.log('[getTranslationContext] 對照表項目數量:', Object.keys(mapping).length);
+    const rawMappingText = await this.getRawZhEnMapping();
+    console.log('[getTranslationContext] 原始對照表長度:', rawMappingText.length);
     
-    if (Object.keys(mapping).length === 0) {
+    if (!rawMappingText.trim()) {
       console.log('[getTranslationContext] 對照表為空，返回空陣列');
       return [];
     }
 
-    // 將對照表格式化為易讀的文本
-    const mappingText = Object.entries(mapping)
-      .map(([zh, en]) => `${zh} = ${en}`)
-      .join('\n');
-
     console.log('[getTranslationContext] 成功載入中英對照表');
     return [{
       role: "system",
-      content: `請在翻譯時使用以下對照表：\n${mappingText}`
+      content: rawMappingText
     }];
   },
 
