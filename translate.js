@@ -80,6 +80,12 @@ class TranslationController {
 
   // 狀態管理
   setState(newState, phase = '') {
+    // 安全檢查：如果當前狀態是 cancelled，不允許設置為 completed
+    if (this.state === 'cancelled' && newState === 'completed') {
+      console.log(`[TranslationController] 拒絕狀態變更: ${this.state} → ${newState} (已取消的流程不能變為完成)`);
+      return;
+    }
+    
     console.log(`[TranslationController] 狀態變更: ${this.state} → ${newState}${phase ? ` (${phase})` : ''}`);
     this.state = newState;
     this.currentPhase = phase;
@@ -190,8 +196,11 @@ window.TranslateManager = {
 
   // 活動請求管理（統一使用現有機制）
   get activeRequests() {
-    // 返回一個模擬的 Set，實際請求管理由 text-processor.js 處理
-    return new Set();
+    // 使用 TextProcessor 的活動請求集合，如果不存在則創建本地集合
+    if (!this._activeRequests) {
+      this._activeRequests = new Set();
+    }
+    return this._activeRequests;
   },
 
   /**
@@ -286,6 +295,12 @@ window.TranslateManager = {
     
     // 重置控制器
     this.controller.reset();
+    
+    // 清空活動請求集合
+    if (this._activeRequests) {
+      this._activeRequests.clear();
+      console.log('[resetTranslation] 清空活動請求集合');
+    }
     
     // 重置其他狀態
     this.currentBatchIndex = 0;
@@ -568,6 +583,10 @@ window.TranslateManager = {
     // 使用統一的取消檢查
     this.controller.checkCancellation();
 
+    // 記錄開始時的狀態，用於後續檢查
+    const startState = this.controller.state;
+    const startTime = Date.now();
+
     try {
       const settings = await window.GlobalSettings.loadSettings();
       const model = settings.reflectModel;
@@ -616,6 +635,13 @@ window.TranslateManager = {
         'reflect'
       );
       
+      // 強化的取消檢查：檢查當前狀態和開始時狀態
+      if (this.controller.isCancelled() || 
+          (startState !== 'idle' && this.controller.state === 'idle' && Date.now() - startTime > 1000)) {
+        console.log('[processReflection] 檢測到取消狀態或異常狀態重置，停止處理反思結果');
+        return null;
+      }
+      
       console.log(`段落 ${blockIndex + 1} 反思完成:`, reflectionResult?.substring(0, 100) + '...');
       
       return reflectionResult;
@@ -635,6 +661,10 @@ window.TranslateManager = {
   async processOptimization(translatedText, sourceText, reflectionResult, blockIndex) {
     // 使用統一的取消檢查
     this.controller.checkCancellation();
+
+    // 記錄開始時的狀態，用於後續檢查
+    const startState = this.controller.state;
+    const startTime = Date.now();
 
     try {
       const settings = await window.GlobalSettings.loadSettings();
@@ -719,6 +749,13 @@ window.TranslateManager = {
       );
 
       const optimizedResult = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'optimize');
+      
+      // 強化的取消檢查：檢查當前狀態和開始時狀態
+      if (this.controller.isCancelled() || 
+          (startState !== 'idle' && this.controller.state === 'idle' && Date.now() - startTime > 1000)) {
+        console.log('[processOptimization] 檢測到取消狀態或異常狀態重置，停止處理優化結果');
+        return translatedText; // 返回原始翻譯文本
+      }
       
       // 保存優化結果
       this.translationResults.optimize.set(blockIndex, optimizedResult);
@@ -941,6 +978,7 @@ window.TranslateManager = {
     const maxRetries = 3;
     let attempt = 0;
     let lastError;
+    let requestController;
 
     // 如果 apiKey 為空，嘗試從設定中獲取
     if (!apiKey) {
@@ -961,6 +999,11 @@ window.TranslateManager = {
         this.controller.checkCancellation();
 
         const startTime = Date.now();  // 記錄開始時間
+
+        // 創建新的請求控制器並添加到活動請求集合
+        requestController = new AbortController();
+        this.activeRequests.add(requestController);
+        console.log(`[sendRequestWithRetry] 添加請求到活動集合，當前數量: ${this.activeRequests.size}`);
 
         // 建立一個帶有超時的 Promise
         const timeoutPromise = new Promise((_, reject) => {
@@ -1009,6 +1052,12 @@ window.TranslateManager = {
           continue;
         }
         throw error;
+      } finally {
+        // 從活動請求集合中移除
+        if (requestController) {
+          this.activeRequests.delete(requestController);
+          console.log(`[sendRequestWithRetry] 從活動集合移除請求，剩餘數量: ${this.activeRequests.size}`);
+        }
       }
     }
   },
@@ -1071,8 +1120,9 @@ window.TranslateManager = {
    * 更新最終文本
    */
   updateFinalText(finalText) {
-    if (this.shouldCancel) {
-      console.log('流程已取消，停止文本更新');
+    // 檢查取消狀態，防止已取消的翻譯覆蓋用戶數據
+    if (this.controller.isCancelled()) {
+      console.log('[updateFinalText] 翻譯已取消，停止文本更新');
       return;
     }
 
@@ -1116,7 +1166,7 @@ window.TranslateManager = {
         console.log('所有翻譯批次已完成，開始分區塊反思和優化流程');
         try {
           const finalText = await this.processAllBlocks();
-          this.resetTranslation();
+          // 移除立即重置，讓 processAllBlocks 負責延遲重置
           await window.Notification.showNotification(TranslateConfig.STAGES.COMPLETED, false);
         } catch (error) {
           console.error('反思優化處理失敗:', error);
@@ -1268,6 +1318,10 @@ window.TranslateManager = {
 
     // 修復文本組合邏輯：確保所有區塊都有結果
     const finalTexts = [];
+    
+    // 在文本組合前檢查取消狀態
+    this.controller.checkCancellation();
+    
     for (let i = 0; i < this.translationQueue.length; i++) {
       let blockText = resultsMap.get(i);
       
@@ -1289,6 +1343,15 @@ window.TranslateManager = {
     // 使用統一入口更新最終文本
     this.controller.setState('completed');
     await this.updateText(finalText, 'final');
+    
+    // 延遲重置，確保文本更新完成
+    setTimeout(() => {
+      // 只有在仍然是完成狀態時才重置（防止被取消操作覆蓋）
+      if (this.controller.state === 'completed') {
+        this.resetTranslation();
+      }
+    }, 100);
+    
     return finalText;
   },
 
@@ -1311,9 +1374,29 @@ window.TranslateManager = {
       this.timeoutId = null;
     }
 
-    // 重置所有翻譯相關的狀態
-    console.log('[cancelTranslation] 開始重置翻譯狀態');
-    this.resetTranslation();
+    // 等待所有活動請求完成
+    console.log('[cancelTranslation] 等待活動請求完成...');
+    const waitForRequests = async () => {
+      let attempts = 0;
+      while (this.activeRequests.size > 0 && attempts < 50) { // 最多等待5秒
+        await new Promise(resolve => setTimeout(resolve, 100));
+        attempts++;
+        console.log(`[cancelTranslation] 等待中... 剩餘請求: ${this.activeRequests.size}`);
+      }
+      
+      // 額外等待一點時間，確保請求處理完成
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // 只有在仍然是取消狀態時才重置
+      if (this.controller.isCancelled()) {
+        console.log('[cancelTranslation] 開始智能重置翻譯狀態');
+        this.resetTranslation();
+      }
+    };
+
+    // 異步等待，不阻塞UI
+    waitForRequests();
+
     await window.Notification.showNotification(TranslateConfig.STAGES.CANCELLED, false);
     console.log('[cancelTranslation] 翻譯取消流程完成');
   },
