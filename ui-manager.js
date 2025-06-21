@@ -80,10 +80,10 @@ const UIManager = {
     // 創建翻譯按鈕
     if (window.TranslateManager) {
       const translateButton = document.createElement('button');
-      translateButton.id = 'gpt-translate-button';
-      translateButton.textContent = 'GPT翻譯';
+      translateButton.id = 'ai-translate-button';
+      translateButton.textContent = 'AI翻譯';
       translateButton.addEventListener('click', () => {
-        console.log('GPT翻譯按鈕被點擊');
+        console.log('AI翻譯按鈕被點擊');
         
         const textArea = document.querySelector('textarea[name="content"]');
         if (!textArea || !textArea.value.trim()) {
@@ -100,7 +100,7 @@ const UIManager = {
       });
       buttonContainer.appendChild(translateButton);
     } else {
-      console.warn('TranslateManager 未定義，跳過創建GPT翻譯按鈕');
+      console.warn('TranslateManager 未定義，跳過創建AI翻譯按鈕');
     }
 
     // 創建 Google 翻譯按鈕容器
@@ -759,7 +759,7 @@ const UIManager = {
     // 更新所有功能按鈕的狀態
     const buttons = [
       'gpt-rewrite-button',
-      'gpt-translate-button', 
+      'ai-translate-button', 
       'google-translate-button',
       'gpt-generate-button'
     ];

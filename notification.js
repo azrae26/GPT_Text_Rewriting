@@ -33,6 +33,12 @@ const Notification = {
   async showNotification(message, isLoading = true) {
     console.log('顯示通知:', message, '正在加載:', isLoading);
     
+    // 檢查翻譯控制器狀態，如果已取消則不顯示新通知
+    if (window.TranslateManager?.controller?.isCancelled() && isLoading) {
+      console.log('翻譯已取消，跳過通知顯示');
+      return;
+    }
+    
     // 如果不是加載狀態，立即清除所有計時器
     if (!isLoading) {
       this.clearAllTimers();
@@ -71,6 +77,15 @@ const Notification = {
     const isCancelTranslation = message === TranslateConfig.STAGES.CANCELLED;
     // 判斷是否為取消生成的通知
     const isCancelGeneration = message === GenerationConfig.STAGES.CANCELLED;
+    
+    // 如果是取消通知，立即清理並顯示
+    if (isCancelTranslation || isCancelGeneration) {
+      this.clearAllTimers();
+      this.removeNotification();
+      // 顯示簡單的取消通知
+      this.showSimpleCancelNotification(message);
+      return;
+    }
     
     // 判斷是否為生成相關的通知（優先判斷，因為更具體）
     const isGeneration = message.includes(GenerationConfig.STAGES.INITIAL) || 
@@ -351,6 +366,33 @@ const Notification = {
       this.notificationTimeout = null;
       console.log('通知超時已清除');
     }
+  },
+
+  /**
+   * 顯示簡單的取消通知。
+   * @param {string} message - 取消通知的訊息。
+   */
+  showSimpleCancelNotification(message) {
+    console.log('顯示簡單的取消通知:', message);
+    
+    // 如果沒有通知元素，創建一個
+    if (!this.notificationElement) {
+      this.notificationElement = document.createElement('div');
+      this.notificationElement.classList.add('notification-element');
+      document.body.appendChild(this.notificationElement);
+    }
+    
+    this.notificationElement.innerHTML = `
+      <div class="notification-title">
+        ${message}
+      </div>
+    `;
+    this.notificationElement.classList.add('simple-cancel-notification');
+    
+    // 3秒後自動移除取消通知
+    setTimeout(() => {
+      this.removeNotification();
+    }, 3000);
   }
 };
 
