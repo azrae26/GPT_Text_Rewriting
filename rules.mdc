@@ -165,4 +165,18 @@ this.groupHighlights.forEach((groupHighlightMap, groupIndex) => {
 });
 ```
 
+## ES6 模組支援決定 (2025-01-08)
+
+### 不使用ES6 import/export
+**調查結果:**
+- manifest.json: 未配置ES6模組支援
+- popup.html: 使用傳統 `<script>` 標籤載入
+- 現有代碼: 全部使用 `window.xxx` 全域變數模式
+- 無任何 `type="module"` 或 import/export 語法
+
+**決定:**
+- **保持傳統模式**: 使用 `window.xxx = {}` 全域變數
+- **避免大規模重構**: 改為ES6需修改所有檔案
+- **降低風險**: 保持現有架構穩定性
+
 

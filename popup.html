@@ -419,7 +419,11 @@
   <script src="SettingsIO/settings-io.js"></script>
   <script src="settings.js"></script>
   <script src="default.js"></script>
-  <script src="translate.js"></script>
+  <!-- 翻譯系統模組 - 按依賴順序載入 -->
+<script src="translate/translate-config.js"></script>
+<script src="translate/translate-controller.js"></script>
+<script src="translate/translate-service.js"></script>
+<script src="translate/translate-adapter.js"></script>
   <script src="multiple_generation/multiple-generation.js"></script>
   <script src="popup/stock-controller.js"></script>
   <script src="popup.js"></script>

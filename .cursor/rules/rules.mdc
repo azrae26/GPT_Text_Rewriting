@@ -165,138 +165,18 @@ this.groupHighlights.forEach((groupHighlightMap, groupIndex) => {
 });
 ```
 
-## Sync Toggle Status Issue (2025-06-08 20:31)
+## ES6 模組支援決定 (2025-01-08)
 
-### 擴充頁重載後同步鈕關掉的問題修正
-**問題根源**: 同步狀態儲存不一致導致頁面重載後狀態丟失
+### 不使用ES6 import/export
+**調查結果:**
+- manifest.json: 未配置ES6模組支援
+- popup.html: 使用傳統 `<script>` 標籤載入
+- 現有代碼: 全部使用 `window.xxx` 全域變數模式
+- 無任何 `type="module"` 或 import/export 語法
 
-**關鍵原因:**
-1. `GlobalSettings.isLocalStorageKey()` 沒有識別 `syncEnabled` 為 local storage 鍵值
-2. `background.js` 初始化時錯誤地以 sync storage 優先，覆蓋 local storage 的正確值
-3. SettingsIO 與 GlobalSettings 使用不同的鍵值（`syncEnabled` vs `autoSyncEnabled`）
-
-**修正內容:**
-1. **settings.js**: 在 `isLocalStorageKey` 方法中加入 `'syncEnabled'`
-2. **background.js**: 修正初始化邏輯，以 local storage 為準
-3. **background.js**: 統一備用實現的行為，只使用 local storage
-
-**驗證結果:**
-- ✅ 同步鈕狀態正確存儲在 local storage
-- ✅ 頁面重載後狀態保持
-- ✅ 同步鈕狀態不會被匯出（符合預期）
-
-**重要規則:**
-- 所有同步系統相關狀態必須使用 local storage
-- `syncEnabled` 是雲端同步開關，不應同步到雲端
-- `autoSyncEnabled` 是其他功能的設定，存儲在 sync storage
-
-## 同步狀態匯出策略調整 (2025-06-08 20:31)
-
-### 用戶需求：同步鈕狀態應該可以匯出
-**問題**: 原本設計中 `syncEnabled` 被排除在匯出之外，但用戶希望匯入設定後能自動恢復同步狀態
-
-**解決方案**: 區分「雲端同步排除」和「匯出排除」
-- **雲端同步**: `syncEnabled` 不應被同步到雲端（避免循環依賴）
-- **匯出/匯入**: `syncEnabled` 應該可以被匯出（用戶偏好設定）
-
-**修正內容:**
-- **settings.js**: 在 `getAllSettings` 的 `internalStateKeys` 中移除 `'syncEnabled'`
-- **SettingsIO**: 在 `shouldExcludeFromSync(key, 'cloud')` 中仍然排除 `syncEnabled`
-
-**驗證結果:**
-- ✅ 同步鈕狀態可以被匯出和匯入
-- ✅ 雲端同步仍然正確排除 `syncEnabled`
-- ✅ 匯入設定後用戶不需要手動重新開啟同步
-
-## API 接口契約與錯誤處理 (2025-06-08)
-
-### 跨模組方法調用的接口不匹配問題
-**關鍵經驗: SettingsIO 與 BackgroundSync 接口不匹配**
-
-**問題描述:**
-- background.js 期望 `settingsIO.toggleAutoSync()` 返回 `{ success: boolean }` 格式
-- 實際 SettingsIO.toggleAutoSync() 返回的是布林值 `enabled`
-- 導致 background.js 中 `if (result.success)` 判斷失敗
-
-**根本原因:**
-- 不同模組間沒有統一的 API 契約定義
-- 缺乏接口文檔或 TypeScript 類型定義
-- 假設了錯誤的返回值格式
-
-**解決方案:**
-```javascript
-// ❌ 錯誤：假設返回 success 對象
-const result = await this.settingsIO.toggleAutoSync(enabled);
-if (result.success) { ... }
-
-// ✅ 正確：根據實際返回值處理
-const resultEnabled = await this.settingsIO.toggleAutoSync(enabled);
-if (resultEnabled === enabled) { ... }
-```
-
-**預防措施:**
-1. **明確記錄各方法的返回值格式**
-2. **在調用前檢查實際實現**
-3. **添加輸入/輸出日誌來驗證接口行為**
-4. **考慮使用 TypeScript 或詳細的 JSDoc 註釋**
-
-## UI一致性檢查導致重複規則問題 (2025-01-08)
-
-### 問題描述: 同步後取到2倍規則數量
-**症狀:**
-- 日誌顯示重複調用 "從存儲刷新替換組UI"
-- UI一致性檢查總是檢測到UI中有0個規則
-- 但存儲中有實際規則（如12個），導致重複刷新
-
-**根本原因:**
-1. **錯誤的CSS選擇器**: `_extractUIRules()` 方法使用了錯誤的選擇器
-   ```javascript
-   // ❌ 錯誤選擇器
-   const replaceGroups = document.querySelectorAll('.replace-group.manual-replace');
-   const fromInput = group.querySelector('input[placeholder*="尋找"]');
-   ```
-
-2. **重複消息觸發**: 同步完成後同時發送 `settingsUpdated` 和 `checkUIConsistency` 消息
-3. **時序問題**: 第一次刷新還沒完成，就觸發了UI一致性檢查
-
-**修復方案:**
-1. **修正CSS選擇器**:
-   ```javascript
-   // ✅ 正確選擇器
-   const replaceGroups = document.querySelectorAll('.manual-replace-container .replace-extra-group');
-   const fromInput = group.querySelector('.replace-input');
-   const toInput = group.querySelector('.replace-input:last-of-type');
-   ```
-
-2. **添加防重複調用機制**:
-   ```javascript
-   // 在 _checkManualReplaceConsistency 中
-   if (this._consistencyCheckInProgress) {
-     console.log('[ReplaceManager] ⏸️ 一致性檢查已在進行中，跳過此次調用');
-     return;
-   }
-   this._consistencyCheckInProgress = true;
-   
-   // 在 refreshFromStorage 中
-   if (this._refreshInProgress) {
-     console.log('[ManualReplaceManager] ⏸️ UI刷新已在進行中，跳過此次調用');
-     return;
-   }
-   this._refreshInProgress = true;
-   ```
-
-3. **延遲UI檢查**: 確保UI已完全更新後再進行一致性檢查
-   ```javascript
-   await new Promise(resolve => setTimeout(resolve, 150));
-   ```
-
-**重要教訓:**
-- **CSS選擇器必須與實際DOM結構匹配**
-- **防重複調用機制對於非同步操作至關重要**
-- **UI一致性檢查的時機很重要，需要等待DOM更新完成**
-- **日誌分析是診斷時序問題的關鍵工具**
-
-**驗證方法:**
-觀察日誌中是否還會出現重複的 "從存儲刷新替換組UI" 調用，應該看到防重複調用的跳過訊息。
+**決定:**
+- **保持傳統模式**: 使用 `window.xxx = {}` 全域變數
+- **避免大規模重構**: 改為ES6需修改所有檔案
+- **降低風險**: 保持現有架構穩定性
 
 

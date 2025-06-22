@@ -13,7 +13,10 @@
 - `settings.js`: 改寫模式設定
 
 ### 翻譯功能
-- `translate.js`: 翻譯核心功能
+- `translate/translate-config.js`: 翻譯配置與常數
+- `translate/translate-controller.js`: 翻譯狀態管理
+- `translate/translate-service.js`: 翻譯核心業務邏輯
+- `translate/translate-adapter.js`: 翻譯UI適配器
 - `settings.js`: 翻譯相關設定
 
 ### 設定管理
@@ -48,11 +51,34 @@ UI 管理模組，負責處理使用者介面相關功能
 - `_prepareApiConfig()`: 準備 API 請求配置
 - `_sendRequest()`: 發送 API 請求
 
-### translate.js
-翻譯功能模組
-- `translateText()`: 執行文本翻譯
-- `batchTranslate()`: 批次翻譯處理
-- `cancelTranslation()`: 取消翻譯
+### translate/ 翻譯模組
+模組化翻譯功能，分為四個檔案：
+
+#### translate-config.js
+翻譯配置與常數管理
+- API 配置（重試、超時、間隔）
+- 批次處理配置
+- 階段標識符
+
+#### translate-controller.js  
+翻譯狀態管理器
+- 狀態管理（idle, translating, reflecting, optimizing, completed, cancelled）
+- 取消機制和 AbortController
+- 觀察者模式實現
+
+#### translate-service.js
+翻譯核心業務邏輯
+- 文本分割邏輯
+- 中英對照表管理
+- 翻譯上下文處理
+- API請求重試機制
+
+#### translate-adapter.js
+翻譯UI適配器
+- UI操作和事件處理
+- 翻譯流程協調
+- 批次管理和進度更新
+- 向後兼容性支持
 
 ### notification.js
 通知系統模組

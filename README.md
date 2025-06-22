@@ -312,7 +312,7 @@ AI 文章改寫助手是一個 Chrome 擴展，專為提升文章寫作效率而
 - **替換系統**：`text_replace/` - 手動和自動替換功能模組
 - **高亮系統**：`text_highlight/highlight.js` - 虛擬滾動和高亮渲染
 - **股票功能**：`popup/stock-controller.js` - 股票相關功能獨立模組
-- **翻譯系統**：`translate.js` + `google_translator/` - 多語言翻譯支援
+- **翻譯系統**：`translate/` + `google_translator/` - 模組化多語言翻譯支援
 - **自動完成**：`text_complete/auto-complete.js` - AI智能續寫功能
 
 ### 技術亮點
