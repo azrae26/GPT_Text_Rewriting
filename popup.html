@@ -10,7 +10,7 @@
 </head>
 <body>
   <div class="main-tab-container">
-    <div class="main-tab active" data-tab="rewrite">改寫</div>
+    <div class="main-tab active" data-tab="rewrite">AI</div>
     <div class="main-tab" data-tab="translate">翻譯</div>
     <div class="main-tab" data-tab="multiple-generation">多重生成</div>
     <div class="main-tab" data-tab="highlight">高亮</div>
@@ -20,7 +20,7 @@
     <div class="main-tab" data-tab="settings">設定</div>
   </div>
 
-  <!-- 改寫 -->
+  <!-- AI -->
   <div id="rewrite-tab" class="main-tab-content active">
     <div class="content">
       <div class="tab-container">
@@ -28,6 +28,7 @@
         <div class="tab" data-tab="short">10字內改寫</div>
         <div class="tab" data-tab="auto">雙擊改寫</div>
         <div class="tab" data-tab="summary">關鍵要點</div>
+        <div class="tab" data-tab="code-check">代號檢查</div>
       </div>
       
       <div id="full-tab" class="tab-content active">
@@ -52,6 +53,12 @@
         <select id="summaryModel" class="model-select">
         </select>
         <textarea id="summaryInstruction" placeholder="輸入關鍵要點總結要求"></textarea>
+      </div>
+
+      <div id="code-check-tab" class="tab-content">
+        <select id="codeCheckModel" class="model-select">
+        </select>
+        <textarea id="codeCheckInstruction" placeholder="輸入代號檢查要求"></textarea>
       </div>
       
       <button id="rewrite">改寫文字</button>

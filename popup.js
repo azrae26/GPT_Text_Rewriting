@@ -90,6 +90,8 @@ document.addEventListener('DOMContentLoaded', async function() {
   const backgroundKnowledgeInput = document.getElementById('backgroundKnowledge');
   const summaryModelSelect = document.getElementById('summaryModel');
   const summaryInstructionInput = document.getElementById('summaryInstruction');
+  const codeCheckModelSelect = document.getElementById('codeCheckModel');
+  const codeCheckInstructionInput = document.getElementById('codeCheckInstruction');
   const aiAssistantButton = document.getElementById('aiAssistant');
   const highlightWordsInput = document.getElementById('highlight-words');
   const stockListInput = document.getElementById('stock-list-input');
@@ -179,6 +181,8 @@ document.addEventListener('DOMContentLoaded', async function() {
   optimizeInstructionInput.value = settings.optimizeInstruction || '';
   summaryModelSelect.value = settings.summaryModel || '';
   summaryInstructionInput.value = settings.summaryInstruction || '';
+  codeCheckModelSelect.value = settings.codeCheckModel || '';
+  codeCheckInstructionInput.value = settings.codeCheckInstruction || '';
   zhEnMappingInput.value = settings.zhEnMapping || '';
   stockListInput.value = settings.stockList || '';
   
@@ -347,6 +351,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       },
       'translateInstruction': { type: 'input', element: translateInstructionInput },
       'summaryInstruction': { type: 'input', element: summaryInstructionInput },
+      'codeCheckInstruction': { type: 'input', element: codeCheckInstructionInput },
       'zhEnMapping': { type: 'input', element: zhEnMappingInput },
       'crawlerInterval': { 
         type: 'input', 
@@ -370,6 +375,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       'autoRewriteModel': { type: 'model', element: autoRewriteModelSelect },
       'translateModel': { type: 'model', element: translateModelSelect },
       'summaryModel': { type: 'model', element: summaryModelSelect },
+      'codeCheckModel': { type: 'model', element: codeCheckModelSelect },
       'reflectModel': { type: 'model', element: reflectModelSelect },
       'optimizeModel': { type: 'model', element: optimizeModelSelect }
     },
@@ -1276,7 +1282,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         translateModelSelect, generateModelSelect, reflect1ModelSelect,
         generationOptimize_1_ModelSelect, reflect2ModelSelect, generationOptimize_2_ModelSelect,
         reflect3ModelSelect, generationOptimize_3_ModelSelect, summaryModelSelect,
-        reflectModelSelect, optimizeModelSelect
+        codeCheckModelSelect, reflectModelSelect, optimizeModelSelect
       ];
 
       if (modelSelect) {
@@ -1726,6 +1732,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         { setting: 'reflect3Model', element: reflect3ModelSelect },
         { setting: 'generationOptimize_3_Model', element: generationOptimize_3_ModelSelect },
         { setting: 'summaryModel', element: summaryModelSelect },
+        { setting: 'codeCheckModel', element: codeCheckModelSelect },
         { setting: 'reflectModel', element: reflectModelSelect },
         { setting: 'optimizeModel', element: optimizeModelSelect }
       ];

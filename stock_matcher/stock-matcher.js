@@ -25,6 +25,7 @@ window.StockMatcher = {
   _isInitialized: false,
   _container: null,
   _elements: null,
+  _warningBox: null,
 
   /** 從設定載入股票清單 */
   async _loadStockListFromSettings() {
@@ -206,11 +207,150 @@ window.StockMatcher = {
     };
   },
 
+  /** AI代號檢查功能 */
+  async _checkStockCodeWithAI(stockCode, stockName, textContent) {
+    try {
+      // 獲取代號檢查的設定
+      const settings = await window.GlobalSettings.loadSettings();
+      const model = settings.codeCheckModel;
+      const instruction = settings.codeCheckInstruction;
+      
+      if (!model || !instruction) {
+        window.console.warn('[代號檢查] 未設定模型或指令');
+        return null;
+      }
+
+      // 構建檢查提示
+      const prompt = `${instruction}\n\n股票資訊：${stockName}(${stockCode})\n\n文本內容：\n${textContent.substring(0, 1000)}`;
+      
+      // 調用AI API
+      const response = await this._callAIAPI(model, prompt, settings.apiKeys);
+      
+      if (response && response.includes('不匹配') || response.includes('錯誤') || response.includes('不符') || response.includes('不同')) {
+        return {
+          isValid: false,
+          message: '股票代號可能有錯',
+          detail: response
+        };
+      }
+      
+      return {
+        isValid: true,
+        message: '股票代號檢查通過',
+        detail: response
+      };
+    } catch (error) {
+      window.console.error('[代號檢查] AI檢查失敗:', error);
+      return null;
+    }
+  },
+
+  /** 調用AI API */
+  async _callAIAPI(model, prompt, apiKeys) {
+    const apiKey = apiKeys[model];
+    if (!apiKey) {
+      throw new Error(`未設定 ${model} 的 API 金鑰`);
+    }
+
+    let url, headers, body;
+    
+    if (model.startsWith('gemini') || model === 'gemini') {
+      // Gemini API
+      url = `https://generativelanguage.googleapis.com/v1beta/models/${model === 'gemini' ? 'gemini-pro' : model}:generateContent?key=${apiKey}`;
+      headers = {
+        'Content-Type': 'application/json'
+      };
+      body = JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }]
+      });
+    } else {
+      // OpenAI API
+      url = 'https://api.openai.com/v1/chat/completions';
+      headers = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      };
+      body = JSON.stringify({
+        model: model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.1
+      });
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: headers,
+      body: body
+    });
+
+    if (!response.ok) {
+      throw new Error(`API請求失敗: ${response.status}`);
+    }
+
+    const data = await response.json();
+    
+    if (model.startsWith('gemini') || model === 'gemini') {
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    } else {
+      return data.choices?.[0]?.message?.content || '';
+    }
+  },
+
+  /** 顯示或隱藏警告提示框 */
+  _toggleWarningBox(show, message = '') {
+    if (show) {
+      if (!this._warningBox) {
+        this._warningBox = document.createElement('div');
+        this._warningBox.id = 'stock-warning-box';
+        this._warningBox.style.cssText = `
+          background-color: #fff3cd;
+          border: 1px solid #ffeaa7;
+          border-radius: 4px;
+          padding: 8px 12px;
+          margin-bottom: 8px;
+          color: #856404;
+          font-size: 14px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+        `;
+        
+        const icon = document.createElement('span');
+        icon.innerHTML = '⚠️';
+        icon.style.fontSize = '16px';
+        
+        const text = document.createElement('span');
+        text.id = 'warning-text';
+        text.textContent = message;
+        
+        this._warningBox.appendChild(icon);
+        this._warningBox.appendChild(text);
+      } else {
+        document.getElementById('warning-text').textContent = message;
+      }
+      
+      // 插入到容器上方
+      if (this._container && this._container.parentElement && !document.getElementById('stock-warning-box')) {
+        this._container.parentElement.insertBefore(this._warningBox, this._container);
+      }
+    } else {
+      if (this._warningBox && this._warningBox.parentElement) {
+        this._warningBox.parentElement.removeChild(this._warningBox);
+      }
+    }
+  },
+
   /** 更新股票代碼按鈕 */
   _updateStockButtons(codes, matchedStocks, elements) {
     elements.container.innerHTML = '';
     window.console.log('開始更新股票代碼按鈕，找到的代碼:', codes);
     window.console.log('當前輸入框的值:', elements.input.value);
+    
+    // 先隱藏警告提示框
+    this._toggleWarningBox(false);
+    
+    // 保存this引用，供內部函數使用
+    const self = this;
     
     const createButton = (code) => {
         const button = document.createElement('button');
@@ -251,21 +391,63 @@ window.StockMatcher = {
             
             elements.input.focus();
             setTimeout(() => elements.input.blur(), 10);
+            
+            // 對新選中的股票代碼進行AI檢查
+            if (matchedStocks.has(code)) {
+                const stockName = matchedStocks.get(code);
+                const textContent = elements.textarea.value;
+                
+                // 先隱藏之前的警告
+                self._toggleWarningBox(false);
+                
+                // 異步執行AI檢查
+                setTimeout(async () => {
+                    try {
+                        const checkResult = await self._checkStockCodeWithAI(code, stockName, textContent);
+                        if (checkResult && !checkResult.isValid) {
+                            self._toggleWarningBox(true, checkResult.message);
+                            window.console.log('[代號檢查]', checkResult.message, '詳細:', checkResult.detail);
+                        }
+                    } catch (error) {
+                        window.console.error('[代號檢查] 執行失敗:', error);
+                    }
+                }, 100);
+            }
         };
         
         return button;
     };
     
-    // 初始排序並創建按鈕
+        // 初始排序並創建按鈕
     codes.sort((a, b) => {
-        const isAMatched = a === elements.input.value;
-        const isBMatched = b === elements.input.value;
-        if (isAMatched && !isBMatched) return -1;
-        if (!isAMatched && isBMatched) return 1;
-        return 0;
+      const isAMatched = a === elements.input.value;
+      const isBMatched = b === elements.input.value;
+      if (isAMatched && !isBMatched) return -1;
+      if (!isAMatched && isBMatched) return 1;
+      return 0;
     }).forEach(code => {
-        elements.container.appendChild(createButton(code));
+      elements.container.appendChild(createButton(code));
     });
+    
+    // 對當前選中的股票代碼進行AI檢查
+    if (elements.input.value && matchedStocks.has(elements.input.value)) {
+      const stockCode = elements.input.value;
+      const stockName = matchedStocks.get(stockCode);
+      const textContent = elements.textarea.value;
+      
+      // 異步執行AI檢查，避免阻塞UI
+      setTimeout(async () => {
+        try {
+          const checkResult = await self._checkStockCodeWithAI(stockCode, stockName, textContent);
+          if (checkResult && !checkResult.isValid) {
+            self._toggleWarningBox(true, checkResult.message);
+            window.console.log('[代號檢查]', checkResult.message, '詳細:', checkResult.detail);
+          }
+        } catch (error) {
+          window.console.error('[代號檢查] 執行失敗:', error);
+        }
+      }, 100);
+    }
   },
 
   /** 初始化股票代碼功能 - 公開接口 */
