@@ -104,6 +104,10 @@ const GlobalSettings = {
   summaryModel: '',
   /** 關鍵要點指令。 */
   summaryInstruction: '',
+  /** 代號檢查模型名稱。 */
+  codeCheckModel: '',
+  /** 代號檢查指令。 */
+  codeCheckInstruction: '',
   /** 中英對照表。 */
   zhEnMapping: '',
   /** 股票清單。 */
@@ -140,7 +144,9 @@ const GlobalSettings = {
             'shortInstruction',     // 新增：10字內改寫指令
             'autoRewritePatterns',  // 新增：雙擊改寫匹配模式
             'translateInstruction', 
-            'summaryInstruction', 
+            'summaryInstruction',
+            'codeCheckInstruction', // 新增：代號檢查指令
+            'codeCheckModel',       // 新增：代號檢查模型
             'zhEnMapping',
             'reflectInstruction',
             'optimizeInstruction',
@@ -230,6 +236,8 @@ const GlobalSettings = {
       this.backgroundKnowledge = localResult.backgroundKnowledge || '';
       this.summaryModel = syncResult.summaryModel || '';
       this.summaryInstruction = localResult.summaryInstruction || '';
+      this.codeCheckModel = localResult.codeCheckModel || '';           // 載入代號檢查模型
+      this.codeCheckInstruction = localResult.codeCheckInstruction || ''; // 載入代號檢查指令
       this.zhEnMapping = localResult.zhEnMapping || ''; // 載入中英對照表
       this.stockList = localResult.stockList || ''; // 載入股票清單
       this.crawlerInterval = syncResult.crawlerInterval || 30; // 載入爬蟲間隔
@@ -282,7 +290,7 @@ const GlobalSettings = {
         'translateModel', 'reflectModel', 'optimizeModel', 'generateModel',
         'reflect1Model', 'generationOptimize_1_Model', 'reflect2Model', 
         'generationOptimize_2_Model', 'reflect3Model', 'generationOptimize_3_Model', 
-        'summaryModel'
+        'summaryModel', 'codeCheckModel'
       ];
 
       let settingsUpdated = false;
