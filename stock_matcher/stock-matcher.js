@@ -226,7 +226,17 @@ window.StockMatcher = {
       // 調用AI API
       const response = await this._callAIAPI(model, prompt, settings.apiKeys);
       
-      if (response && response.includes('不匹配') || response.includes('錯誤') || response.includes('不符') || response.includes('不同')) {
+      window.console.log('[代號檢查] AI 回應分析:', {
+        回應內容: response,
+        回應長度: response?.length || 0,
+        包含不匹配: response?.includes('不匹配') || false,
+        包含有錯: response?.includes('有錯') || false,
+        包含不符: response?.includes('不符') || false,
+        包含不同: response?.includes('不同') || false
+      });
+      
+      if (response && (response.includes('不匹配') || response.includes('有錯') || response.includes('不符') || response.includes('不同'))) {
+        window.console.log('[代號檢查] 🚨 檢測到問題，返回警告');
         return {
           isValid: false,
           message: '股票代號可能有錯',
@@ -234,6 +244,7 @@ window.StockMatcher = {
         };
       }
       
+      window.console.log('[代號檢查] ✅ 檢查通過');
       return {
         isValid: true,
         message: '股票代號檢查通過',
@@ -247,10 +258,34 @@ window.StockMatcher = {
 
   /** 調用AI API */
   async _callAIAPI(model, prompt, apiKeys) {
-    const apiKey = apiKeys[model];
-    if (!apiKey) {
-      throw new Error(`未設定 ${model} 的 API 金鑰`);
+    const getCurrentTime = () => new Date().toLocaleTimeString();
+    
+    window.console.log(`[_callAIAPI][${getCurrentTime()}] 🚀 開始 API 請求`, {
+      模型: model,
+      提示詞長度: prompt.length
+    });
+    
+    // 使用 GlobalSettings 的金鑰名稱獲取方法
+    const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(model);
+    if (!apiKeyName) {
+      window.console.error(`[_callAIAPI][${getCurrentTime()}] ❌ 模型不支援:`, model);
+      throw new Error(`模型 ${model} 不支援或無法找到對應的 API 金鑰類型`);
     }
+    
+    const apiKey = apiKeys[apiKeyName];
+    if (!apiKey) {
+      window.console.error(`[_callAIAPI][${getCurrentTime()}] ❌ API 金鑰未設定:`, {
+        金鑰名稱: apiKeyName,
+        模型: model,
+        可用金鑰: Object.keys(apiKeys)
+      });
+      throw new Error(`未設定 ${apiKeyName} 的 API 金鑰（模型: ${model}）`);
+    }
+
+    window.console.log(`[_callAIAPI][${getCurrentTime()}] ✅ API 金鑰驗證通過:`, {
+      金鑰名稱: apiKeyName,
+      金鑰長度: apiKey.length
+    });
 
     let url, headers, body;
     
@@ -262,6 +297,10 @@ window.StockMatcher = {
       };
       body = JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }]
+      });
+      window.console.log(`[_callAIAPI][${getCurrentTime()}] 📤 準備 Gemini API 請求:`, {
+        模型端點: model === 'gemini' ? 'gemini-pro' : model,
+        請求體大小: body.length
       });
     } else {
       // OpenAI API
@@ -275,25 +314,53 @@ window.StockMatcher = {
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.1
       });
+      window.console.log(`[_callAIAPI][${getCurrentTime()}] 📤 準備 OpenAI API 請求:`, {
+        模型: model,
+        請求體大小: body.length
+      });
     }
 
+    window.console.log(`[_callAIAPI][${getCurrentTime()}] 🌐 發送 HTTP 請求中...`);
     const response = await fetch(url, {
       method: 'POST',
       headers: headers,
       body: body
     });
 
+    window.console.log(`[_callAIAPI][${getCurrentTime()}] 📡 收到 HTTP 響應:`, {
+      狀態碼: response.status,
+      狀態文字: response.statusText,
+      是否成功: response.ok
+    });
+
     if (!response.ok) {
+      window.console.error(`[_callAIAPI][${getCurrentTime()}] ❌ API 請求失敗:`, {
+        狀態碼: response.status,
+        響應頭: Object.fromEntries(response.headers.entries())
+      });
       throw new Error(`API請求失敗: ${response.status}`);
     }
 
     const data = await response.json();
+    window.console.log(`[_callAIAPI][${getCurrentTime()}] 📦 解析 JSON 響應成功`);
     
+    let result;
     if (model.startsWith('gemini') || model === 'gemini') {
-      return data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      result = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      window.console.log(`[_callAIAPI][${getCurrentTime()}] 🔍 Gemini 響應解析:`, {
+        候選數量: data.candidates?.length || 0,
+        回答長度: result.length
+      });
     } else {
-      return data.choices?.[0]?.message?.content || '';
+      result = data.choices?.[0]?.message?.content || '';
+      window.console.log(`[_callAIAPI][${getCurrentTime()}] 🔍 OpenAI 響應解析:`, {
+        選擇數量: data.choices?.length || 0,
+        回答長度: result.length
+      });
     }
+    
+    window.console.log(`[_callAIAPI][${getCurrentTime()}] ✅ API 請求完成，回答:`, result.substring(0, 100) + (result.length > 100 ? '...' : ''));
+    return result;
   },
 
   /** 顯示或隱藏警告提示框 */
@@ -303,16 +370,18 @@ window.StockMatcher = {
         this._warningBox = document.createElement('div');
         this._warningBox.id = 'stock-warning-box';
         this._warningBox.style.cssText = `
-          background-color: #fff3cd;
-          border: 1px solid #ffeaa7;
+          background-color: #ff4444;
+          border: 1px solid #cc0000;
           border-radius: 4px;
-          padding: 8px 12px;
-          margin-bottom: 8px;
-          color: #856404;
+          padding: 6px 12px 6px 8px;
+          color: white;
           font-size: 14px;
+          font-weight: 500;
           display: flex;
           align-items: center;
-          gap: 8px;
+          gap: 2px;
+          height: 32px;
+          box-sizing: border-box;
         `;
         
         const icon = document.createElement('span');
@@ -325,17 +394,41 @@ window.StockMatcher = {
         
         this._warningBox.appendChild(icon);
         this._warningBox.appendChild(text);
+        
+        window.console.log('[_toggleWarningBox] 🚨 創建並顯示警告提示框:', message);
       } else {
-        document.getElementById('warning-text').textContent = message;
+        const textElement = document.getElementById('warning-text');
+        if (textElement) {
+          textElement.textContent = message;
+          window.console.log('[_toggleWarningBox] 🚨 更新警告提示框內容:', message);
+        } else {
+          window.console.error('[_toggleWarningBox] ❌ 找不到 warning-text 元素，重新創建警告框');
+          // 重新創建警告框
+          this._warningBox = null;
+          this._toggleWarningBox(true, message);
+          return;
+        }
       }
       
       // 插入到容器上方
-      if (this._container && this._container.parentElement && !document.getElementById('stock-warning-box')) {
-        this._container.parentElement.insertBefore(this._warningBox, this._container);
+      if (this._container && this._container.parentElement) {
+        // 如果警告框不在 DOM 中，就插入它
+        if (!this._warningBox.parentElement) {
+          this._container.parentElement.insertBefore(this._warningBox, this._container);
+          window.console.log('[_toggleWarningBox] 📌 警告提示框已插入到頁面');
+        } else {
+          window.console.log('[_toggleWarningBox] 📌 警告提示框已存在於頁面中');
+        }
+      } else {
+        window.console.error('[_toggleWarningBox] ❌ 無法插入警告框，容器或父元素不存在:', {
+          容器存在: !!this._container,
+          父元素存在: !!this._container?.parentElement
+        });
       }
     } else {
       if (this._warningBox && this._warningBox.parentElement) {
         this._warningBox.parentElement.removeChild(this._warningBox);
+        window.console.log('[_toggleWarningBox] 🗑️ 移除警告提示框');
       }
     }
   },
@@ -403,10 +496,18 @@ window.StockMatcher = {
                 // 異步執行AI檢查
                 setTimeout(async () => {
                     try {
+                        window.console.log('[按鈕點擊] 🔍 開始代號檢查:', { code, stockName });
                         const checkResult = await self._checkStockCodeWithAI(code, stockName, textContent);
+                        window.console.log('[按鈕點擊] 📋 代號檢查完整結果:', checkResult);
+                        
                         if (checkResult && !checkResult.isValid) {
+                            window.console.log('[按鈕點擊] 🚨 檢查結果為無效，準備顯示警告');
                             self._toggleWarningBox(true, checkResult.message);
                             window.console.log('[代號檢查]', checkResult.message, '詳細:', checkResult.detail);
+                        } else if (checkResult && checkResult.isValid) {
+                            window.console.log('[按鈕點擊] ✅ 檢查結果為有效，無需警告');
+                        } else {
+                            window.console.log('[按鈕點擊] ❓ 檢查結果為 null，可能是設定問題');
                         }
                     } catch (error) {
                         window.console.error('[代號檢查] 執行失敗:', error);
@@ -438,10 +539,18 @@ window.StockMatcher = {
       // 異步執行AI檢查，避免阻塞UI
       setTimeout(async () => {
         try {
+          window.console.log('[_updateStockButtons] 🔍 開始初始代號檢查:', { stockCode, stockName });
           const checkResult = await self._checkStockCodeWithAI(stockCode, stockName, textContent);
+          window.console.log('[_updateStockButtons] 📋 代號檢查完整結果:', checkResult);
+          
           if (checkResult && !checkResult.isValid) {
+            window.console.log('[_updateStockButtons] 🚨 檢查結果為無效，準備顯示警告');
             self._toggleWarningBox(true, checkResult.message);
             window.console.log('[代號檢查]', checkResult.message, '詳細:', checkResult.detail);
+          } else if (checkResult && checkResult.isValid) {
+            window.console.log('[_updateStockButtons] ✅ 檢查結果為有效，無需警告');
+          } else {
+            window.console.log('[_updateStockButtons] ❓ 檢查結果為 null，可能是設定問題');
           }
         } catch (error) {
           window.console.error('[代號檢查] 執行失敗:', error);
@@ -555,6 +664,13 @@ window.StockMatcher = {
 
     this._isInitialized = true;
     this._elements = elements;
+    this._container = elements.container; // 確保 this._container 被正確設置
+    
+    window.console.log('[初始化] 📦 股票代碼功能初始化完成:', {
+      容器已設置: !!this._container,
+      容器ID: this._container?.id,
+      父元素存在: !!this._container?.parentElement
+    });
   },
 
   /** 移除股票代碼功能 - 公開接口 */
