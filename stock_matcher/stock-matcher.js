@@ -20,12 +20,26 @@
  * - 使用傳統 window.xxx 全域變數模式，符合專案架構
  */
 
+// 常數定義
+const AI_CHECK_DEBOUNCE_DELAY = 1000; // AI檢查防抖延遲時間（毫秒）
+
 window.StockMatcher = {
   // 私有屬性
   _isInitialized: false,
   _container: null,
   _elements: null,
   _warningBox: null,
+  _aiCheckDebounceTimer: null, // AI檢查防抖計時器
+
+  /** 移除股票名稱後綴（-KY、-創、*） */
+  _removeStockSuffixes(stockName) {
+    return stockName.replace(/(-KY|-創|\*)$/, '');
+  },
+
+  /** 檢查股票名稱是否包含後綴（-KY、-創、*） */
+  _hasStockSuffixes(stockName) {
+    return /(-KY|-創|\*)$/.test(stockName);
+  },
 
   /** 從設定載入股票清單 */
   async _loadStockListFromSettings() {
@@ -124,7 +138,7 @@ window.StockMatcher = {
             }
             return regex.test(searchText);
         }
-        const baseStockName = stock.name.replace(/-KY$/, '');
+        const baseStockName = this._removeStockSuffixes(stock.name);
         // 修改：轉換為小寫進行比較
         const lowerSearchText = searchText.toLowerCase();
         const lowerBaseName = baseStockName.toLowerCase();
@@ -146,10 +160,10 @@ window.StockMatcher = {
         // 檢查代碼和名稱是否在前100字中出現（不區分大小寫）
         const hasCode = first100Chars.toLowerCase().includes(stock.code.toLowerCase());
         const hasName = matchText(stock, first100Chars);
-        const hasBaseNameIfKY = stock.name.includes('-KY') && 
-            first100Chars.toLowerCase().includes(stock.name.replace(/-KY$/, '').toLowerCase());
+        const hasBaseNameIfSuffix = this._hasStockSuffixes(stock.name) && 
+            first100Chars.toLowerCase().includes(this._removeStockSuffixes(stock.name).toLowerCase());
         
-        return hasCode || hasName || hasBaseNameIfKY;
+        return hasCode || hasName || hasBaseNameIfSuffix;
     });
 
     // 只對前100字中出現的股票計算全文出現次數
@@ -168,9 +182,9 @@ window.StockMatcher = {
         const nameCount = matchText(stock, text, true);
         count += nameCount;
 
-        // 如果有 -KY 後綴，也檢查完整名稱在全文中的出現次數（不區分大小寫）
+        // 如果有後綴（-KY、-創、*），也檢查完整名稱在全文中的出現次數（不區分大小寫）
         let fullNameCount = 0;
-        if (stock.name.includes('-KY')) {
+        if (this._hasStockSuffixes(stock.name)) {
             const lowerText = text.toLowerCase();
             const lowerFullName = stock.name.toLowerCase();
             fullNameCount = lowerText.split(lowerFullName).length - 1;
@@ -221,7 +235,7 @@ window.StockMatcher = {
       }
 
       // 構建檢查提示
-      const prompt = `${instruction}\n\n股票資訊：${stockName}(${stockCode})\n\n文本內容：\n${textContent.substring(0, 1000)}`;
+      const prompt = `${instruction}\n\n股票名與代號：${stockName}(${stockCode})\n\n文本內容：\n${textContent.substring(0, 1000)}`;
       
       // 調用AI API
       const response = await this._callAIAPI(model, prompt, settings.apiKeys);
@@ -239,7 +253,7 @@ window.StockMatcher = {
         window.console.log('[代號檢查] 🚨 檢測到問題，返回警告');
         return {
           isValid: false,
-          message: '股票代號可能有錯',
+          message: '代號可能有錯',
           detail: response
         };
       }
@@ -247,7 +261,7 @@ window.StockMatcher = {
       window.console.log('[代號檢查] ✅ 檢查通過');
       return {
         isValid: true,
-        message: '股票代號檢查通過',
+        message: '代號檢查通過',
         detail: response
       };
     } catch (error) {
@@ -361,6 +375,41 @@ window.StockMatcher = {
     
     window.console.log(`[_callAIAPI][${getCurrentTime()}] ✅ API 請求完成，回答:`, result.substring(0, 100) + (result.length > 100 ? '...' : ''));
     return result;
+  },
+
+  /** AI代號檢查防抖方法 */
+  _debouncedAICheck(stockCode, stockName, textContent) {
+    // 清除之前的計時器
+    if (this._aiCheckDebounceTimer) {
+      clearTimeout(this._aiCheckDebounceTimer);
+      window.console.log('[防抖] 🕒 清除之前的AI檢查計時器');
+    }
+    
+    // 設置新的計時器
+    this._aiCheckDebounceTimer = setTimeout(async () => {
+      try {
+        window.console.log('[防抖] 🔍 開始延遲執行的代號檢查:', { stockCode, stockName });
+        const checkResult = await this._checkStockCodeWithAI(stockCode, stockName, textContent);
+        window.console.log('[防抖] 📋 代號檢查完整結果:', checkResult);
+        
+        if (checkResult && !checkResult.isValid) {
+          window.console.log('[防抖] 🚨 檢查結果為無效，準備顯示警告');
+          this._toggleWarningBox(true, checkResult.message);
+          window.console.log('[代號檢查]', checkResult.message, '詳細:', checkResult.detail);
+        } else if (checkResult && checkResult.isValid) {
+          window.console.log('[防抖] ✅ 檢查結果為有效，隱藏警告');
+          this._toggleWarningBox(false);
+        } else {
+          window.console.log('[防抖] ❓ 檢查結果為 null，可能是設定問題');
+        }
+      } catch (error) {
+        window.console.error('[防抖] 代號檢查執行失敗:', error);
+      } finally {
+        this._aiCheckDebounceTimer = null;
+      }
+    }, AI_CHECK_DEBOUNCE_DELAY);
+    
+    window.console.log('[防抖] ⏰ 設置AI檢查計時器，將在', AI_CHECK_DEBOUNCE_DELAY, 'ms後執行');
   },
 
   /** 顯示或隱藏警告提示框 */
@@ -493,26 +542,9 @@ window.StockMatcher = {
                 // 先隱藏之前的警告
                 self._toggleWarningBox(false);
                 
-                // 異步執行AI檢查
-                setTimeout(async () => {
-                    try {
-                        window.console.log('[按鈕點擊] 🔍 開始代號檢查:', { code, stockName });
-                        const checkResult = await self._checkStockCodeWithAI(code, stockName, textContent);
-                        window.console.log('[按鈕點擊] 📋 代號檢查完整結果:', checkResult);
-                        
-                        if (checkResult && !checkResult.isValid) {
-                            window.console.log('[按鈕點擊] 🚨 檢查結果為無效，準備顯示警告');
-                            self._toggleWarningBox(true, checkResult.message);
-                            window.console.log('[代號檢查]', checkResult.message, '詳細:', checkResult.detail);
-                        } else if (checkResult && checkResult.isValid) {
-                            window.console.log('[按鈕點擊] ✅ 檢查結果為有效，無需警告');
-                        } else {
-                            window.console.log('[按鈕點擊] ❓ 檢查結果為 null，可能是設定問題');
-                        }
-                    } catch (error) {
-                        window.console.error('[代號檢查] 執行失敗:', error);
-                    }
-                }, 100);
+                // 使用防抖方法執行AI檢查
+                window.console.log('[按鈕點擊] 🔍 準備開始防抖代號檢查:', { code, stockName });
+                self._debouncedAICheck(code, stockName, textContent);
             }
         };
         
@@ -536,26 +568,9 @@ window.StockMatcher = {
       const stockName = matchedStocks.get(stockCode);
       const textContent = elements.textarea.value;
       
-      // 異步執行AI檢查，避免阻塞UI
-      setTimeout(async () => {
-        try {
-          window.console.log('[_updateStockButtons] 🔍 開始初始代號檢查:', { stockCode, stockName });
-          const checkResult = await self._checkStockCodeWithAI(stockCode, stockName, textContent);
-          window.console.log('[_updateStockButtons] 📋 代號檢查完整結果:', checkResult);
-          
-          if (checkResult && !checkResult.isValid) {
-            window.console.log('[_updateStockButtons] 🚨 檢查結果為無效，準備顯示警告');
-            self._toggleWarningBox(true, checkResult.message);
-            window.console.log('[代號檢查]', checkResult.message, '詳細:', checkResult.detail);
-          } else if (checkResult && checkResult.isValid) {
-            window.console.log('[_updateStockButtons] ✅ 檢查結果為有效，無需警告');
-          } else {
-            window.console.log('[_updateStockButtons] ❓ 檢查結果為 null，可能是設定問題');
-          }
-        } catch (error) {
-          window.console.error('[代號檢查] 執行失敗:', error);
-        }
-      }, 100);
+      // 使用防抖方法執行AI檢查，避免頻繁API調用
+      window.console.log('[_updateStockButtons] 🔍 準備開始防抖代號檢查:', { stockCode, stockName });
+      self._debouncedAICheck(stockCode, stockName, textContent);
     }
   },
 
@@ -596,7 +611,7 @@ window.StockMatcher = {
         window.stockListFromSettings.forEach(stock => {
           stockMap.set(stock.code, stock);
           nameMap.set(stock.name, stock);
-          const baseName = stock.name.replace(/-KY$/, '');
+          const baseName = this._removeStockSuffixes(stock.name);
           if (baseName !== stock.name) {
             nameMap.set(baseName, stock);
           }
@@ -675,6 +690,13 @@ window.StockMatcher = {
 
   /** 移除股票代碼功能 - 公開接口 */
   removeStockCodeFeature() {
+    // 清理防抖計時器
+    if (this._aiCheckDebounceTimer) {
+      clearTimeout(this._aiCheckDebounceTimer);
+      this._aiCheckDebounceTimer = null;
+      window.console.log('[移除功能] 🗑️ 清理AI檢查防抖計時器');
+    }
+    
     const container = document.getElementById('stock-code-container');
     if (container) container.remove();
     this._isInitialized = false;
