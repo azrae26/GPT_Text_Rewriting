@@ -348,10 +348,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                 // 重新初始化股票代碼功能以應用新的清單
                 if (window.StockMatcher) {
                   window.StockMatcher.removeStockCodeFeature();
-                  window.StockMatcher.initializeStockCodeFeature();
+                  window.StockMatcher.initializeStockCodeFeature(true);
                 } else if (window.UIManager) {
                   window.UIManager.removeStockCodeFeature();
-                  window.UIManager.initializeStockCodeFeature();
+                  window.UIManager.initializeStockCodeFeature(true);
                 }
                 console.log('股票清單已通過 updateSettings 成功更新');
               })
@@ -431,10 +431,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               // 重新初始化股票代碼功能以應用新的清單
               if (window.StockMatcher) {
                 window.StockMatcher.removeStockCodeFeature();
-                window.StockMatcher.initializeStockCodeFeature();
+                window.StockMatcher.initializeStockCodeFeature(true);
               } else if (window.UIManager) {
                 window.UIManager.removeStockCodeFeature();
-                window.UIManager.initializeStockCodeFeature();
+                window.UIManager.initializeStockCodeFeature(true);
               }
               sendResponse({success: true});
             })

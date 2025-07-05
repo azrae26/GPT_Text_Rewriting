@@ -374,11 +374,11 @@ const UIManager = {
   },
 
   /** 初始化股票代碼功能 - 委派給 StockMatcher 模組 */
-  initializeStockCodeFeature() {
+  initializeStockCodeFeature(isFromSettingsUpdate = false) {
     // 注意：此方法已移至 stock_matcher/stock-matcher.js 模組
     // 為保持向後兼容，這裡委派給 StockMatcher
     if (window.StockMatcher && window.StockMatcher.initializeStockCodeFeature) {
-      return window.StockMatcher.initializeStockCodeFeature();
+      return window.StockMatcher.initializeStockCodeFeature(isFromSettingsUpdate);
     } else {
       window.console.warn('StockMatcher 模組未載入，無法初始化股票代碼功能');
     }
