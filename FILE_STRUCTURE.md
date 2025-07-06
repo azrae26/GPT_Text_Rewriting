@@ -91,7 +91,6 @@ UI 管理模組，負責處理使用者介面相關功能 (已重構 - 2025-01-0
 - `_updateStockButtons()`: 動態創建和管理股票代碼按鈕
 - `_getOrCreateContainer()`: 獲取或創建按鈕容器
 - `updateStockList()`: 更新股票清單並重新初始化
-- `isInitialized()`: 檢查是否已初始化
 
 ### notification.js
 通知系統模組

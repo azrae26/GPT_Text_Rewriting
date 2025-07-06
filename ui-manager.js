@@ -374,12 +374,6 @@ const UIManager = {
     }
   },
 
-
-
-
-
-
-
   /** 移除股票代碼功能 - 委派給 StockMatcher 模組 */
   removeStockCodeFeature() {
     // 注意：此方法已移至 stock_matcher/stock-matcher.js 模組

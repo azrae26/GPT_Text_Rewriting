@@ -714,11 +714,6 @@ window.StockMatcher = {
     this._elements = null;
   },
 
-  /** 檢查是否已初始化 - 公開接口 */
-  isInitialized() {
-    return this._isInitialized;
-  },
-
   /** 更新股票清單並重新初始化 - 公開接口 */
   async updateStockList() {
     if (this._isInitialized) {
