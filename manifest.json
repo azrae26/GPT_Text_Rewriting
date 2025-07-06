@@ -54,6 +54,15 @@
     },
     {
       "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "rive.js",
+        "global-animation.js"
+      ]
+    },
+    {
+      "matches": [
         "https://crawler-api.uanalyze.com.tw/*"
       ],
       "css": ["content_script_uanalyze.css"]
@@ -92,8 +101,12 @@
       "matches": ["https://pro.uanalyze.com.tw/*"]
     },
     {
-      "resources": ["google_translator/gen-lang-client-0507957210-3b8a690087e2.json"],
+      "resources": ["images/*", "google_translator/gen-lang-client-0507957210-3b8a690087e2.json"],
       "matches": ["https://data.uanalyze.twobitto.com/*"]
+    },
+    {
+      "resources": ["images/*"],
+      "matches": ["<all_urls>"]
     },
     {
       "resources": ["SettingsIO/settings-io.js", "settings/settings-key.js", "settings/settings-manager.js", "settings.js"],

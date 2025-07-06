@@ -635,6 +635,10 @@ window.StockMatcher = {
         
         if (textValue.length < 4 && !inputValue) return;
         
+        // 根據觸發來源決定是否進行AI檢查
+        // 文本框更新時不觸發AI檢查，只有代號框更新時才觸發
+        const shouldTriggerAI = source === 'input' ? shouldTriggerAICheck : false;
+        
         // 使用 _getStockCodes 來處理文本
         const { codes, matchedStocks, stockCounts } = this._getStockCodes(textValue, inputValue);
         
@@ -644,7 +648,7 @@ window.StockMatcher = {
             代碼列表: codes,
             來源: source,
             當前輸入值: inputValue,
-            是否觸發AI檢查: shouldTriggerAICheck
+            是否觸發AI檢查: shouldTriggerAI
         });
         
         // 自動填入最常出現的股票代碼（僅在文本區域觸發時）
@@ -671,7 +675,7 @@ window.StockMatcher = {
             }
         }
         
-        this._updateStockButtons(codes, matchedStocks, elements, shouldTriggerAICheck);
+        this._updateStockButtons(codes, matchedStocks, elements, shouldTriggerAI);
       };
 
       // 監聽文本區域變化

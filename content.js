@@ -8,6 +8,7 @@
  * - UI 模組協調：統一初始化和管理各功能模組
  * - 頁面狀態監控：監聽 URL 變化和頁面重新載入
  * - 高亮功能初始化：處理文本高亮功能的載入和設定
+ * - Rive 動畫管理：在頁面右下角顯示動畫
  * - 錯誤處理和重試機制：確保功能在各種網頁狀態下正常工作
  * 
  * 依賴：
@@ -17,9 +18,14 @@
  * - TextHighlight：文本高亮功能
  * - TextProcessor, TranslateManager 等各功能模組
  * - Chrome Extensions API
+ * - Rive JavaScript Runtime：動畫播放
  */
 
 console.log('Content script starting to load');
+
+
+
+
 
 /**
  * 檢查當前 URL 是否符合啟用功能的條件。

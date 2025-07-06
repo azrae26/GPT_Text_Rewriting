@@ -44,6 +44,30 @@ textarea[name="system_prompt"] {
 /* 針對 https://crawler-api.uanalyze.com.tw/ai_model 頁面的樣式修改結束 */
 
 
+/* Rive 動畫樣式 */
+#rive-animation-canvas {
+  position: fixed !important;
+  bottom: 20px !important;
+  right: 20px !important;
+  width: 150px !important;
+  height: 150px !important;
+  z-index: 9999 !important;
+  pointer-events: none !important; /* 不阻擋滑鼠事件 */
+  border-radius: 50% !important; /* 圓形邊框 */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1) !important; /* 輕微陰影 */
+  opacity: 0.9 !important; /* 輕微透明度 */
+}
+
+/* 響應式設計 - 小螢幕時縮小動畫 */
+@media (max-width: 768px) {
+  #rive-animation-canvas {
+    width: 100px !important;
+    height: 100px !important;
+    bottom: 15px !important;
+    right: 15px !important;
+  }
+}
+
 /* 改寫按鈕容器樣式 */
 #gpt-button-container {
   position: absolute;
