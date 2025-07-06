@@ -315,17 +315,15 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // 10. 輔助功能
   function sendAutoRewritePatternsUpdate() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "updateAutoRewritePatterns",
-        patterns: autoRewritePatternsInput.value
-      }, function(response) {
-        if (response && response.success) {
-          console.log('自動改寫匹配模式已更新');
-        } else {
-          console.error('更新自動改寫匹配模式失敗');
-        }
-      });
+    sendMessageToTab({
+      action: "updateAutoRewritePatterns",
+      patterns: autoRewritePatternsInput.value
+    }, function(response) {
+      if (response && response.success) {
+        console.log('自動改寫匹配模式已更新');
+      } else {
+        console.error('更新自動改寫匹配模式失敗');
+      }
     });
   }
 
@@ -503,32 +501,30 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // 功能按鈕事件處理
   rewriteButton.addEventListener('click', function() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "rewrite",
-        apiKeys: apiKeys,
-        model: modelSelect.value,
-        instruction: instructionInput.value,
-        shortInstruction: shortInstructionInput.value,
-        autoRewritePatterns: autoRewritePatternsInput.value,
-        fullRewriteModel: fullRewriteModelSelect.value,
-        shortRewriteModel: shortRewriteModelSelect.value,
-        autoRewriteModel: autoRewriteModelSelect.value,
-        translateModel: translateModelSelect.value,
-        translateInstruction: translateInstructionInput.value,
-        reflectModel: reflectModelSelect.value,
-        reflectInstruction: reflectInstructionInput.value,
-        optimizeModel: optimizeModelSelect.value,
-        optimizeInstruction: optimizeInstructionInput.value,
-        removeHash: removeHashCheckbox.checked,
-        removeStar: removeStarCheckbox.checked
-      }, function(response) {
-        if (response && response.success) {
-          console.log('改寫請求已發送');
-        } else {
-          console.error('發送改寫請求失敗');
-        }
-      });
+    sendMessageToTab({
+      action: "rewrite",
+      apiKeys: apiKeys,
+      model: modelSelect.value,
+      instruction: instructionInput.value,
+      shortInstruction: shortInstructionInput.value,
+      autoRewritePatterns: autoRewritePatternsInput.value,
+      fullRewriteModel: fullRewriteModelSelect.value,
+      shortRewriteModel: shortRewriteModelSelect.value,
+      autoRewriteModel: autoRewriteModelSelect.value,
+      translateModel: translateModelSelect.value,
+      translateInstruction: translateInstructionInput.value,
+      reflectModel: reflectModelSelect.value,
+      reflectInstruction: reflectInstructionInput.value,
+      optimizeModel: optimizeModelSelect.value,
+      optimizeInstruction: optimizeInstructionInput.value,
+      removeHash: removeHashCheckbox.checked,
+      removeStar: removeStarCheckbox.checked
+    }, function(response) {
+      if (response && response.success) {
+        console.log('改寫請求已發送');
+      } else {
+        console.error('發送改寫請求失敗');
+      }
     });
   });
 
@@ -537,7 +533,6 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 9. UI 相關功能
   // 分頁切換功能
   const tabs = document.querySelectorAll('.tab');
-  const tabContents = document.querySelectorAll('.tab-content');
 
   tabs.forEach(tab => {
     tab.addEventListener('click', function() {
@@ -1219,8 +1214,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     },
 
     updateCustomModelsList() {
-      const customModelsContainer = document.getElementById('custom-models-container');
-      
       if (!customModelsContainer) {
         console.error('找不到 customModelsContainer 元素');
         return;
@@ -1575,7 +1568,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     // 同步間隔輸入框
-    const syncIntervalInput = document.getElementById('sync-interval');
     if (syncIntervalInput && settingsIO) {
       syncIntervalInput.addEventListener('change', async () => {
         try {
