@@ -125,217 +125,14 @@ const GlobalSettings = {
   currentGenerationSettings: '',
 
   /**
-   * 從 Chrome 儲存空間載入設定。
+   * 委託給 SettingsLoader 處理設定載入
    * @returns {Promise<object>} - 一個 Promise 物件，resolve 後返回載入的設定物件。
    */
   async loadSettings() {
-    try {
-      // 首次執行清理殭屍項目
-      await this.cleanupZombieSettings();
-      
-      // 改用 chrome.storage.local 來儲存大型文本
-      const [syncResult, localResult] = await Promise.all([
-        new Promise((resolve) => {
-          chrome.storage.sync.get(null, (items) => resolve(items));
-        }),
-        new Promise((resolve) => {
-          chrome.storage.local.get([
-            'instruction',          // 新增：全文改寫指令
-            'shortInstruction',     // 新增：10字內改寫指令
-            'autoRewritePatterns',  // 新增：雙擊改寫匹配模式
-            'translateInstruction', 
-            'summaryInstruction',
-            'codeCheckInstruction', // 新增：代號檢查指令
-            'codeCheckModel',       // 新增：代號檢查模型
-            'zhEnMapping',
-            'reflectInstruction',
-            'optimizeInstruction',
-            'generateInstruction',
-            'reflect1Instruction',
-            'generationOptimize_1_Instruction',
-            'reflect2Instruction',
-            'generationOptimize_2_Instruction',
-            'reflect3Instruction',
-            'generationOptimize_3_Instruction',
-            'backgroundKnowledge',
-            'stockList'
-          ], (items) => resolve(items));
-        })
-      ]);
-
-      // 確保 apiKeys 物件有正確的結構，但不強制添加特定的金鑰
-      this.apiKeys = {
-        ...(syncResult.apiKeys || {})  // 只載入已保存的金鑰
-      };
-
-      // 清理未實際設置的舊 API 金鑰（顯示為 "已設置" 但實際上是空值或預設值）
-      console.log('清理未實際設置的 API 金鑰...');
-      const keysToRemove = [];
-      Object.entries(this.apiKeys).forEach(([key, value]) => {
-        // 如果值為空、undefined、null 或者是一些預設的無效值
-        if (!value || value === '' || value === 'undefined' || value === 'null' || 
-            (typeof value === 'string' && (value === '已設置' || value === '未設置'))) {
-          keysToRemove.push(key);
-        }
-        // 額外清理：移除硬編碼的舊版本模型金鑰，除非是通用金鑰
-        else if (key.includes('-1.5-') || key.includes('-2.0-') || key.includes('-exp') || key.includes('-latest')) {
-          // 檢查是否有對應的自定義模型正在使用
-          const hasMatchingCustomModel = Object.keys(this.customModels).some(modelName => {
-            const modelApiType = this.getModelApiType(modelName);
-            return modelApiType === 'gemini' && modelName === key;
-          });
-          
-          if (!hasMatchingCustomModel) {
-            console.log(`發現舊版本硬編碼金鑰: ${key}，準備移除`);
-            keysToRemove.push(key);
-          }
-        }
-      });
-      
-      if (keysToRemove.length > 0) {
-        console.log('移除無效的 API 金鑰:', keysToRemove);
-        keysToRemove.forEach(key => delete this.apiKeys[key]);
-        // 立即保存更新後的金鑰列表
-        chrome.storage.sync.set({ apiKeys: this.apiKeys });
-      }
-
-      // 檢查並輸出 API 金鑰狀態
-      const apiKeyStatus = {};
-      Object.keys(this.apiKeys).forEach(key => {
-        apiKeyStatus[key] = this.apiKeys[key] ? '已設置' : '未設置';
-      });
-      console.log('載入的 API 金鑰:', apiKeyStatus);
-
-      // 一般設定使用 sync
-      this.model = syncResult.model || '';
-      this.instruction = localResult.instruction || '';           // 修改：從 local storage 載入
-      this.shortInstruction = localResult.shortInstruction || ''; // 修改：從 local storage 載入
-      this.fullRewriteModel = syncResult.fullRewriteModel || '';
-      this.shortRewriteModel = syncResult.shortRewriteModel || '';
-      this.autoRewriteModel = syncResult.autoRewriteModel || '';
-      this.translateModel = syncResult.translateModel || '';
-      this.reflectModel = syncResult.reflectModel || '';
-      this.optimizeModel = syncResult.optimizeModel || '';
-      this.generateModel = syncResult.generateModel || '';
-      this.reflect1Model = syncResult.reflect1Model || '';
-      this.generationOptimize_1_Model = syncResult.generationOptimize_1_Model || '';
-      this.reflect2Model = syncResult.reflect2Model || '';
-      this.generationOptimize_2_Model = syncResult.generationOptimize_2_Model || '';
-      this.reflect3Model = syncResult.reflect3Model || '';
-      this.generationOptimize_3_Model = syncResult.generationOptimize_3_Model || '';
-      this.translateInstruction = localResult.translateInstruction || '';
-      this.reflectInstruction = localResult.reflectInstruction || '';
-      this.optimizeInstruction = localResult.optimizeInstruction || '';
-      this.generateInstruction = localResult.generateInstruction || '';
-      this.reflect1Instruction = localResult.reflect1Instruction || '';
-      this.generationOptimize_1_Instruction = localResult.generationOptimize_1_Instruction || '';
-      this.reflect2Instruction = localResult.reflect2Instruction || '';
-      this.generationOptimize_2_Instruction = localResult.generationOptimize_2_Instruction || '';
-      this.reflect3Instruction = localResult.reflect3Instruction || '';
-      this.generationOptimize_3_Instruction = localResult.generationOptimize_3_Instruction || '';
-      this.backgroundKnowledge = localResult.backgroundKnowledge || '';
-      this.summaryModel = syncResult.summaryModel || '';
-      this.summaryInstruction = localResult.summaryInstruction || '';
-      this.codeCheckModel = localResult.codeCheckModel || '';           // 載入代號檢查模型
-      this.codeCheckInstruction = localResult.codeCheckInstruction || ''; // 載入代號檢查指令
-      this.zhEnMapping = localResult.zhEnMapping || ''; // 載入中英對照表
-      this.stockList = localResult.stockList || ''; // 載入股票清單
-      this.crawlerInterval = syncResult.crawlerInterval || 30; // 載入爬蟲間隔
-      
-      // 載入同步設定
-      this.autoSyncEnabled = syncResult.autoSyncEnabled || false;
-      
-      // 使用 DefaultSettings 中的預設值
-          // 取得適當的全域 DefaultSettings
-    const defaultSettings = this.getGlobalDefaultSettings();
-    this.confirmModel = syncResult.confirmModel === undefined ? defaultSettings?.confirmModel : syncResult.confirmModel;
-    this.confirmContent = syncResult.confirmContent === undefined ? defaultSettings?.confirmContent : syncResult.confirmContent;
-    this.removeHash = syncResult.removeHash === undefined ? defaultSettings?.removeHash : syncResult.removeHash;
-    this.removeStar = syncResult.removeStar === undefined ? defaultSettings?.removeStar : syncResult.removeStar;
-
-      // 更新自動改寫模式 - 修改：從 local storage 載入
-      if (localResult.autoRewritePatterns) {
-        this.updateAutoRewritePatterns(localResult.autoRewritePatterns);
-      } else if (syncResult.autoRewritePatterns) {
-        // 向後兼容：如果 local storage 沒有，檢查 sync storage
-        this.updateAutoRewritePatterns(syncResult.autoRewritePatterns);
-      } else if (defaultSettings?.autoRewritePatterns) {
-        this.updateAutoRewritePatterns(defaultSettings.autoRewritePatterns);
-      }
-
-      // 如果是首次運行，設置預設值
-      if (syncResult.firstRun === undefined) {
-        await this.saveSettings();
-        chrome.storage.sync.set({ firstRun: false });
-      }
-
-      // 載入生成設定組合
-      this.generationSettingsGroups = syncResult.generationSettingsGroups || {};
-      this.currentGenerationSettings = syncResult.currentGenerationSettings || '';
-
-      // 載入自定義模型
-      this.customModels = syncResult.customModels || {};
-      
-      // 將自定義模型合併到 API.models 中
-      // 先清空 API.models，確保只有自定義模型
-      this.API.models = {};
-      Object.entries(this.customModels).forEach(([key, model]) => {
-        this.API.models[key] = model.displayName;
-      });
-
-      // 清理舊版本或無效的模型選擇
-      console.log('清理舊版本或無效的模型選擇...');
-      const modelSettingKeys = [
-        'model', 'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel',
-        'translateModel', 'reflectModel', 'optimizeModel', 'generateModel',
-        'reflect1Model', 'generationOptimize_1_Model', 'reflect2Model', 
-        'generationOptimize_2_Model', 'reflect3Model', 'generationOptimize_3_Model', 
-        'summaryModel', 'codeCheckModel'
-      ];
-
-      let settingsUpdated = false;
-      modelSettingKeys.forEach(key => {
-        const currentModel = this[key];
-        if (currentModel && !this.customModels[currentModel] && !this.API.models[currentModel]) {
-          console.log(`發現無效的模型設定 ${key}: ${currentModel}，將其重置為空`);
-          this[key] = ''; // 重置為空字串，讓getDefaultModel()選擇第一個可用模型
-          settingsUpdated = true;
-        } else if (currentModel && (currentModel.includes('-1.5-') || currentModel.includes('-2.0-') || currentModel.includes('-exp'))) {
-          // 如果是舊格式的模型名稱，且不在自定義模型列表中，也重置
-          if (!this.customModels[currentModel]) {
-            console.log(`發現舊格式模型設定 ${key}: ${currentModel}，將其重置為空`);
-            this[key] = '';
-            settingsUpdated = true;
-          }
-        }
-      });
-
-      if (settingsUpdated) {
-        console.log('模型設定已更新，正在保存...');
-        // 只保存被修改的模型設定
-        const updatedSettingsToSave = {};
-        modelSettingKeys.forEach(key => {
-          if (this[key] === '') { // 只保存被重置為空的設定
-            updatedSettingsToSave[key] = '';
-          }
-        });
-        chrome.storage.sync.set(updatedSettingsToSave);
-      }
-
-      console.log('設置載入完成:', {
-        model: this.model,
-        apiKeysStatus: Object.keys(this.apiKeys).map(key => ({ 
-          [key]: this.apiKeys[key] ? '已設置' : '未設置' 
-        })),
-        customModelsCount: Object.keys(this.customModels).length,
-        availableModels: Object.keys(this.API.models)
-      });
-
-      return this;
-    } catch (error) {
-      console.error('載入設置時出錯:', error);
-      return this.getGlobalDefaultSettings() || {};
+    if (!window.SettingsLoader) {
+      throw new Error('SettingsLoader 未載入，請檢查載入順序');
     }
+    return window.SettingsLoader.loadSettings(this);
   },
 
   /**
@@ -499,198 +296,44 @@ const GlobalSettings = {
     }
   },
 
-  // 添加一個輔助方法來檢查 API 金鑰
+  // 委託給 ApiKeyManager 來檢查 API 金鑰
   hasApiKey(model) {
-    if (!model) return false;
-    
-    const apiType = this.getModelApiType(model);
-    const apiKeyName = this.getApiKeyNameForModel(model);
-    
-    const key = this.apiKeys[apiKeyName];
-    return Boolean(key && key.trim());
+    if (!window.ApiKeyManager) {
+      throw new Error('ApiKeyManager 未載入，請檢查載入順序');
+    }
+    return window.ApiKeyManager.hasApiKey(model);
   },
 
-  /**
-   * 儲存生成設定組合
-   * @param {string} name - 設定組合名稱
-   * @param {object} settings - 設定值
-   */
+  // 委託給 GenerationManager 來儲存生成設定組合
   async saveGenerationSettingsGroup(name, settings) {
-    try {
-      // 取得當前所有設定組合
-      const { generationSettingsGroups = {} } = await new Promise((resolve) => {
-        chrome.storage.sync.get(['generationSettingsGroups'], (result) => {
-          resolve(result);
-        });
-      });
-
-      // 準備要儲存的設定
-      const settingsToSave = {
-        // 模型設定直接存在 sync storage
-        models: {
-          generateModel: settings.generateModel !== undefined ? settings.generateModel : this.generateModel,
-          reflect1Model: settings.reflect1Model !== undefined ? settings.reflect1Model : this.reflect1Model,
-          generationOptimize_1_Model: settings.generationOptimize_1_Model !== undefined ? settings.generationOptimize_1_Model : this.generationOptimize_1_Model,
-          reflect2Model: settings.reflect2Model !== undefined ? settings.reflect2Model : this.reflect2Model,
-          generationOptimize_2_Model: settings.generationOptimize_2_Model !== undefined ? settings.generationOptimize_2_Model : this.generationOptimize_2_Model,
-          reflect3Model: settings.reflect3Model !== undefined ? settings.reflect3Model : this.reflect3Model,
-          generationOptimize_3_Model: settings.generationOptimize_3_Model !== undefined ? settings.generationOptimize_3_Model : this.generationOptimize_3_Model
-        }
-      };
-
-      // 更新 sync storage
-      generationSettingsGroups[name] = settingsToSave;
-      await new Promise((resolve) => {
-        chrome.storage.sync.set({
-          generationSettingsGroups,
-          currentGenerationSettings: name
-        }, resolve);
-      });
-
-      // 更新本地變數
-      this.generationSettingsGroups = generationSettingsGroups;
-      this.currentGenerationSettings = name;
-
-      // 儲存指令設定到 local storage
-      const instructionSettings = {
-        generateInstruction: settings.generateInstruction !== undefined ? settings.generateInstruction : this.generateInstruction,
-        reflect1Instruction: settings.reflect1Instruction !== undefined ? settings.reflect1Instruction : this.reflect1Instruction,
-        generationOptimize_1_Instruction: settings.generationOptimize_1_Instruction !== undefined ? settings.generationOptimize_1_Instruction : this.generationOptimize_1_Instruction,
-        reflect2Instruction: settings.reflect2Instruction !== undefined ? settings.reflect2Instruction : this.reflect2Instruction,
-        generationOptimize_2_Instruction: settings.generationOptimize_2_Instruction !== undefined ? settings.generationOptimize_2_Instruction : this.generationOptimize_2_Instruction,
-        reflect3Instruction: settings.reflect3Instruction !== undefined ? settings.reflect3Instruction : this.reflect3Instruction,
-        generationOptimize_3_Instruction: settings.generationOptimize_3_Instruction !== undefined ? settings.generationOptimize_3_Instruction : this.generationOptimize_3_Instruction,
-        backgroundKnowledge: settings.backgroundKnowledge !== undefined ? settings.backgroundKnowledge : this.backgroundKnowledge
-      };
-
-      // 使用設定組合名稱作為 key 儲存所有指令設定
-      await new Promise((resolve) => {
-        chrome.storage.local.set({
-          [`instructions_${name}`]: instructionSettings
-        }, resolve);
-      });
-
-      console.log('設定組合儲存完成');
-    } catch (error) {
-      console.error('儲存設定組合失敗:', error);
-      throw error;
+    if (!window.GenerationManager) {
+      throw new Error('GenerationManager 未載入，請檢查載入順序');
     }
+    return window.GenerationManager.saveGenerationSettingsGroup(name, settings);
   },
 
-  /**
-   * 載入生成設定組合
-   * @param {string} name - 設定組合名稱
-   */
+  // 委託給 GenerationManager 來載入生成設定組合
   async loadGenerationSettingsGroup(name) {
-    try {
-      if (!name) {
-        throw new Error('設定組合名稱為空');
-      }
-
-      // 從 sync storage 讀取設定
-      const { generationSettingsGroups = {} } = await new Promise((resolve) => {
-        chrome.storage.sync.get(['generationSettingsGroups'], (result) => {
-          resolve(result);
-        });
-      });
-
-      const syncSettings = generationSettingsGroups[name];
-      if (!syncSettings) {
-        throw new Error(`找不到設定組合: ${name}`);
-      }
-
-      // 從 local storage 讀取指令設定
-      const { [`instructions_${name}`]: instructionSettings = {} } = await new Promise((resolve) => {
-        chrome.storage.local.get([`instructions_${name}`], (result) => {
-          resolve(result);
-        });
-      });
-
-      // 更新模型設定
-      if (syncSettings.models) {
-        Object.entries(syncSettings.models).forEach(([key, value]) => {
-          // 只在值不是 undefined 時更新
-          if (value !== undefined) this[key] = value;
-        });
-      }
-
-      // 更新指令設定
-      Object.entries(instructionSettings).forEach(([key, value]) => {
-        // 只在值不是 undefined 時更新，允許空字串
-        if (value !== undefined) this[key] = value;
-      });
-
-      // 更新當前設定組合名稱
-      await this.saveSingleSetting('currentGenerationSettings', name);
-
-      console.log('設定更新完成');
-    } catch (error) {
-      console.error('載入設定組合失敗:', error);
-      throw error;
+    if (!window.GenerationManager) {
+      throw new Error('GenerationManager 未載入，請檢查載入順序');
     }
+    return window.GenerationManager.loadGenerationSettingsGroup(name);
   },
 
-  /**
-   * 刪除生成設定組合
-   * @param {string} name - 設定組合名稱
-   */
+  // 委託給 GenerationManager 來刪除生成設定組合
   async deleteGenerationSettingsGroup(name) {
-    try {
-      // 刪除本地儲存的指令設定
-      await new Promise((resolve) => {
-        chrome.storage.local.remove([`instructions_${name}`], resolve);
-      });
-
-      // 從 sync storage 中刪除設定組合
-      const { generationSettingsGroups = {} } = await new Promise((resolve) => {
-        chrome.storage.sync.get(['generationSettingsGroups'], (result) => {
-          resolve(result);
-        });
-      });
-
-      delete generationSettingsGroups[name];
-      
-      await new Promise((resolve) => {
-        chrome.storage.sync.set({ generationSettingsGroups }, resolve);
-      });
-
-      // 如果刪除的是當前使用的設定組合，清空當前設定
-      if (this.currentGenerationSettings === name) {
-        await this.saveSingleSetting('currentGenerationSettings', '');
-      }
-
-      // 更新本地變數
-      this.generationSettingsGroups = generationSettingsGroups;
-      
-      console.log('設定組合刪除完成');
-    } catch (error) {
-      console.error('刪除設定組合失敗:', error);
-      throw error;
+    if (!window.GenerationManager) {
+      throw new Error('GenerationManager 未載入，請檢查載入順序');
     }
+    return window.GenerationManager.deleteGenerationSettingsGroup(name);
   },
 
-  /**
-   * 獲取當前所有設定值
-   * @returns {object} 當前設定值
-   */
+  // 委託給 GenerationManager 來獲取當前生成設定
   getCurrentGenerationSettings() {
-    return {
-      generateModel: this.generateModel,
-      generateInstruction: this.generateInstruction,
-      reflect1Model: this.reflect1Model,
-      reflect1Instruction: this.reflect1Instruction,
-      generationOptimize_1_Model: this.generationOptimize_1_Model,
-      generationOptimize_1_Instruction: this.generationOptimize_1_Instruction,
-      reflect2Model: this.reflect2Model,
-      reflect2Instruction: this.reflect2Instruction,
-      generationOptimize_2_Model: this.generationOptimize_2_Model,
-      generationOptimize_2_Instruction: this.generationOptimize_2_Instruction,
-      reflect3Model: this.reflect3Model,
-      reflect3Instruction: this.reflect3Instruction,
-      generationOptimize_3_Model: this.generationOptimize_3_Model,
-      generationOptimize_3_Instruction: this.generationOptimize_3_Instruction,
-      backgroundKnowledge: this.backgroundKnowledge
-    };
+    if (!window.GenerationManager) {
+      throw new Error('GenerationManager 未載入，請檢查載入順序');
+    }
+    return window.GenerationManager.getCurrentGenerationSettings();
   },
 
   // 定義需要使用 local storage 的大型文字設定
@@ -713,8 +356,8 @@ const GlobalSettings = {
   // 檢查是否為需要使用 local storage 的設定（使用新的 KeyClassifier，保持向後兼容）
   isLocalStorageKey(key) {
     // 使用新的統一分類器
-    if (typeof KeyClassifier !== 'undefined') {
-      return KeyClassifier.getStorageType(key) === 'local';
+    if (typeof window.KeyClassifier !== 'undefined' && window.KeyClassifier) {
+      return window.KeyClassifier.getStorageType(key) === 'local';
     }
     
     // 舊版本的後備邏輯（向後兼容）
@@ -749,60 +392,12 @@ const GlobalSettings = {
     );
   },
 
-  // 分類設定到不同的儲存類型
+  // 委託給 SettingsClassifier 處理設定分類
   _categorizeSettings(settings) {
-    const syncSettings = {};
-    const localSettings = {};
-    const replaceSettings = {};
-
-    Object.entries(settings).forEach(([key, value]) => {
-      // 跳過分塊資料
-      if (key.includes('_chunk_') || key.includes('_chunks')) {
-        console.log('跳過分塊資料:', key);
-        return;
-      }
-      
-      // 檢查是否為替換規則
-      if (key.startsWith('replace_') || key === 'autoReplaceRules' || key === 'manualReplaceRules') {
-        // 確保替換規則有統一的前綴 replace_
-        const formattedKey = key.startsWith('replace_') ? key : `replace_${key}`;
-        
-        // 檢查替換規則的格式並處理
-        if (Array.isArray(value)) {
-          // 過濾無效的替換規則項
-          const filteredValue = value.filter(item => {
-            if (!item || typeof item !== 'object') return false;
-            
-            // 處理自動替換規則（有 enabled 屬性）
-            if ('enabled' in item) {
-              // 啟用的規則必須有效，未啟用的規則可以保留
-              if (item.enabled) {
-                return item.from?.trim() || item.to?.trim();
-              }
-              return true; // 保留未啟用的規則
-            }
-            
-            // 處理手動替換規則
-            return item.from?.trim() || item.to?.trim();
-          });
-          
-          replaceSettings[formattedKey] = filteredValue;
-        } else {
-          // 如果不是陣列，保持原值
-          replaceSettings[formattedKey] = value;
-        }
-      }
-      // 檢查是否為需要使用 local storage 的大型文字
-      else if (this.isLocalStorageKey(key)) {
-        localSettings[key] = value;
-      }
-      // 其他設定使用 sync storage
-      else {
-        syncSettings[key] = value;
-      }
-    });
-
-    return { replaceSettings, localSettings, syncSettings };
+    if (!window.SettingsClassifier) {
+      throw new Error('SettingsClassifier 未載入，請檢查載入順序');
+    }
+    return window.SettingsClassifier.categorizeSettings(settings, this);
   },
 
   // 過濾有效的設定
@@ -814,684 +409,133 @@ const GlobalSettings = {
     );
   },
 
-  // 清理殭屍項目
+  // 委託給 SettingsCleanup 處理殭屍設定清理
   async cleanupZombieSettings() {
-    try {
-      console.log('開始清理殭屍項目...');
-      
-      // 定義所有殭屍項目
-      const zombieKeys = [
-        // 完全過時的功能
-        'backgroundKnowledgeGroups',
-        'instructionGroups',
-        'cleaningRules',
-        'scraperConfigs', 
-        'siteConfigs',
-        // 未使用的歷史項目
-        'chatHistory',
-        'defaultInstructions',
-        'allInstructions', 
-        'recentInstructions',
-        'defaultBackground',
-        'allBackgrounds',
-        'recentBackgrounds',
-        'customInstructionGroups',
-        // 代碼變數名（非設定項目）
-        'currentRetries',
-        'extraManualGroups',
-        'manualGroups',
-        'replaceGroups',
-        // 🆕 測試垃圾鍵值
-        'testSetting', 'testKey', 'syncSignal', 'syncTrigger', 
-        'deviceId', 'testData', 'debugInfo', 'uiUpdateTrigger',
-        'deviceUniqueId',           // 設備唯一ID（測試時產生的無效鍵值）
-        'lastProcessedSignalId',     // 最後處理的訊號ID（測試時產生的無效鍵值）
-        'crawlerEnabled'            // 無效的爬蟲鍵值（應使用 crawlerAutoEnabled）
-      ];
-      
-      // 從 sync storage 清理
-      await new Promise((resolve) => {
-        chrome.storage.sync.remove(zombieKeys, () => {
-          console.log('已從 sync storage 清理殭屍項目');
-          resolve();
-        });
-      });
-      
-      // 從 local storage 清理
-      await new Promise((resolve) => {
-        chrome.storage.local.remove(zombieKeys, () => {
-          console.log('已從 local storage 清理殭屍項目');
-          resolve();
-        });
-      });
-      
-      console.log('殭屍項目清理完成');
-      return true;
-    } catch (error) {
-      console.error('清理殭屍項目失敗:', error);
-      return false;
+    if (!window.SettingsCleanup) {
+      throw new Error('SettingsCleanup 未載入，請檢查載入順序');
     }
+    return window.SettingsCleanup.cleanupZombieSettings();
   },
 
-  // 取得所有設定
+  // 委託給 SettingsExporter 處理設定匯出
   async getAllSettings() {
-    try {
-      const [syncData, localData] = await Promise.all([
-        this._getChromeStorage('sync'),
-        this._getChromeStorage('local')
-      ]);
-      
-      // 使用新的統一分類器來過濾匯出設定
-      if (typeof KeyClassifier !== 'undefined') {
-        // 從 localData 和 syncData 中移除不應該匯出的項目
-        Object.keys(localData).forEach(key => {
-          if (KeyClassifier.shouldExclude(key, 'export')) {
-            delete localData[key];
-          }
-        });
-        Object.keys(syncData).forEach(key => {
-          if (KeyClassifier.shouldExclude(key, 'export')) {
-            delete syncData[key];
-          }
-        });
-      } else {
-        // 舊版本的後備邏輯（向後兼容）
-        const internalStateKeys = [
-          'syncStatus', 'syncError', 'syncDebugLogs', 'stockCrawlerState',
-          'lastSyncTime', 'driveFileId'
-        ];
-        
-        internalStateKeys.forEach(key => {
-          if (key in localData) {
-            delete localData[key];
-          }
-          if (key in syncData) {
-            delete syncData[key];
-          }
-        });
-      }
-      
-      // 保留替換規則的原始格式（使用 replace_ 前綴）
-      // 不做任何轉換，避免與同步系統的過濾邏輯衝突
-      
-      // 確保重要的設定被包含
-      const importantSettings = {};
-      
-      // 高亮功能設定
-      if (syncData.highlightWords !== undefined) {
-        importantSettings.highlightWords = syncData.highlightWords;
-      }
-      if (syncData.highlightColors !== undefined) {
-        importantSettings.highlightColors = syncData.highlightColors;
-      }
-      
-      // UI 狀態設定
-      if (syncData.lastMainTab !== undefined) {
-        importantSettings.lastMainTab = syncData.lastMainTab;
-      }
-      if (syncData.lastSubTab !== undefined) {
-        importantSettings.lastSubTab = syncData.lastSubTab;
-      }
-      
-      // 自定義模型設定
-      if (syncData.customModels !== undefined) {
-        importantSettings.customModels = syncData.customModels;
-      }
-      
-      // 合併所有資料，但確保關鍵設定不被 local storage 覆蓋
-      const allData = { 
-        ...syncData, 
-        ...localData,
-        ...importantSettings
-      };
-      
-      // 優先使用 sync storage 的關鍵設定（排除時間戳，避免時間戳混亂）
-      const syncPriorityKeys = ['apiKeys', 'autoSyncEnabled'];
-      
-      syncPriorityKeys.forEach(key => {
-        if (syncData[key] !== undefined) {
-          const beforeValue = allData[key];
-          allData[key] = syncData[key];
-          
-          // 如果值被覆蓋了，記錄日誌
-          if (beforeValue !== undefined && beforeValue !== syncData[key]) {
-            console.log(`[Settings] 🔄 ${key} 優先使用 sync storage 值: ${beforeValue} -> ${syncData[key]}`);
-          }
-        }
-      });
-      
-      return this._filterValidSettings(allData);
-    } catch (error) {
-      console.error('讀取設定失敗:', error);
-      throw error;
+    if (!window.SettingsExporter) {
+      throw new Error('SettingsExporter 未載入，請檢查載入順序');
     }
+    return window.SettingsExporter.getAllSettings(this);
   },
 
-  // 套用設定
+  // 委託給 SettingsImporter 處理設定匯入
   async applySettings(settings) {
-    try {
-      console.group('儲存匯入的設定');
-      
-      if (!settings || Object.keys(settings).length === 0) {
-        throw new Error('無效的設定資料');
-      }
-
-      // 向後兼容性處理：遷移舊版本的 API 金鑰格式
-      if (settings.apiKeys) {
-        console.log('檢查並遷移舊版本的 API 金鑰格式...');
-        
-        // 如果存在舊的 gemini-2.0-flash-exp 金鑰，遷移到新的 gemini 格式
-        if (settings.apiKeys['gemini-2.0-flash-exp'] && !settings.apiKeys['gemini']) {
-          console.log('發現舊版本 Gemini API 金鑰，正在遷移...');
-          settings.apiKeys['gemini'] = settings.apiKeys['gemini-2.0-flash-exp'];
-          delete settings.apiKeys['gemini-2.0-flash-exp'];
-          console.log('Gemini API 金鑰遷移完成');
-        }
-        
-        // 清理其他可能的舊版本硬編碼金鑰
-        const oldKeys = Object.keys(settings.apiKeys).filter(key => 
-          key.includes('2.0-flash-exp') || key.includes('1.5-pro') || 
-          key.includes('-1.5-') || key.includes('-2.0-') || key.includes('-latest')
-        );
-        
-        if (oldKeys.length > 0) {
-          console.log('清理舊版本硬編碼金鑰:', oldKeys);
-          oldKeys.forEach(oldKey => {
-            // 只有當沒有通用金鑰時，才將舊金鑰值遷移到通用金鑰
-            if (oldKey.startsWith('gemini') && !settings.apiKeys['gemini'] && settings.apiKeys[oldKey]) {
-              settings.apiKeys['gemini'] = settings.apiKeys[oldKey];
-              console.log(`將 ${oldKey} 的值遷移到 gemini`);
-            }
-            delete settings.apiKeys[oldKey];
-          });
-        }
-        
-        // 最後清理空值或無效值
-        Object.keys(settings.apiKeys).forEach(key => {
-          const value = settings.apiKeys[key];
-          if (!value || value === '' || value === 'undefined' || value === 'null' || 
-              (typeof value === 'string' && (value === '已設置' || value === '未設置'))) {
-            console.log(`清理無效金鑰: ${key}`);
-            delete settings.apiKeys[key];
-          }
-        });
-      }
-
-      // 先清空所有儲存空間
-      console.log('清空所有儲存空間...');
-      await Promise.all([
-        new Promise((resolve) => chrome.storage.sync.clear(resolve)),
-        new Promise((resolve) => chrome.storage.local.clear(resolve))
-      ]);
-      console.log('儲存空間已清空');
-
-      // 分類設定
-      const { replaceSettings, localSettings, syncSettings } = this._categorizeSettings(settings);
-      
-      console.log('分類後的設定：');
-      console.log('- sync 設定:', Object.keys(syncSettings));
-      console.log('- local 設定:', Object.keys(localSettings));
-      console.log('- 替換規則:', Object.keys(replaceSettings));
-
-      // 檢查 sync settings 的大小
-      const syncSettingsSize = new TextEncoder().encode(JSON.stringify(syncSettings)).length;
-      console.log('sync settings 大小:', syncSettingsSize, 'bytes');
-      if (syncSettingsSize > 100000) {
-        throw new Error('同步設定總大小超過限制 (100KB)');
-      }
-
-      // 移除舊的替換規則
-      if (Object.keys(replaceSettings).length > 0) {
-        console.log('移除舊的替換規則...');
-        await chrome.storage.local.remove(Object.keys(replaceSettings));
-      }
-
-      // 儲存設定
-      console.log('開始儲存設定...');
-      await Promise.all([
-        Object.keys(syncSettings).length > 0 ? this._setChromeStorage(syncSettings, 'sync') : Promise.resolve(),
-        Object.keys(localSettings).length > 0 ? this._setChromeStorage(localSettings, 'local') : Promise.resolve(),
-        Object.keys(replaceSettings).length > 0 ? this._setChromeStorage(replaceSettings, 'local') : Promise.resolve()
-      ]);
-
-      // 特別處理自定義模型的還原
-      if (settings.customModels) {
-        console.log('還原自定義模型...');
-        this.customModels = settings.customModels;
-        
-        // 將自定義模型重新載入到 API.models 中
-        Object.entries(this.customModels).forEach(([key, model]) => {
-          this.API.models[key] = model.displayName;
-          console.log(`已還原自定義模型: ${key} -> ${model.displayName}`);
-        });
-        
-        console.log(`共還原 ${Object.keys(this.customModels).length} 個自定義模型`);
-      }
-
-      console.log('設定儲存完成');
-      console.groupEnd();
-    } catch (error) {
-      console.error('儲存設定時出錯:', error);
-      console.groupEnd();
-      throw error;
+    if (!window.SettingsImporter) {
+      throw new Error('SettingsImporter 未載入，請檢查載入順序');
     }
+    return window.SettingsImporter.applySettings(settings, this);
   },
 
-  // 非阻塞式套用設定（防止 popup 卡死）
+  // 委託給 SettingsImporter 處理非阻塞式設定匯入
   async applySettingsNonBlocking(settings, progressCallback) {
-    try {
-      console.group('非阻塞式儲存匯入的設定');
-      
-      if (!settings || Object.keys(settings).length === 0) {
-        throw new Error('無效的設定資料');
-      }
-
-      // 進度回調
-      const updateProgress = (message) => {
-        if (progressCallback) progressCallback(message);
-      };
-
-      updateProgress('正在處理 API 金鑰...');
-      
-      // 向後兼容性處理：遷移舊版本的 API 金鑰格式
-      if (settings.apiKeys) {
-        console.log('檢查並遷移舊版本的 API 金鑰格式...');
-        
-        // 如果存在舊的 gemini-2.0-flash-exp 金鑰，遷移到新的 gemini 格式
-        if (settings.apiKeys['gemini-2.0-flash-exp'] && !settings.apiKeys['gemini']) {
-          console.log('發現舊版本 Gemini API 金鑰，正在遷移...');
-          settings.apiKeys['gemini'] = settings.apiKeys['gemini-2.0-flash-exp'];
-          delete settings.apiKeys['gemini-2.0-flash-exp'];
-          console.log('Gemini API 金鑰遷移完成');
-        }
-        
-        // 清理其他可能的舊版本硬編碼金鑰
-        const oldKeys = Object.keys(settings.apiKeys).filter(key => 
-          key.includes('2.0-flash-exp') || key.includes('1.5-pro') || 
-          key.includes('-1.5-') || key.includes('-2.0-') || key.includes('-latest')
-        );
-        
-        if (oldKeys.length > 0) {
-          console.log('清理舊版本硬編碼金鑰:', oldKeys);
-          oldKeys.forEach(oldKey => {
-            // 只有當沒有通用金鑰時，才將舊金鑰值遷移到通用金鑰
-            if (oldKey.startsWith('gemini') && !settings.apiKeys['gemini'] && settings.apiKeys[oldKey]) {
-              settings.apiKeys['gemini'] = settings.apiKeys[oldKey];
-              console.log(`將 ${oldKey} 的值遷移到 gemini`);
-            }
-            delete settings.apiKeys[oldKey];
-          });
-        }
-        
-        // 最後清理空值或無效值
-        Object.keys(settings.apiKeys).forEach(key => {
-          const value = settings.apiKeys[key];
-          if (!value || value === '' || value === 'undefined' || value === 'null' || 
-              (typeof value === 'string' && (value === '已設置' || value === '未設置'))) {
-            console.log(`清理無效金鑰: ${key}`);
-            delete settings.apiKeys[key];
-          }
-        });
-      }
-
-      // 讓出控制權
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      updateProgress('正在清空舊設定...');
-
-      // 非阻塞式清空儲存空間
-      console.log('清空同步儲存空間...');
-      await new Promise((resolve) => chrome.storage.sync.clear(resolve));
-      
-      // 讓出控制權
-      await new Promise(resolve => setTimeout(resolve, 50));
-      
-      console.log('清空本地儲存空間...');
-      await new Promise((resolve) => chrome.storage.local.clear(resolve));
-      
-      // 讓出控制權
-      await new Promise(resolve => setTimeout(resolve, 50));
-      
-      console.log('儲存空間已清空');
-
-      updateProgress('正在分類設定資料...');
-
-      // 分類設定
-      const { replaceSettings, localSettings, syncSettings } = this._categorizeSettings(settings);
-      
-      console.log('分類後的設定：');
-      console.log('- sync 設定:', Object.keys(syncSettings));
-      console.log('- local 設定:', Object.keys(localSettings));
-      console.log('- 替換規則:', Object.keys(replaceSettings));
-
-      // 檢查 sync settings 的大小
-      const syncSettingsSize = new TextEncoder().encode(JSON.stringify(syncSettings)).length;
-      console.log('sync settings 大小:', syncSettingsSize, 'bytes');
-      if (syncSettingsSize > 100000) {
-        throw new Error('同步設定總大小超過限制 (100KB)');
-      }
-
-      // 讓出控制權
-      await new Promise(resolve => setTimeout(resolve, 50));
-
-      updateProgress('正在儲存同步設定...');
-
-      // 分批儲存設定
-      if (Object.keys(syncSettings).length > 0) {
-        console.log('開始儲存同步設定...');
-        await this._setChromeStorage(syncSettings, 'sync');
-        // 讓出控制權
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      updateProgress('正在儲存本地設定...');
-
-      if (Object.keys(localSettings).length > 0) {
-        console.log('開始儲存本地設定...');
-        await this._setChromeStorageInBatches(localSettings, 'local', updateProgress);
-        // 讓出控制權
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      updateProgress('正在儲存替換規則...');
-
-      if (Object.keys(replaceSettings).length > 0) {
-        console.log('開始儲存替換規則...');
-        await this._setChromeStorageInBatches(replaceSettings, 'local', updateProgress);
-        // 讓出控制權
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      updateProgress('正在還原自定義模型...');
-
-      // 特別處理自定義模型的還原
-      if (settings.customModels) {
-        console.log('還原自定義模型...');
-        this.customModels = settings.customModels;
-        
-        // 將自定義模型重新載入到 API.models 中
-        Object.entries(this.customModels).forEach(([key, model]) => {
-          this.API.models[key] = model.displayName;
-          console.log(`已還原自定義模型: ${key} -> ${model.displayName}`);
-        });
-        
-        console.log(`共還原 ${Object.keys(this.customModels).length} 個自定義模型`);
-        
-        // 讓出控制權
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
-
-      updateProgress('設定匯入完成');
-
-      console.log('設定儲存完成');
-      console.groupEnd();
-    } catch (error) {
-      console.error('儲存設定時出錯:', error);
-      console.groupEnd();
-      throw error;
+    if (!window.SettingsImporter) {
+      throw new Error('SettingsImporter 未載入，請檢查載入順序');
     }
+    return window.SettingsImporter.applySettingsNonBlocking(settings, this, progressCallback);
   },
 
-  // 分批儲存到 Chrome storage，避免阻塞
+  // 委託給 StorageManager 進行分批儲存
   async _setChromeStorageInBatches(data, type = 'local', progressCallback, batchSize = 5) {
-    const entries = Object.entries(data);
-    const totalBatches = Math.ceil(entries.length / batchSize);
-    
-    for (let i = 0; i < entries.length; i += batchSize) {
-      const batchNumber = Math.floor(i / batchSize) + 1;
-      const batch = Object.fromEntries(entries.slice(i, i + batchSize));
-      
-      if (progressCallback) {
-        progressCallback(`儲存批次 ${batchNumber}/${totalBatches}...`);
-      }
-      
-      await this._setChromeStorage(batch, type);
-      
-      // 每批次之間讓出控制權
-      if (i + batchSize < entries.length) {
-        await new Promise(resolve => setTimeout(resolve, 50));
-      }
+    if (!window.StorageManager) {
+      throw new Error('StorageManager 未載入，請檢查載入順序');
     }
+    return window.StorageManager.setChromeStorageInBatches(data, type, progressCallback, batchSize);
   },
 
-  // Chrome storage 操作的包裝方法，處理 Promise 化
+  // 委託給 StorageManager 處理 Chrome storage 操作
   _getChromeStorage(type = 'sync') {
-    return new Promise((resolve, reject) => {
-      try {
-        chrome.storage[type].get(null, (result) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve(result);
-          }
-        });
-      } catch (error) {
-        reject(error);
-      }
-    });
+    if (!window.StorageManager) {
+      throw new Error('StorageManager 未載入，請檢查載入順序');
+    }
+    return window.StorageManager.getAllStorageData(type);
   },
 
-  // 儲存資料到 Chrome storage，支援前綴功能
+  // 委託給 StorageManager 儲存資料到 Chrome storage
   _setChromeStorage(data, type = 'sync', prefix = '') {
-    return new Promise((resolve, reject) => {
-      const storage = type === 'local' ? chrome.storage.local : chrome.storage.sync;
+    if (!window.StorageManager) {
+      throw new Error('StorageManager 未載入，請檢查載入順序');
+    }
       
-      // 如果有前綴，則為每個 key 添加前綴
+    // 如果有前綴，先處理前綴
       const prefixedData = prefix ? 
         Object.fromEntries(Object.entries(data).map(([key, value]) => [`${prefix}${key}`, value])) :
         data;
       
-      // 計算資料大小
-      const dataSize = new TextEncoder().encode(JSON.stringify(prefixedData)).length;
-      console.log(`嘗試儲存到 ${type} storage，資料大小: ${dataSize} bytes`);
-      
-      storage.set(prefixedData, () => {
-        if (chrome.runtime.lastError) {
-          const errorMessage = chrome.runtime.lastError.message;
-          console.error(`儲存資料到 ${type} storage 時發生錯誤:`, chrome.runtime.lastError);
-          
-          // 提供更詳細的錯誤信息
-          if (errorMessage.includes('QUOTA_BYTES_PER_ITEM')) {
-            reject(new Error(`單一項目大小超過限制 (${type === 'sync' ? '8KB' : '10MB'})。資料大小: ${dataSize} bytes`));
-          } else if (errorMessage.includes('QUOTA_BYTES')) {
-            reject(new Error(`總儲存空間超過限制 (${type === 'sync' ? '100KB' : '10MB'})。當前資料大小: ${dataSize} bytes`));
-          } else {
-            reject(new Error(`儲存到 ${type} storage 失敗: ${errorMessage}`));
-          }
-        } else {
-          console.log(`成功儲存資料到 ${type} storage，大小: ${dataSize} bytes`);
-          resolve();
-        }
-      });
-    });
+    return window.StorageManager.setChromeStorage(prefixedData, type, prefix);
   },
 
-  // 自定義模型管理
+  // 委託給 ModelManager 處理自定義模型管理
   async addCustomModel(modelName, displayName, apiType) {
-    try {
-      if (!modelName || !displayName || !apiType) {
-        throw new Error('模型名稱、顯示名稱和API類型都是必填的');
-      }
-
-      // 檢查是否已存在
-      if (this.customModels[modelName]) {
-        throw new Error('模型名稱已存在');
-      }
-
-      // 新增自定義模型
-      this.customModels[modelName] = {
-        displayName: displayName,
-        apiType: apiType,
-        isCustom: true
-      };
-
-      // 也將模型新增到 API.models 中
-      this.API.models[modelName] = displayName;
-
-      // 儲存到 storage
-      await this.saveSingleSetting('customModels', this.customModels);
-      
-      console.log(`成功新增自定義模型: ${modelName}`);
-      return true;
-    } catch (error) {
-      console.error('新增自定義模型失敗:', error);
-      throw error;
+    if (!window.ModelManager) {
+      throw new Error('ModelManager 未載入，請檢查載入順序');
     }
+    return window.ModelManager.addCustomModel(modelName, displayName, apiType);
   },
 
   async removeCustomModel(modelName) {
-    try {
-      if (!this.customModels[modelName]) {
-        throw new Error('找不到指定的自定義模型');
-      }
-
-      // 從自定義模型列表中移除
-      delete this.customModels[modelName];
-      
-      // 從 API.models 中移除
-      delete this.API.models[modelName];
-
-      // 注意：不要刪除 API 金鑰，因為自定義模型使用對應服務提供商的金鑰
-      // 例如自定義的 Gemini 模型使用 'gemini' API 金鑰
-      // 例如自定義的 OpenAI 模型使用 'openai' 的金鑰
-
-      // 儲存更新後的自定義模型列表
-      await this.saveSingleSetting('customModels', this.customModels);
-      
-      console.log(`成功移除自定義模型: ${modelName}`);
-      return true;
-    } catch (error) {
-      console.error('移除自定義模型失敗:', error);
-      throw error;
+    if (!window.ModelManager) {
+      throw new Error('ModelManager 未載入，請檢查載入順序');
     }
+    return window.ModelManager.removeCustomModel(modelName);
   },
 
   getCustomModels() {
-    return this.customModels;
+    if (!window.ModelManager) {
+      throw new Error('ModelManager 未載入，請檢查載入順序');
+    }
+    return window.ModelManager.getCustomModels();
   },
 
   getAllAvailableModels() {
-    // 合併內建模型和自定義模型
-    const allModels = { ...this.API.models };
-    
-    // 確保自定義模型也包含在內
-    Object.entries(this.customModels).forEach(([key, model]) => {
-      allModels[key] = model.displayName;
-    });
-    
-    return allModels;
+    if (!window.ModelManager) {
+      throw new Error('ModelManager 未載入，請檢查載入順序');
+    }
+    return window.ModelManager.getAllAvailableModels();
   },
 
   isCustomModel(modelName) {
-    return this.customModels[modelName] && this.customModels[modelName].isCustom;
+    if (!window.ModelManager) {
+      throw new Error('ModelManager 未載入，請檢查載入順序');
+    }
+    return window.ModelManager.isCustomModel(modelName);
   },
 
   getModelApiType(modelName) {
-    // 檢查是否為自定義模型
-    if (this.customModels[modelName]) {
-      return this.customModels[modelName].apiType;
+    if (!window.ModelManager) {
+      throw new Error('ModelManager 未載入，請檢查載入順序');
     }
-    
-    // 內建模型的 API 類型判斷
-    if (modelName.startsWith('gemini')) {
-      return 'gemini';
-    } else if (modelName.startsWith('gpt') || modelName === 'openai') {
-      return 'openai';
-    } else if (modelName === 'google-translate') {
-      return 'google-translate';
-    }
-    
-    return 'unknown';
+    return window.ModelManager.getModelApiType(modelName);
   },
 
-  // 新增：獲取模型對應的 API 金鑰名稱
+  // 委託給 ModelManager 獲取模型對應的 API 金鑰名稱
   getApiKeyNameForModel(modelName) {
-    console.log('[getApiKeyNameForModel] 開始處理模型:', modelName);
-    const apiType = this.getModelApiType(modelName);
-    console.log('[getApiKeyNameForModel] 模型 API 類型:', apiType);
-    console.log('[getApiKeyNameForModel] 當前可用的 API 金鑰:', Object.keys(this.apiKeys));
-    
-    switch (apiType) {
-      case 'gemini':
-        // 對於 Gemini 模型，查找可用的 Gemini API 金鑰
-        const geminiKeys = Object.keys(this.apiKeys).filter(key => 
-          key === 'gemini' && this.apiKeys[key]  // 只查找 'gemini' 金鑰
-        );
-        console.log('[getApiKeyNameForModel] 找到的 Gemini 金鑰:', geminiKeys);
-        if (geminiKeys.length > 0) {
-          console.log('[getApiKeyNameForModel] 使用 Gemini 金鑰:', geminiKeys[0]);
-          return geminiKeys[0];
-        }
-        console.log('[getApiKeyNameForModel] 未找到可用的 Gemini 金鑰');
-        return null;
-        
-      case 'openai':
-        console.log('[getApiKeyNameForModel] 檢查 OpenAI 金鑰');
-        if (this.apiKeys['openai'] && this.apiKeys['openai'].trim()) {
-          console.log('[getApiKeyNameForModel] 找到 OpenAI 金鑰');
-          return 'openai';
-        } else {
-          console.log('[getApiKeyNameForModel] 未找到可用的 OpenAI 金鑰');
-          console.log('[getApiKeyNameForModel] 當前 OpenAI 金鑰值:', this.apiKeys['openai'] || 'undefined');
-          return null;
-        }
-        
-      case 'google-translate':
-        console.log('[getApiKeyNameForModel] 使用 Google Translate 金鑰');
-        return 'google-translate';
-        
-      default:
-        console.error('[getApiKeyNameForModel] 未知 API 類型:', apiType, '模型:', modelName);
-        return null;
+    if (!window.ModelManager) {
+      throw new Error('ModelManager 未載入，請檢查載入順序');
     }
+    return window.ModelManager.getApiKeyNameForModel(modelName);
   },
 
-  // 新增：獲取模型的顯示名稱
+  // 委託給 ModelManager 獲取模型的顯示名稱
   getModelDisplayName(modelName) {
-    console.log('[getModelDisplayName] 開始處理模型名稱:', modelName);
-    
-    if (!modelName) {
-      console.log('[getModelDisplayName] 模型名稱為空，返回未知模型');
-      return '未知模型';
+    if (!window.ModelManager) {
+      throw new Error('ModelManager 未載入，請檢查載入順序');
     }
-    
-    // 優先檢查 API.models 中是否有對應的顯示名稱
-    if (this.API.models[modelName]) {
-      console.log('[getModelDisplayName] 找到 API 模型:', this.API.models[modelName]);
-      return this.API.models[modelName];
-    }
-    
-    // 檢查是否為自定義模型
-    if (this.customModels[modelName]) {
-      console.log('[getModelDisplayName] 找到自定義模型:', this.customModels[modelName].displayName);
-      return this.customModels[modelName].displayName;
-    }
-    
-    // 如果都沒有，直接返回模型名稱
-    console.log('[getModelDisplayName] 沒有找到顯示名稱，返回原始模型名稱:', modelName);
-    console.log('[getModelDisplayName] 當前自定義模型列表:', Object.keys(this.customModels));
-    console.log('[getModelDisplayName] 當前 API 模型列表:', Object.keys(this.API.models));
-    return modelName;
+    return window.ModelManager.getModelDisplayName(modelName);
   },
 
-  // 新增：獲取預設模型，如果沒有則返回第一個可用模型
+  // 委託給 ModelManager 獲取預設模型
   getDefaultModel() {
-    // 如果有設定模型，優先使用
-    if (this.model && (this.customModels[this.model] || this.API.models[this.model])) {
-      return this.model;
+    if (!window.ModelManager) {
+      throw new Error('ModelManager 未載入，請檢查載入順序');
     }
-    
-    // 獲取所有可用模型
-    const allModels = this.getAllAvailableModels();
-    const modelKeys = Object.keys(allModels);
-    
-    // 如果沒有可用模型，返回 null
-    if (modelKeys.length === 0) {
-      return null;
-    }
-    
-    // 返回第一個可用模型
-    return modelKeys[0];
+    return window.ModelManager.getDefaultModel();
   },
 
   // 取得適當環境的全域 DefaultSettings

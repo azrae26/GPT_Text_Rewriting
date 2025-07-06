@@ -438,10 +438,61 @@ const TextHighlight = {
         this.baseLineHeight = parseFloat(styles.lineHeight);
       }
 
-      // 更新內容
+      // 強制更新內容並驗證同步
+      let needsUpdate = false;
+      
       if (this.cache.lastText !== text) {
+        needsUpdate = true;
+      } else {
+        // 即使 lastText 相同，也要驗證 DOM 節點的實際內容
+        const actualText = this.cache.div.textContent || '';
+        if (actualText !== text) {
+          needsUpdate = true;
+        }
+      }
+      
+      if (needsUpdate) {
+        console.log(`[${new Date().toISOString()}] 強制更新緩存文本: ${this.cache.lastText?.length || 0} → ${text.length}`);
+        
+        // 強制清空並重新設置，確保同步
+        this.cache.div.textContent = '';
+        // 強制 DOM 同步
+        this.cache.div.offsetHeight; // 觸發重排
         this.cache.div.textContent = text;
+        
+        // 立即驗證更新結果
+        const verifyText = this.cache.div.textContent || '';
+        if (verifyText.length !== text.length) {
+          console.error(`[${new Date().toISOString()}] DOM文本更新失敗: expected=${text.length}, actual=${verifyText.length}`);
+          // 重新創建 div 作為最後手段
+          this.cache.div.remove();
+          this.cache.div = document.createElement('div');
+          this.cache.div.style.cssText = `
+            position: absolute;
+            visibility: hidden;
+            white-space: pre-wrap;
+            width: ${textArea.offsetWidth}px;
+            font: ${styles.font};
+            line-height: ${styles.lineHeight}px;
+            padding: ${styles.paddingTop}px ${styles.paddingLeft}px;
+            border: ${styles.border}px solid transparent;
+            box-sizing: border-box;
+            margin: 0;
+            overflow: hidden;
+            background: none;
+            pointer-events: none;
+            top: 0;
+            left: 0;
+            transform: none;
+            max-height: ${textArea.offsetHeight}px;
+            height: ${textArea.offsetHeight}px;
+          `;
+          textArea.parentElement.appendChild(this.cache.div);
+          this.cache.div.textContent = text;
+        }
+        
         this.cache.lastText = text;
+        this.cache.positions.clear();
       }
 
       try {
@@ -449,8 +500,22 @@ const TextHighlight = {
         const textNode = this.cache.div.firstChild;
         if (!textNode) return null;
 
+        // 邊界檢查：確保索引不超過文本節點的長度
+        const nodeLength = textNode.textContent ? textNode.textContent.length : 0;
+        if (index < 0 || index >= nodeLength) {
+          console.warn(`[${new Date().toISOString()}] 計算位置時索引超出範圍: index=${index}, nodeLength=${nodeLength}, text.length=${text.length}`);
+          return null;
+        }
+        
+        // 檢查結束位置
+        const endIndex = index + matchedText.length;
+        if (endIndex > nodeLength) {
+          console.warn(`[${new Date().toISOString()}] 計算位置時結束索引超出範圍: endIndex=${endIndex}, nodeLength=${nodeLength}`);
+          return null;
+        }
+
         range.setStart(textNode, index);
-        range.setEnd(textNode, index + matchedText.length);
+        range.setEnd(textNode, endIndex);
 
         const rects = range.getClientRects();
         if (rects.length === 0) return null;
