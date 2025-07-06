@@ -674,9 +674,9 @@ window.StockMatcher = {
         this._updateStockButtons(codes, matchedStocks, elements, shouldTriggerAICheck);
       };
 
-      // 監聽文本區域變化
+      // 監聽文本區域變化（不觸發AI檢查）
       elements.textarea.addEventListener('input', () => {
-        requestAnimationFrame(() => updateUI('textarea'));
+        requestAnimationFrame(() => updateUI('textarea', false));
       });
 
       // 監聽股票代號輸入框變化

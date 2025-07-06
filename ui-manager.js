@@ -363,16 +363,6 @@ const UIManager = {
     }
   },
 
-  /** 解析股票清單文字為股票物件陣列 - 已移至 StockMatcher 模組 */
-  _parseStockList(stockListText) {
-    // 注意：此方法已移至 stock_matcher/stock-matcher.js 模組
-    // 為保持向後兼容，這裡委派給 StockMatcher
-    if (window.StockMatcher && window.StockMatcher._parseStockList) {
-      return window.StockMatcher._parseStockList(stockListText);
-    }
-    return [];
-  },
-
   /** 初始化股票代碼功能 - 委派給 StockMatcher 模組 */
   initializeStockCodeFeature(isFromSettingsUpdate = false) {
     // 注意：此方法已移至 stock_matcher/stock-matcher.js 模組
@@ -384,34 +374,11 @@ const UIManager = {
     }
   },
 
-  /** 獲取或創建按鈕容器 - 已移至 StockMatcher 模組 */
-  _getOrCreateContainer() {
-    // 注意：此方法已移至 stock_matcher/stock-matcher.js 模組
-    // 為保持向後兼容，這裡委派給 StockMatcher
-    if (window.StockMatcher && window.StockMatcher._getOrCreateContainer) {
-      return window.StockMatcher._getOrCreateContainer();
-    }
-    return null;
-  },
 
-  /** 從文本中提取股票代碼和名稱 - 已移至 StockMatcher 模組 */
-  _getStockCodes(text, inputCode = '') {
-    // 注意：此方法已移至 stock_matcher/stock-matcher.js 模組
-    // 為保持向後兼容，這裡委派給 StockMatcher
-    if (window.StockMatcher && window.StockMatcher._getStockCodes) {
-      return window.StockMatcher._getStockCodes(text, inputCode);
-    }
-    return { codes: [], matchedStocks: new Map(), stockCounts: new Map() };
-  },
 
-  /** 更新股票代碼按鈕 - 已移至 StockMatcher 模組 */
-  _updateStockButtons(codes, matchedStocks, elements) {
-    // 注意：此方法已移至 stock_matcher/stock-matcher.js 模組
-    // 為保持向後兼容，這裡委派給 StockMatcher
-    if (window.StockMatcher && window.StockMatcher._updateStockButtons) {
-      return window.StockMatcher._updateStockButtons(codes, matchedStocks, elements);
-    }
-  },
+
+
+
 
   /** 移除股票代碼功能 - 委派給 StockMatcher 模組 */
   removeStockCodeFeature() {

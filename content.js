@@ -488,29 +488,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// 尚未實作的 AI 助手功能
-const AIAssistant = {
-  init: function() {
-    // 初始化代碼
-  },
-  processUserInput: function(input) {
-    // 處理用戶輸入
-  },
-  displayResponse: function(response) {
-    // 顯示 AI 應答
-  }
-};
 
-// 在頁面加載完成後初始化 AI 助手
-document.addEventListener('DOMContentLoaded', AIAssistant.init);
-
-// 監聽來自背景腳本的訊息，啟動 AI 助手
-chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
-  if (request.action === "activateAIAssistant") {
-    AIAssistant.init();
-  }
-  // 其他現有的消息處理...
-});
 
 // 確保在頁面加載完後初始化擴展
 if (document.readyState === 'loading') {

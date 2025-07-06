@@ -92,7 +92,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   const summaryInstructionInput = document.getElementById('summaryInstruction');
   const codeCheckModelSelect = document.getElementById('codeCheckModel');
   const codeCheckInstructionInput = document.getElementById('codeCheckInstruction');
-  const aiAssistantButton = document.getElementById('aiAssistant');
+
   const highlightWordsInput = document.getElementById('highlight-words');
   const stockListInput = document.getElementById('stock-list-input');
   const reflectModelSelect = document.getElementById('reflectModel');
@@ -532,14 +532,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
   });
 
-  // AI 助理按鈕事件處理
-  if (aiAssistantButton) {
-    aiAssistantButton.addEventListener('click', function() {
-      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {action: "activateAIAssistant"});
-      });
-    });
-  }
+
 
   // 9. UI 相關功能
   // 分頁切換功能
