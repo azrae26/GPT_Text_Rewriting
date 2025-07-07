@@ -378,11 +378,11 @@ const ManualReplaceManager = {
           return;
         }
         
-        console.log(`[ManualReplaceManager][${this._getTimeStamp()}] 🎯 文本選取事件: 選取長度=${selectedText.length}, 內容="${selectedText}"`);
+        console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 🎯 文本選取事件: 選取長度=${selectedText.length}, 內容="${selectedText}"`);
         lastSelectedText = selectedText;
 
         if (selectedText) {
-          console.log(`[ManualReplaceManager][${this._getTimeStamp()}] ✅ 設定主組文字: "${selectedText}"`);
+          console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ✅ 設定主組文字: "${selectedText}"`);
           fromInput.value = selectedText;
           toInput.value = '';
           
@@ -399,7 +399,7 @@ const ManualReplaceManager = {
           this._updatePreviews();
           
         } else if (!selectedText && fromInput.value) {
-          console.log(`[ManualReplaceManager][${this._getTimeStamp()}] 🧹 清空主組內容`);
+          console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 🧹 清空主組內容`);
           // 當沒有選取文字且 fromInput 有值時清空
           fromInput.value = '';
           toInput.value = '';
@@ -417,7 +417,7 @@ const ManualReplaceManager = {
           updateButton();
         }
       } catch (error) {
-        console.error(`[ManualReplaceManager][${this._getTimeStamp()}] ❌ 處理文本選取時出錯:`, error);
+        console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 處理文本選取時出錯:`, error);
       }
     };
 
@@ -458,7 +458,7 @@ const ManualReplaceManager = {
         this._updatePreviews();
       }
     } catch (error) {
-      console.error(`[ManualReplaceManager][${this._getTimeStamp()}] ❌ 替換錯誤:`, error);
+      console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 替換錯誤:`, error);
     }
   },
 
@@ -592,10 +592,12 @@ const ManualReplaceManager = {
       if (TextHighlight.PositionCalculator && TextHighlight.PositionCalculator.cache) {
         const cachedText = TextHighlight.PositionCalculator.cache.lastText || '';
         
-        // 無論如何都要強制同步，確保 DOM 內容正確
-        
-        // 完全清理緩存 - 修復作用域問題
-        ManualReplaceManager._forceCleanAllCaches();
+        // 🆕 只在內容真正不同時才清理緩存，避免無用的清理
+        if (cachedText !== currentText) {
+          console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 🔄 文本內容變化，智能清理緩存`);
+          // 智能清理緩存，避免重複操作
+          ManualReplaceManager._smartCleanCaches();
+        }
         
         // 多重強制同步策略
         if (TextHighlight.PositionCalculator.cache.div) {
@@ -1024,7 +1026,7 @@ const ManualReplaceManager = {
     window.ReplaceManager.StorageHelper.saveRules(
       storageKey,
       extraRules,
-      () => console.log(`[ManualReplaceManager][${this._getTimeStamp()}] 手動替換規則已保存`)
+      () => console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 手動替換規則已保存`)
     );
   },
 
@@ -1075,34 +1077,48 @@ const ManualReplaceManager = {
     let lastValue = textArea.value;
     let lastLength = textArea.value.length;
     let lastHash = this._hashText(textArea.value);
+    let isProcessing = false; // 🆕 防止重複處理
     
     const checkValue = () => {
+      // 🆕 如果正在處理中，跳過此次檢查
+      if (isProcessing) {
+        requestAnimationFrame(checkValue);
+        return;
+      }
+      
       const currentValue = textArea.value;
       const currentLength = currentValue.length;
       const currentHash = this._hashText(currentValue);
       
       if (currentValue !== lastValue || currentLength !== lastLength || currentHash !== lastHash) {
-        console.log(`[ManualReplaceManager][${this._getTimeStamp()}] 📝 文本變化: ${lastLength} → ${currentLength} 字符`);
+        console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 📝 文本變化: ${lastLength} → ${currentLength} 字符`);
         
-        // 🧹 強制清理所有相關緩存
-        this._forceCleanAllCaches();
+        isProcessing = true; // 🆕 標記正在處理
+        
+        // 🧹 優化：只清理必要的緩存，避免重複調用
+        this._smartCleanCaches();
         
         lastValue = currentValue;
         lastLength = currentLength;
         lastHash = currentHash;
         
-        // 延遲更新預覽，確保 DOM 和緩存完全清理
+        // 🆕 使用防抖機制，避免過於頻繁更新
         setTimeout(() => {
           this._updatePreviews();
-        }, 15);
+          isProcessing = false; // 🆕 處理完成，重置標記
+        }, 50); // 🆕 增加防抖延遲
       }
-      requestAnimationFrame(checkValue);
+      
+      // 🆕 減少檢查頻率，避免過度消耗資源
+      setTimeout(() => {
+        requestAnimationFrame(checkValue);
+      }, 16); // 🆕 約60fps的檢查頻率
     };
     checkValue();
   },
 
-  /** 強制清理所有緩存 */
-  _forceCleanAllCaches() {
+  /** 🆕 智能清理緩存 - 避免重複清理 */
+  _smartCleanCaches() {
     // 清理位置計算器緩存
     if (TextHighlight.PositionCalculator && TextHighlight.PositionCalculator.cache) {
       TextHighlight.PositionCalculator.cache.lastText = '';
@@ -1119,12 +1135,21 @@ const ManualReplaceManager = {
       TextHighlight.GlobalPositionCache.clear();
     }
     
-    // 🆕 清理獨立位置緩存
+    // 🆕 只清理獨立位置緩存，不再調用 clearAllHighlights 避免重複
     this.PreviewHighlight.cachedGroupPositions.clear();
-    console.log(`[ManualReplaceManager][${this._getTimeStamp()}] 清理獨立位置緩存`);
+    console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 智能清理獨立位置緩存`);
     
-    // 清理當前高亮
-    this.PreviewHighlight.clearAllHighlights();
+    // 🆕 直接清理高亮元素，不再通過其他方法
+    TextHighlight.SharedVirtualScroll.clearAllGroupHighlights(
+      this.PreviewHighlight.groupHighlights, 
+      this.PreviewHighlight.observer
+    );
+  },
+
+  /** 強制清理所有緩存 - 🔧 優化版本，避免重複調用 */
+  _forceCleanAllCaches() {
+    // 🆕 直接調用智能清理，避免重複
+    this._smartCleanCaches();
   },
 
   /** 計算文本簡單哈希 */
@@ -1219,7 +1244,7 @@ const ManualReplaceManager = {
     
     const container = group.parentElement;
     if (!container) {
-      console.error(`[ManualReplaceManager][${this._getTimeStamp()}] ❌ 無法找到替換組的父容器`);
+      console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 無法找到替換組的父容器`);
       return;
     }
     
@@ -1272,18 +1297,18 @@ const ManualReplaceManager = {
   refreshFromStorage() {
     // 🆕 防重複調用機制：如果正在刷新中，跳過此次調用
     if (this._refreshInProgress) {
-      console.log(`[ManualReplaceManager][${this._getTimeStamp()}] UI刷新已在進行中，跳過此次調用`);
+      console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] UI刷新已在進行中，跳過此次調用`);
       return;
     }
     
     this._refreshInProgress = true;
-    console.log(`[ManualReplaceManager][${this._getTimeStamp()}] 從存儲刷新替換組UI`);
+    console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 從存儲刷新替換組UI`);
     
     const textArea = document.querySelector('textarea[name="content"]');
     const manualContainer = document.querySelector('.manual-replace-container');
     
     if (!textArea || !manualContainer) {
-      console.log(`[ManualReplaceManager][${this._getTimeStamp()}] 找不到必要的DOM元素，跳過刷新`);
+      console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 找不到必要的DOM元素，跳過刷新`);
       this._refreshInProgress = false; // 重置標記
       return;
     }
@@ -1298,11 +1323,11 @@ const ManualReplaceManager = {
     // 從存儲重新載入規則
     const storageKey = 'replace_' + this.CONFIG.MANUAL_REPLACE_KEY;
     window.ReplaceManager.StorageHelper.loadRules(storageKey, [], (rules) => {
-      console.log(`[ManualReplaceManager][${this._getTimeStamp()}] 從存儲載入的規則:`, rules);
+      console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 從存儲載入的規則:`, rules);
       
       // 過濾掉空組
       const filteredRules = rules.filter(rule => rule.from?.trim() || rule.to?.trim());
-      console.log(`[ManualReplaceManager][${this._getTimeStamp()}] 過濾後的規則:`, filteredRules);
+      console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 過濾後的規則:`, filteredRules);
       
       // 如果沒有規則，創建一個空的預設規則
       const finalRules = filteredRules.length > 0 ? filteredRules : [{ from: '', to: '' }];
@@ -1323,7 +1348,7 @@ const ManualReplaceManager = {
         // 更新預覽（延遲一點讓DOM完全更新）
         setTimeout(() => {
           this._updatePreviews();
-          console.log(`[ManualReplaceManager][${this._getTimeStamp()}] ✅ 替換組UI刷新完成`);
+          console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ✅ 替換組UI刷新完成`);
           
           // 🆕 重置刷新標記，允許後續刷新
           this._refreshInProgress = false;
