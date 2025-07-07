@@ -20,6 +20,9 @@
 // - settings.js：全域設定管理
 // - SettingsIO/settings-io.js：雲端同步功能
 
+// 載入必要的依賴 - LogUtils 工具函數
+importScripts('default.js');
+
 // 背景同步功能相關變數
 let backgroundSettingsIO = null;
 let backgroundSyncInitialized = false;
@@ -34,23 +37,19 @@ class BackgroundSyncManager {
 
   // 通用的錯誤處理和日誌記錄方法
   async _executeWithErrorHandling(methodName, asyncFn, returnSuccess = true) {
-    const prefix = BACKGROUND_CONSTANTS.LOG_PREFIXES.SYNC;
-    console.log(`${prefix}[${methodName}] 開始執行`);
-    
     try {
       if (!this.settingsIO) {
         throw new Error(BACKGROUND_CONSTANTS.MESSAGES.SETTINGS_IO_NOT_INIT);
       }
       
       const result = await asyncFn();
-      console.log(`${prefix}[${methodName}] 執行成功`);
       
       if (returnSuccess && typeof result === 'object' && result.success !== undefined) {
         return result;
       }
       return returnSuccess ? { success: true, ...(result || {}) } : result;
     } catch (error) {
-      console.error(`${prefix}[${methodName}] 執行失敗:`, error);
+      LogUtils.error(`${methodName} 執行失敗`, error);
       return { success: false, error: error.message };
     }
   }
@@ -58,7 +57,7 @@ class BackgroundSyncManager {
   async init() {
     if (this.isInitialized) return;
     
-    console.log(`${BACKGROUND_CONSTANTS.LOG_PREFIXES.SYNC}[init] 🔧 初始化背景同步管理器...`);
+    LogUtils.important('🔧 初始化背景同步管理器...');
     
     try {
       // 創建 SettingsIO 實例（真實或備用）
@@ -68,11 +67,8 @@ class BackgroundSyncManager {
       
       // 檢查是否使用的是真實或備用實現
       const isRealImplementation = typeof SettingsIO !== 'undefined' && this.settingsIO instanceof SettingsIO;
-      if (isRealImplementation) {
-        console.log('[BackgroundSync][init] 🎉 真實 SettingsIO 實例已創建並初始化 - 具備完整雲端同步功能');
-      } else {
-        console.log('[BackgroundSync][init] ⚠️ 備用 SettingsIO 實例已創建並初始化 - 功能受限（僅模擬）');
-        console.log('[BackgroundSync][init] 💡 提示：要獲得真正的雲端同步功能，請確保 SettingsIO/settings-io.js 正確載入');
+      if (!isRealImplementation) {
+        LogUtils.warn('使用備用 SettingsIO 實例 - 功能受限');
       }
       
       // 檢查是否已啟用自動同步，如果是則啟動定期同步
@@ -94,27 +90,27 @@ class BackgroundSyncManager {
       
       if (enabled) {
         // 🆕 改為訊號驅動，不再使用定期同步
-        console.log('[BackgroundSync][init] 🔄 檢測到自動同步已啟用，使用訊號驅動模式');
-        console.log('[BackgroundSync][init] 💡 雲端更新訊號由 SettingsIO 直接處理');
+        LogUtils.important('🔄 檢測到自動同步已啟用，使用訊號驅動模式');
+        LogUtils.log('💡 雲端更新訊號由 SettingsIO 直接處理');
       } else {
-        console.log('[BackgroundSync][init] ⏸️ 自動同步未啟用');
+        LogUtils.log('⏸️ 自動同步未啟用');
       }
     } catch (error) {
-      console.error('[BackgroundSync][init] ❌ 檢查同步狀態失敗:', error);
+      LogUtils.error('檢查同步狀態失敗', error);
     }
     
     this.isInitialized = true;
-    console.log('[BackgroundSync][init] ✅ 背景同步管理器初始化完成');
+    LogUtils.important('✅ 背景同步管理器初始化完成');
   }
 
   // 載入 SettingsIO 類別（依賴於 importScripts）
   loadSettingsIO() {
     if (typeof SettingsIO !== 'undefined') {
-      console.log('[BackgroundSync][loadSettingsIO] ✅ SettingsIO 已可用');
+      LogUtils.log('✅ SettingsIO 已可用');
       return SettingsIO;
     }
     
-    console.warn('[BackgroundSync][loadSettingsIO] ⚠️ SettingsIO 未載入，使用備用實現');
+    LogUtils.warn('⚠️ SettingsIO 未載入，使用備用實現');
     // 創建備用實現
     return this.createFallbackSettingsIO();
   }
@@ -124,12 +120,12 @@ class BackgroundSyncManager {
     return class FallbackSettingsIO {
       constructor() {
         this.syncInProgress = false;
-        console.log('[FallbackSettingsIO] 初始化備用同步實現（將提供基本功能）');
+        LogUtils.log('初始化備用同步實現（將提供基本功能）');
       }
       
       async init() {
-        console.log('[FallbackSettingsIO] ⚠️ 使用備用同步實現 - 功能有限');
-        console.log('[FallbackSettingsIO] 建議: 檢查 SettingsIO/settings-io.js 是否正確載入');
+        LogUtils.warn('⚠️ 使用備用同步實現 - 功能有限');
+        LogUtils.log('建議: 檢查 SettingsIO/settings-io.js 是否正確載入');
       }
       
       async manualSync() {
@@ -139,7 +135,7 @@ class BackgroundSyncManager {
         
         this.syncInProgress = true;
         try {
-          console.log('[FallbackSettingsIO] ⚠️ 執行備用手動同步（僅模擬）');
+          LogUtils.log('⚠️ 執行備用手動同步（僅模擬）');
           
           // 模擬同步操作
           await new Promise(resolve => setTimeout(resolve, 1000));
@@ -150,7 +146,7 @@ class BackgroundSyncManager {
           });
           
           const message = '備用同步完成（模擬）- 請使用真正的 SettingsIO 以獲得完整功能';
-          console.log('[FallbackSettingsIO]', message);
+          LogUtils.log(message);
           return { success: true, message };
         } finally {
           this.syncInProgress = false;
@@ -158,7 +154,7 @@ class BackgroundSyncManager {
       }
       
       async toggleAutoSync(enabled) {
-        console.log('[FallbackSettingsIO] 切換自動同步（備用）:', enabled);
+        LogUtils.log(`切換自動同步（備用）: ${enabled}`);
         // 修正：只更新 local storage，與 SettingsIO 保持一致
         await chrome.storage.local.set({ syncEnabled: enabled });
         return enabled; // 返回值與真實 SettingsIO 保持一致
@@ -178,20 +174,20 @@ class BackgroundSyncManager {
       }
       
       async resetSyncStatus() {
-        console.log('[FallbackSettingsIO] 重置同步狀態（備用）');
+        LogUtils.log('重置同步狀態（備用）');
         // 修正：只清理 local storage，與 SettingsIO 保持一致
         await chrome.storage.local.remove(['syncEnabled', 'lastSyncTime', 'syncError']);
         return { success: true };
       }
       
       async signOut() {
-        console.log('[FallbackSettingsIO] 登出（備用）');
+        LogUtils.log('登出（備用）');
         await this.resetSyncStatus();
         return { success: true };
       }
       
       async forceUpload() {
-        console.log('[FallbackSettingsIO] ⚠️ 備用強制上傳（僅模擬）');
+        LogUtils.log('⚠️ 備用強制上傳（僅模擬）');
         return { 
           success: true, 
           message: '備用上傳完成（模擬）- 請使用真正的 SettingsIO 以獲得實際雲端同步' 
@@ -217,7 +213,7 @@ class BackgroundSyncManager {
 
   async toggleAutoSync(enabled) {
     return await this._executeWithErrorHandling('auto', async () => {
-      console.log('切換自動同步:', enabled);
+      LogUtils.log(`切換自動同步: ${enabled}`);
       
       const resultEnabled = await this.settingsIO.toggleAutoSync(enabled);
       
@@ -225,7 +221,7 @@ class BackgroundSyncManager {
         await chrome.storage.local.set({ syncEnabled: enabled });
         
         if (enabled) {
-          console.log('訊號驅動同步已啟用，無需定期計時器');
+          LogUtils.log('訊號驅動同步已啟用，無需定期計時器');
         }
         
         return { enabled };
@@ -432,7 +428,7 @@ const BackgroundStockCrawlerManager = {
    * 🆕 修復：優先從 sync storage 載入啟動狀態，實現跨設備同步
    */
   async init() {
-    console.log('初始化背景股票爬蟲管理器');
+    LogUtils.log('初始化背景股票爬蟲管理器');
     try {
       // 🆕 優先從 sync storage 讀取可同步的狀態
       const syncResult = await chrome.storage.sync.get(['crawlerAutoEnabled', 'crawlerInterval']);
@@ -451,20 +447,17 @@ const BackgroundStockCrawlerManager = {
         ...syncState
       };
       
-      console.log('恢復的爬蟲狀態:', state, {
-        fromSync: syncState,
-        fromLocal: localState
-      });
+      LogUtils.log('恢復的爬蟲狀態', state);
       
       if (state.isScheduled && state.intervalMinutes) {
-        console.log(`恢復定時爬取，間隔 ${state.intervalMinutes} 分鐘（來源：sync storage）`);
+        LogUtils.log(`恢復定時爬取，間隔 ${state.intervalMinutes} 分鐘（來源：sync storage）`);
         this.intervalMinutes = state.intervalMinutes; // 重要：先設置 intervalMinutes
         await this._startScheduledCrawl(state.intervalMinutes, false); // false = 不立即執行
       }
       
       // 🆕 監聽 sync storage 的變化，實現跨設備即時同步
       chrome.storage.sync.onChanged.addListener((changes, areaName) => {
-        console.log('🔍 BackgroundStockCrawlerManager 收到 sync storage 變更:', {
+        LogUtils.log('🔍 收到 sync storage 變更', {
           areaName,
           changeKeys: Object.keys(changes),
           hasCrawlerEnabled: !!changes.crawlerAutoEnabled,
@@ -473,16 +466,16 @@ const BackgroundStockCrawlerManager = {
         
         // 🔧 修復：由於 areaName 可能是 undefined，改為直接檢查相關鍵值
         if (changes.crawlerAutoEnabled || changes.crawlerInterval) {
-          console.log('🔄 檢測到爬蟲同步狀態變更:', changes);
+          LogUtils.important('🔄 檢測到爬蟲同步狀態變更', changes);
           this._handleSyncStorageChange(changes);
         } else {
-          console.log('⏸️ 不是爬蟲相關的變更，忽略');
+          LogUtils.log('⏸️ 不是爬蟲相關的變更，忽略');
         }
       });
       
-      console.log('背景股票爬蟲管理器初始化完成');
+      LogUtils.important('✅ 背景股票爬蟲管理器初始化完成');
     } catch (error) {
-      console.error('初始化背景股票爬蟲管理器失敗:', error);
+      LogUtils.error('初始化背景股票爬蟲管理器失敗', error);
     }
   },
 
@@ -498,14 +491,14 @@ const BackgroundStockCrawlerManager = {
       // 檢查啟用狀態變更
       if (changes.crawlerAutoEnabled) {
         newEnabled = changes.crawlerAutoEnabled.newValue;
-        console.log(`⚡ 爬蟲啟用狀態變更: ${changes.crawlerAutoEnabled.oldValue} → ${newEnabled}`);
+        LogUtils.log(`⚡ 爬蟲啟用狀態變更: ${changes.crawlerAutoEnabled.oldValue} → ${newEnabled}`);
         needsUpdate = true;
       }
       
       // 檢查間隔變更
       if (changes.crawlerInterval) {
         newInterval = changes.crawlerInterval.newValue;
-        console.log(`⚡ 爬蟲間隔變更: ${changes.crawlerInterval.oldValue} → ${newInterval}`);
+        LogUtils.log(`⚡ 爬蟲間隔變更: ${changes.crawlerInterval.oldValue} → ${newInterval}`);
         needsUpdate = true;
       }
       
@@ -516,7 +509,7 @@ const BackgroundStockCrawlerManager = {
       const isEnabled = syncResult.crawlerAutoEnabled;
       const interval = syncResult.crawlerInterval || 30;
       
-      console.log(`🔄 應用新的爬蟲設定: 啟用=${isEnabled}, 間隔=${interval}分鐘`);
+      LogUtils.log(`🔄 應用新的爬蟲設定: 啟用=${isEnabled}, 間隔=${interval}分鐘`);
       
       if (isEnabled && interval) {
         // 啟動定時爬取
@@ -527,7 +520,7 @@ const BackgroundStockCrawlerManager = {
       }
       
     } catch (error) {
-      console.error('處理同步儲存變更失敗:', error);
+      LogUtils.error('處理同步儲存變更失敗', error);
     }
   },
 
@@ -537,7 +530,7 @@ const BackgroundStockCrawlerManager = {
    * @param {boolean} runImmediately - 是否立即執行一次
    */
   async _startScheduledCrawl(intervalMinutes, runImmediately = false) {
-    console.log(`啟動定時爬取，間隔 ${intervalMinutes} 分鐘`);
+    LogUtils.log(`啟動定時爬取，間隔 ${intervalMinutes} 分鐘`);
     
     // 驗證參數
     if (!intervalMinutes || isNaN(intervalMinutes) || intervalMinutes < STOCK_CRAWLER_CONFIG.MIN_CRAWL_INTERVAL) {
@@ -546,7 +539,7 @@ const BackgroundStockCrawlerManager = {
     
     // 防止重複設置：如果已經有相同間隔的定時器在運行，直接返回
     if (this.intervalTimer && this.intervalMinutes === intervalMinutes) {
-      console.log(`已存在相同間隔 ${intervalMinutes} 分鐘的定時器，跳過重複設置`);
+      LogUtils.log(`已存在相同間隔 ${intervalMinutes} 分鐘的定時器，跳過重複設置`);
       return;
     }
     
@@ -574,7 +567,7 @@ const BackgroundStockCrawlerManager = {
       }
     }, intervalMinutes * 60 * 1000);
     
-    console.log(`新定時器已設置，間隔 ${intervalMinutes} 分鐘 (${intervalMinutes * 60 * 1000}ms)，定時器ID:`, this.intervalTimer);
+    LogUtils.log(`新定時器已設置，間隔 ${intervalMinutes} 分鐘 (${intervalMinutes * 60 * 1000}ms)，定時器ID ${this.intervalTimer}`);
     
     this._updateStatus(BACKGROUND_CONSTANTS.STATUS_TYPES.SCHEDULED, `自動爬取已啟用，間隔 ${intervalMinutes} 分鐘`, { intervalMinutes });
   },
@@ -583,7 +576,7 @@ const BackgroundStockCrawlerManager = {
    * 停止定時爬取
    */
   async stopScheduledCrawl() {
-    console.log('停止定時爬取');
+    LogUtils.log('停止定時爬取');
     
     this._clearTimers();
     this.intervalMinutes = 0;
@@ -602,19 +595,19 @@ const BackgroundStockCrawlerManager = {
    */
   _clearTimers() {
     if (this.intervalTimer) {
-      console.log('清除現有的間隔定時器 (ID:', this.intervalTimer, ')');
+      LogUtils.log('清除現有的間隔定時器 (ID:', this.intervalTimer, ')');
       clearInterval(this.intervalTimer);
       this.intervalTimer = null;
-      console.log('間隔定時器已清除');
+      LogUtils.log('間隔定時器已清除');
     } else {
-      console.log('沒有需要清除的間隔定時器');
+      LogUtils.log('沒有需要清除的間隔定時器');
     }
     
     if (this.crawlTimer) {
-      console.log('清除現有的爬取定時器 (ID:', this.crawlTimer, ')');
+      LogUtils.log('清除現有的爬取定時器 (ID:', this.crawlTimer, ')');
       clearTimeout(this.crawlTimer);
       this.crawlTimer = null;
-      console.log('爬取定時器已清除');
+      LogUtils.log('爬取定時器已清除');
     }
   },
 
@@ -623,10 +616,10 @@ const BackgroundStockCrawlerManager = {
    */
   async startCrawl() {
     const startTime = new Date().toLocaleString();
-    console.log(`=== 開始背景爬取股票清單 === [${startTime}]`);
+    LogUtils.important(`=== 開始背景爬取股票清單 === [${startTime}]`);
     
     if (this.running) {
-      console.log('爬蟲已在運行中，跳過此次請求');
+      LogUtils.log('爬蟲已在運行中，跳過此次請求');
       return;
     }
     
@@ -642,7 +635,7 @@ const BackgroundStockCrawlerManager = {
         throw new Error('沒有找到任何爬取網址');
       }
       
-      console.log(`共需爬取 ${totalUrls} 個頁面`);
+      LogUtils.log(`共需爬取 ${totalUrls} 個頁面`);
       this._updateProgress(`共需爬取 ${totalUrls} 個頁面`, 0);
       
       // 依序爬取每個網址
@@ -650,14 +643,14 @@ const BackgroundStockCrawlerManager = {
         const url = urls[i];
         const industryName = StockCrawlerUrls.getIndustryName(url);
         
-        console.log(`[${i + 1}/${totalUrls}] 開始爬取: ${industryName}`);
+        LogUtils.log(`[${i + 1}/${totalUrls}] 開始爬取: ${industryName}`);
         
         const progressPercent = Math.round((i / totalUrls) * STOCK_CRAWLER_CONFIG.PROGRESS_CRAWLING_MAX);
         this._updateProgress(`正在爬取 ${industryName} (${i + 1}/${totalUrls})`, progressPercent);
         
         try {
           const stocks = await this._fetchStockData(url);
-          console.log(`${industryName} 爬取完成，獲得 ${stocks.length} 支股票`);
+          LogUtils.log(`${industryName} 爬取完成，獲得 ${stocks.length} 支股票`);
           
           // 將股票加入總列表
           stocks.forEach(stock => {
@@ -665,25 +658,25 @@ const BackgroundStockCrawlerManager = {
           });
           
         } catch (error) {
-          console.error(`爬取 ${industryName} 失敗:`, error);
+          LogUtils.error(`爬取 ${industryName} 失敗`, error);
           this._updateProgress(`爬取 ${industryName} 失敗: ${error.message}`, progressPercent);
         }
         
         // 等待指定時間
         if (i < urls.length - 1 && this.running) {
-          console.log(`等待 ${STOCK_CRAWLER_CONFIG.CRAWL_DELAY_MS / 1000} 秒後繼續下一個網頁...`);
+          LogUtils.log(`等待 ${STOCK_CRAWLER_CONFIG.CRAWL_DELAY_MS / 1000} 秒後繼續下一個網頁...`);
           await this._delay(STOCK_CRAWLER_CONFIG.CRAWL_DELAY_MS);
         }
       }
       
       if (this.running) {
-        console.log(`所有網頁爬取完成，共獲得 ${allStocks.size} 支股票`);
+        LogUtils.log(`所有網頁爬取完成，共獲得 ${allStocks.size} 支股票`);
         this._updateProgress('正在更新股票清單...', STOCK_CRAWLER_CONFIG.PROGRESS_UPDATING);
         
         // 更新股票清單 - 添加安全檢查處理
         try {
           const updateResult = await this._updateStockList(allStocks);
-          console.log('股票清單更新結果:', updateResult);
+          LogUtils.log('股票清單更新結果', updateResult);
           
           this.running = false;
           const statusMsg = `爬取完成！新增 ${updateResult.added} 支，刪除 ${updateResult.removed} 支股票，總計 ${updateResult.total} 支`;
@@ -694,7 +687,7 @@ const BackgroundStockCrawlerManager = {
           
         } catch (updateError) {
           // 如果是安全檢查失敗，顯示警告但不讓整個流程失敗
-          console.error('股票清單更新被安全檢查阻止:', updateError.message);
+          LogUtils.error('股票清單更新被安全檢查阻止', updateError);
           
           this.running = false;
           const currentTime = new Date().toLocaleString();
@@ -707,11 +700,11 @@ const BackgroundStockCrawlerManager = {
         }
         
         const endTime = new Date().toLocaleString();
-        console.log(`=== 背景爬取流程完成 === [${endTime}]`);
+        LogUtils.important(`=== 背景爬取流程完成 === [${endTime}]`);
       }
       
     } catch (error) {
-      console.error('背景爬取過程發生錯誤:', error);
+      LogUtils.error('背景爬取過程發生錯誤', error);
       this._updateStatus(BACKGROUND_CONSTANTS.STATUS_TYPES.ERROR, `爬取失敗: ${error.message}`, { 
         progress: 0,
         error: error.message 
@@ -733,7 +726,7 @@ const BackgroundStockCrawlerManager = {
       const data = await response.text();
       return this._parseStockData(data);
     } catch (error) {
-      console.error('爬取網頁失敗:', error);
+      LogUtils.error('爬取網頁失敗', error);
       throw error;
     }
   },
@@ -744,8 +737,6 @@ const BackgroundStockCrawlerManager = {
    * Service Worker 環境中沒有 DOMParser，需要使用字符串處理
    */
   _parseStockData(html) {
-    console.log('開始解析 MOPS 股票資料（使用正則表達式）');
-    console.log('HTML 長度:', html.length);
     const stocks = [];
     
     try {
@@ -794,28 +785,18 @@ const BackgroundStockCrawlerManager = {
         }
       }
       
-      console.log(`總共處理了 ${rowCount} 行數據`);
-      console.log(`MOPS 解析完成，共找到 ${stocks.length} 支股票`);
-      if (stocks.length > 0) {
-        console.log('解析範例:', stocks.slice(0, 3).map(s => `${s.code}(${s.name})`));
-      } else {
-        console.log('⚠️ 未解析到任何股票，檢查HTML結構...');
-        // 如果沒有找到數據行，嘗試查找HTML中是否包含預期的結構
+      LogUtils.log(`MOPS 解析完成，共找到 ${stocks.length} 支股票`);
+      if (stocks.length === 0) {
+        LogUtils.warn('未解析到任何股票，檢查HTML結構...');
         const hasTable = html.includes('<table');
-        const hasTr = html.includes('<tr');
-        const hasTd = html.includes('<td');
         const hasClassEven = html.includes('class="even"');
-        const hasClassOdd = html.includes('class="odd"');
-        console.log('HTML結構檢查:', { hasTable, hasTr, hasTd, hasClassEven, hasClassOdd });
-        
-        // 打印HTML的前5000個字符用於調試
-        console.log('HTML 前5000字符:', html.substring(0, 5000));
+        LogUtils.log('HTML結構檢查', { hasTable, hasClassEven });
       }
       
       return stocks;
       
     } catch (error) {
-      console.error('解析 MOPS 股票資料時發生錯誤:', error);
+      LogUtils.error('解析 MOPS 股票資料時發生錯誤', error);
       return [];
     }
   },
@@ -831,7 +812,7 @@ const BackgroundStockCrawlerManager = {
       
       // 解析現有清單
       const existingStocks = this._parseStockList(currentStockList);
-      console.log(`現有股票清單包含 ${existingStocks.size} 支股票`);
+      LogUtils.log(`現有股票清單包含 ${existingStocks.size} 支股票`);
       
       const currentTime = new Date().toLocaleString();
       
@@ -848,8 +829,8 @@ const BackgroundStockCrawlerManager = {
       // 安全檢查：如果要刪除的股票數量達到安全閾值，則不執行更新
       if (wouldBeRemovedCount >= STOCK_CRAWLER_CONFIG.SAFETY_DELETE_THRESHOLD) {
         const errorMsg = `[${currentTime}] 檢測到將刪除 ${wouldBeRemovedCount} 檔股票，超過安全閾值(${STOCK_CRAWLER_CONFIG.SAFETY_DELETE_THRESHOLD}檔)，可能是來源網站有問題，已跳過更新以保護現有資料`;
-        console.error(errorMsg);
-        console.log('將被刪除的股票清單:', wouldBeRemovedStocks.slice(0, 10)); // 只顯示前10檔
+        LogUtils.error(errorMsg);
+        LogUtils.log('將被刪除的股票清單', wouldBeRemovedStocks.slice(0, 10)); // 只顯示前10檔
         throw new Error(`將刪除 ${wouldBeRemovedCount} 檔股票，超過安全閾值，已跳過更新以保護現有資料`);
       }
       
@@ -880,7 +861,7 @@ const BackgroundStockCrawlerManager = {
       
       // 記錄被刪除的股票（在這裡記錄，因為已經通過安全檢查）
       wouldBeRemovedStocks.forEach(stockInfo => {
-        console.log(`股票已消失: ${stockInfo}`);
+        LogUtils.log(`股票已消失: ${stockInfo}`);
       });
       
       // 按股票代號排序
@@ -900,7 +881,7 @@ const BackgroundStockCrawlerManager = {
       // 儲存更新後的清單
       await chrome.storage.local.set({ stockList: newStockListText });
       
-      console.log(`股票清單更新完成: 新增 ${addedCount} 支，刪除 ${removedCount} 支`);
+      LogUtils.log(`股票清單更新完成: 新增 ${addedCount} 支，刪除 ${removedCount} 支`);
       
       return {
         added: addedCount,
@@ -909,7 +890,7 @@ const BackgroundStockCrawlerManager = {
       };
       
     } catch (error) {
-      console.error('更新股票清單失敗:', error);
+      LogUtils.error('更新股票清單失敗', error);
       throw error;
     }
   },
@@ -993,7 +974,7 @@ const BackgroundStockCrawlerManager = {
       });
       
     } catch (error) {
-      console.error('保存爬蟲狀態失敗:', error);
+      LogUtils.error('保存爬蟲狀態失敗', error);
     }
   },
 
@@ -1064,7 +1045,7 @@ const BackgroundStockCrawlerManager = {
    * 執行單次爬取（不啟動定時器）
    */
   async startSingleCrawl() {
-    console.log('開始單次爬取');
+    LogUtils.log('開始單次爬取');
     return await this.startCrawl();
   },
 
@@ -1072,7 +1053,7 @@ const BackgroundStockCrawlerManager = {
    * 停止爬取
    */
   stopCrawl() {
-    console.log('停止爬取');
+    LogUtils.log('停止爬取');
     this.running = false;
     this.currentProgress = 0;  // 重置進度
     
@@ -1091,12 +1072,12 @@ const BackgroundStockCrawlerManager = {
 // 初始化背景同步功能
 async function initializeBackgroundSync() {
   if (backgroundSyncInitialized) {
-    console.log('[BackgroundSync][init] 同步功能已初始化，跳過');
+    LogUtils.log('同步功能已初始化，跳過');
     return;
   }
   
   try {
-    console.log('[BackgroundSync][init] 開始初始化背景同步功能...');
+    LogUtils.important('🔧 開始初始化背景同步功能...');
     
     // 載入必要的依賴
     loadDependencies();
@@ -1106,57 +1087,40 @@ async function initializeBackgroundSync() {
     await backgroundSettingsIO.init();
     backgroundSyncInitialized = true;
     
-    console.log('[BackgroundSync][init] 背景同步功能初始化完成');
+    LogUtils.important('✅ 背景同步功能初始化完成');
   } catch (error) {
-    console.error('[BackgroundSync][init] 初始化背景同步功能失敗:', error);
+    LogUtils.error('初始化背景同步功能失敗', error);
   }
 }
 
 // 載入必要的依賴項  
 function loadDependencies() {
-  console.log('[BackgroundSync][loadDependencies] 開始載入依賴項...');
-  
   // 檢查是否已經載入 SettingsIO
   if (typeof SettingsIO !== 'undefined') {
-    console.log('[BackgroundSync][loadDependencies] SettingsIO 已載入');
     return;
   }
   
   try {
-    // 使用 importScripts 載入依賴檔案（Service Worker 環境中的標準方法）
-    console.log('[BackgroundSync][loadDependencies] 使用 importScripts 載入依賴檔案...');
-    
-    // 載入必要的依賴
-    importScripts('default.js');
+    // 載入必要的依賴（default.js 已在檔案開頭載入）
     importScripts('settings.js');
     importScripts('settings/settings-key.js');
     importScripts('SettingsIO/settings-io.js');
-    
-    console.log('[BackgroundSync][loadDependencies] 🎉 真實 SettingsIO 載入完成 - 將提供完整的雲端同步功能');
     
     // 檢查是否成功載入
     if (typeof SettingsIO === 'undefined') {
       throw new Error('importScripts 執行完成但 SettingsIO 仍未定義');
     }
     
-    console.log('[BackgroundSync][loadDependencies] ✅ SettingsIO 類別載入確認完成');
-    
   } catch (error) {
-    console.error('[BackgroundSync][loadDependencies] ❌ importScripts 載入 SettingsIO 失敗:', error);
-    console.warn('[BackgroundSync][loadDependencies] 📋 錯誤詳情:', {
-      errorMessage: error.message,
-      errorType: error.constructor.name,
-      solution: '請檢查 default.js, settings.js, SettingsIO/settings-io.js 檔案是否存在且語法正確',
-      note: 'Service Worker 環境不支援 ES6 import，必須使用 importScripts'
-    });
-    console.log('[BackgroundSync][loadDependencies] ⚠️ 將使用備用實現（功能受限）');
+    LogUtils.error('❌ 載入 SettingsIO 失敗', error);
+    LogUtils.log('⚠️ 將使用備用實現（功能受限）');
   }
 }
 
 // 初始化背景服務
 async function initializeBackgroundServices() {
   try {
-    console.log('[Background][init] 🚀 初始化背景服務...');
+    LogUtils.important('🚀 初始化背景服務...');
     
     // 初始化背景爬蟲管理器
     BackgroundStockCrawlerManager.init();
@@ -1164,9 +1128,9 @@ async function initializeBackgroundServices() {
     // 初始化背景同步功能
     await initializeBackgroundSync();
     
-    console.log('[Background][init] ✅ 背景服務初始化完成');
+    LogUtils.important('✅ 背景服務初始化完成');
   } catch (error) {
-    console.error('[Background][init] ❌ 背景服務初始化失敗:', error);
+    LogUtils.error('背景服務初始化失敗', error);
   }
 }
 
@@ -1270,7 +1234,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     const handleSyncRequest = async () => {
       if (!backgroundSyncInitialized || !backgroundSettingsIO) {
-        console.log('[BackgroundSync][message] 同步功能未初始化，嘗試重新初始化...');
+        LogUtils.log('同步功能未初始化，嘗試重新初始化...');
         try {
           await initializeBackgroundSync();
           if (!backgroundSettingsIO) {
@@ -1289,7 +1253,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         return;
       }
 
-      console.log(`[BackgroundSync][message] ${command.log}${command.args?.includes('enabled') ? ': ' + request.enabled : ''}`);
+      LogUtils.log(`${command.log}${command.args?.includes('enabled') ? ': ' + request.enabled : ''}`);
       
       try {
         const args = command.args?.map(arg => request[arg]) || [];
@@ -1308,7 +1272,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     };
 
     handleSyncRequest().catch(error => {
-      console.error('[BackgroundSync][message] 處理同步請求時發生錯誤:', error);
+      LogUtils.error('處理同步請求時發生錯誤', error);
       sendResponse({ success: false, error: error.message });
     });
 
@@ -1319,7 +1283,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.type === 'LOG') {
     const style = BACKGROUND_CONSTANTS.LOG_STYLES[request.color] || 
                   (request.color ? `color: ${request.color}` : '');
-    console.log(`%c[${new Date(request.timestamp).toLocaleTimeString()}] ${request.source}: ${request.message}`, style);
+    LogUtils.log(`%c[${new Date(request.timestamp).toLocaleTimeString()}] ${request.source}: ${request.message}`, style);
     return true;
   }
 
@@ -1351,10 +1315,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'settingsLog') {
     const { logType, message: logMessage, data, timestamp } = request;
     const logMethods = {
-      error: () => console.error(`[設定管理器 ${timestamp}]`, logMessage, data || ''),
-      warn: () => console.warn(`[設定管理器 ${timestamp}]`, logMessage, data || ''),
-      success: () => console.log(`%c[設定管理器 ${timestamp}] ${logMessage}`, 'color: #2E7D32', data || ''),
-      info: () => console.log(`[設定管理器 ${timestamp}]`, logMessage, data || '')
+      error: () => LogUtils.error(`[設定管理器 ${timestamp}] ${logMessage}`, data || ''),
+      warn: () => LogUtils.warn(`[設定管理器 ${timestamp}] ${logMessage}`, data || ''),
+      success: () => LogUtils.log(`%c[設定管理器 ${timestamp}] ${logMessage}`, 'color: #2E7D32', data || ''),
+      info: () => LogUtils.log(`[設定管理器 ${timestamp}] ${logMessage}`, data || '')
     };
     
     (logMethods[logType] || logMethods.info)();
@@ -1368,7 +1332,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   BACKGROUND_CONSTANTS.DEBUG_STYLES[debugAction] || 
                   { emoji: '🔍', style: 'color: #666' };
     
-    console.log(
+    LogUtils.log(
       `%c[SyncDebug][${new Date().toLocaleTimeString()}] ${config.emoji} ${request.message}`, 
       config.style, request.data || ''
     );
@@ -1380,12 +1344,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // 處理雲端訊號調試信息
   if (request.action === 'cloudSignalDebug') {
     const { message: debugMessage, data } = request;
-    console.log(`[BackgroundSync][CloudSignalDebug][${data.currentTime}] ${debugMessage}:`, data);
+    LogUtils.log(`[CloudSignalDebug][${data.currentTime}] ${debugMessage}`, data);
     
     const messageFunc = BACKGROUND_CONSTANTS.SIGNAL_MESSAGES[data.action];
     if (messageFunc) {
       const logData = data.action === 'sendSignal' ? data.signal : '';
-      console.log(`[BackgroundSync][CloudSignalDebug] ${messageFunc(data)}`, logData);
+      LogUtils.log(`[CloudSignalDebug] ${messageFunc(data)}`, logData);
     }
     
     return null;
@@ -1421,6 +1385,6 @@ function handleDebugMessage(message, sender) {
   // 只記錄警告和錯誤級別的重要訊息
   if (message.message && (message.message.includes('⚠️') || message.message.includes('🚨') || message.message.includes('❌'))) {
     const tabId = sender.tab ? sender.tab.id : 'unknown';
-    console.log(`🐛 [Debug][Tab-${tabId}] ${message.message}`);
+    LogUtils.log(`🐛 [Debug][Tab-${tabId}] ${message.message}`);
   }
 }

@@ -1,6 +1,6 @@
 /**
- * default.js - 預設設定配置模組
- * 功能：提供擴充程式首次安裝時的預設設定值
+ * default.js - 預設設定配置模組 + 通用工具函數
+ * 功能：提供擴充程式首次安裝時的預設設定值 + 統一日誌格式工具
  * 職責：
  * - 模型預設配置：各種改寫、翻譯、生成模式的預設模型
  * - 指令模板預設：改寫、翻譯、摘要等功能的預設指令模板
@@ -8,12 +8,135 @@
  * - UI 狀態預設：勾選框、開關等 UI 元素的預設狀態
  * - 年份更新模板：包含時間相關的智能替換規則
  * - 專業術語配置：翻譯功能的專業術語對照表
+ * - 通用日誌工具：統一的 [FileName][Time] 格式日誌函數
  * 
  * 注意：
  * - 僅在首次安裝且無用戶設定時應用
  * - 模型欄位預設為空，等待用戶設定
  * - 指令模板可直接使用，包含完整的專業配置
+ * - 日誌工具可供所有檔案使用，確保格式統一
  */
+
+// === 通用日誌工具函數 ===
+// 統一的日誌格式工具，支援自動檔名檢測的 [FileName][Time] 格式
+const LogUtils = {
+  /**
+   * 將 kebab-case 轉換為 PascalCase
+   * @param {string} str - 要轉換的字串
+   * @returns {string} PascalCase 格式的字串
+   */
+  _toPascalCase(str) {
+    return str
+      .split('-')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join('');
+  },
+
+  /**
+   * 自動取得檔名（從呼叫堆疊中解析並轉換格式）
+   * @returns {string} 檔案名稱（PascalCase 格式）
+   */
+  _getFileName() {
+    try {
+      const stack = new Error().stack;
+      if (!stack) return 'Unknown';
+      
+      // 找到第三層調用（跳過 _getFileName 和 LogUtils.method）
+      const lines = stack.split('\n');
+      for (let i = 3; i < lines.length; i++) {
+        const line = lines[i];
+        // 匹配檔案路徑，支援不同格式
+        const match = line.match(/(?:at|@).*?([^\/\\]+)\.js/);
+        if (match && match[1]) {
+          const fileName = match[1];
+          // 如果檔名包含連字符，轉換為 PascalCase
+          if (fileName.includes('-')) {
+            return this._toPascalCase(fileName);
+          }
+          // 否則保持原樣但首字母大寫
+          return fileName.charAt(0).toUpperCase() + fileName.slice(1);
+        }
+      }
+      return 'Unknown';
+    } catch (error) {
+      return 'Unknown';
+    }
+  },
+
+  /**
+   * 取得24小時制時間格式
+   * @returns {string} HH:MM:SS 格式的時間
+   */
+  _get24HourTime() {
+    const now = new Date();
+    return now.toLocaleTimeString('zh-TW', { 
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit', 
+      second: '2-digit'
+    });
+  },
+
+  /**
+   * 統一日誌格式 - 一般訊息（自動檔名）
+   * @param {string} message - 訊息內容
+   * @param {any} data - 可選的額外資料
+   */
+  log(message, data = null) {
+    const fileName = this._getFileName();
+    const currentTime = this._get24HourTime();
+    if (data !== null) {
+      console.log(`[${fileName}][${currentTime}] ${message}`, data);
+    } else {
+      console.log(`[${fileName}][${currentTime}] ${message}`);
+    }
+  },
+
+  /**
+   * 統一日誌格式 - 重要訊息（自動檔名）
+   * @param {string} message - 訊息內容（應包含emoji）
+   * @param {any} data - 可選的額外資料
+   */
+  important(message, data = null) {
+    const fileName = this._getFileName();
+    const currentTime = this._get24HourTime();
+    if (data !== null) {
+      console.log(`[${fileName}][${currentTime}] ${message}`, data);
+    } else {
+      console.log(`[${fileName}][${currentTime}] ${message}`);
+    }
+  },
+
+  /**
+   * 統一日誌格式 - 錯誤訊息（自動檔名）
+   * @param {string} message - 錯誤訊息
+   * @param {any} error - 可選的錯誤物件
+   */
+  error(message, error = null) {
+    const fileName = this._getFileName();
+    const currentTime = this._get24HourTime();
+    if (error !== null) {
+      console.error(`[${fileName}][${currentTime}] ❌ ${message}`, error);
+    } else {
+      console.error(`[${fileName}][${currentTime}] ❌ ${message}`);
+    }
+  },
+
+  /**
+   * 統一日誌格式 - 警告訊息（自動檔名）
+   * @param {string} message - 警告訊息
+   * @param {any} data - 可選的額外資料
+   */
+  warn(message, data = null) {
+    const fileName = this._getFileName();
+    const currentTime = this._get24HourTime();
+    if (data !== null) {
+      console.warn(`[${fileName}][${currentTime}] ⚠️ ${message}`, data);
+    } else {
+      console.warn(`[${fileName}][${currentTime}] ⚠️ ${message}`);
+    }
+  }
+};
 const DefaultSettings = {
   // 模型相關預設值
   model: '',                      // 空字串，等待使用者設定
@@ -232,14 +355,17 @@ Auras=雙鴻
   zhEnMapping: '1101,台泥',
 };
 
-// 將 DefaultSettings 暴露到適當的全域物件
+// 將 DefaultSettings 和 LogUtils 暴露到適當的全域物件
 if (typeof window !== 'undefined') {
   // 瀏覽器環境
   window.DefaultSettings = DefaultSettings;
+  window.LogUtils = LogUtils;
 } else if (typeof self !== 'undefined') {
   // Service Worker 環境
   self.DefaultSettings = DefaultSettings;
+  self.LogUtils = LogUtils;
 } else if (typeof global !== 'undefined') {
   // Node.js 環境
   global.DefaultSettings = DefaultSettings;
+  global.LogUtils = LogUtils;
 }
