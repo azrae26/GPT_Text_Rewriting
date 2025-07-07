@@ -3,8 +3,7 @@
  * 
  * 依賴模組：
  * 1. text_highlight/highlight.js
- *    - TextHighlight.CONFIG.FIXED_OFFSET：用於設置預覽容器的位置偏移
- *    - TextHighlight.PositionCalculator：用於計算文本位置和樣式
+ *    - TextHighlight.PositionCalculator：用於計算文本位置和樣式，支援動態容器定位
  *    - TextHighlight.ScrollHelper：用於處理滾動事件
  *    - TextHighlight.SharedVirtualScroll：用於優化虛擬滾動和多組高亮管理
  *    - TextHighlight.Renderer：用於創建預覽高亮元素
@@ -500,12 +499,20 @@ const ManualReplaceManager = {
       // 使用 TextHighlight 的樣式計算方法
       const styles = TextHighlight.PositionCalculator.getTextAreaStyles(textArea);
       
-      // 模仿 TextHighlight 的內層容器設置，位置計算方法已經處理了所有偏移
-      // 需要與 TextHighlight 外層容器設置相同的基準偏移
+      // 獲取 textarea 的計算樣式和位置，使用和高亮容器相同的動態定位邏輯
+      const textAreaStyles = window.getComputedStyle(textArea);
+      const textAreaRect = textArea.getBoundingClientRect();
+      const parentRect = textArea.parentElement.getBoundingClientRect();
+      
+      // 計算容器應該的精確位置（與 textarea 完全對齊）
+      const containerTop = textAreaRect.top - parentRect.top;
+      const containerLeft = textAreaRect.left - parentRect.left;
+      
+      // 使用動態計算的位置，而不是固定偏移
       this.container.style.cssText = `
         position: absolute;
-        top: ${TextHighlight.CONFIG.FIXED_OFFSET.TOP + 0}px;
-        left: 0;
+        top: ${containerTop}px;
+        left: ${containerLeft}px;
         width: ${textArea.offsetWidth}px;
         height: ${textArea.offsetHeight}px;
         pointer-events: none;
@@ -535,11 +542,19 @@ const ManualReplaceManager = {
           return;
         }
         
+        // 重新計算容器的精確位置（與resize後的textarea對齊）
+        const textAreaRect = textArea.getBoundingClientRect();
+        const parentRect = textArea.parentElement.getBoundingClientRect();
+        const containerTop = textAreaRect.top - parentRect.top;
+        const containerLeft = textAreaRect.left - parentRect.left;
+        
         // 獲取新的尺寸
         const offsetWidth = textArea.offsetWidth;
         const offsetHeight = textArea.offsetHeight;
         
-        // 更新容器尺寸
+        // 更新容器位置和尺寸
+        this.container.style.top = `${containerTop}px`;
+        this.container.style.left = `${containerLeft}px`;
         this.container.style.width = `${offsetWidth}px`;
         this.container.style.height = `${offsetHeight}px`;
         

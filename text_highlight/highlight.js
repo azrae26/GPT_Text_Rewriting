@@ -14,6 +14,13 @@
  * - 自動調整高亮位置
  * - 高亮顏色管理
  * - 性能優化和快取處理
+ * - 動態容器定位，精確對齊文字
+ * 
+ * 🔢 關鍵計算公式：
+ * - 原始位置 = rect.top - divRect.top
+ * - 修正位置 = 原始位置 - 文字自然偏移 (精確對齊文字)
+ * - 最終位置 = 修正位置 - textArea.scrollTop
+ * - 容器偏移 = 動態計算（與 textarea 完全對齊）
  */
 const TextHighlight = {
   /**
@@ -21,8 +28,8 @@ const TextHighlight = {
    */
   CONFIG: {
     FIXED_OFFSET: {
-      LEFT: 14,  // 固定左偏移量
-      TOP: 16     // 固定上偏移量，調整為減少垂直偏移
+      LEFT: 0,  // 固定左偏移量
+      TOP: 0     // 固定上偏移量，調整為減少垂直偏移
     },
     DEFAULT_COLOR: 'rgba(50, 205, 50, 0.3)', // 預設顏色
     CACHE_CLEANUP_INTERVAL: 60000 // 快取清理間隔（毫秒）
@@ -164,11 +171,28 @@ const TextHighlight = {
       const textArea = document.querySelector('textarea[name="content"]');
       if (!textArea) return;
       
-      // 設置外層容器樣式，使用 textarea 的實際尺寸
+      // 獲取 textarea 的計算樣式，動態抓取所有邊距值
+      const textAreaStyles = window.getComputedStyle(textArea);
+      const textAreaRect = textArea.getBoundingClientRect();
+      const parentRect = textArea.parentElement.getBoundingClientRect();
+      
+      // 計算 textarea 相對於父元素的精確位置（包含所有邊距）
+      const marginTop = parseFloat(textAreaStyles.marginTop) || 0;
+      const marginLeft = parseFloat(textAreaStyles.marginLeft) || 0;
+      const borderTop = parseFloat(textAreaStyles.borderTopWidth) || 0;
+      const borderLeft = parseFloat(textAreaStyles.borderLeftWidth) || 0;
+      const paddingTop = parseFloat(textAreaStyles.paddingTop) || 0;
+      const paddingLeft = parseFloat(textAreaStyles.paddingLeft) || 0;
+      
+      // 計算容器應該的精確位置（與 textarea 的內容區域對齊）
+      const containerTop = textAreaRect.top - parentRect.top;
+      const containerLeft = textAreaRect.left - parentRect.left;
+      
+      // 設置外層容器樣式，使用動態計算的位置
       outerContainer.style.cssText = `
         position: absolute;
-        top: ${TextHighlight.CONFIG.FIXED_OFFSET.TOP + 0}px;
-        left: 0;
+        top: ${containerTop}px;
+        left: ${containerLeft}px;
         width: ${textArea.offsetWidth}px;
         height: ${textArea.offsetHeight}px;
         pointer-events: none;
@@ -176,7 +200,7 @@ const TextHighlight = {
         overflow: hidden;
       `;
 
-      // 設置內層容器樣式，使用 max-height 限制高度
+      // 設置內層容器樣式
       container.style.cssText = `
         position: absolute;
         top: 0;
@@ -252,6 +276,7 @@ const TextHighlight = {
       div: null,
       lastText: '',
       positions: new Map(),
+      textNaturalOffset: null, // 新增：文字自然偏移緩存
       lineInfo: {
         lastLineCount: 0,
         lastLinePositions: [], // 儲存每行的起始位置
@@ -304,14 +329,6 @@ const TextHighlight = {
 
       // 計算行數變化
       const lineDiff = newLines.length - oldLines.length;
-      
-      // 只在真正有變化時才輸出日誌
-      if (firstDiffIndex < Math.max(oldLines.length, newLines.length)) {
-        console.log(`[TextChange] 變化檢測: 第 ${firstDiffIndex} 行${lineDiff !== 0 ? `, 行數變化 ${lineDiff}` : ''}`);
-        // 輸出變化的行的內容，方便驗證
-        console.log(`[TextChange] 原行內容: "${oldLines[firstDiffIndex] || ''}"`);
-        console.log(`[TextChange] 新行內容: "${newLines[firstDiffIndex] || ''}"`);
-      }
 
       return {
         modifiedLineIndex: firstDiffIndex,
@@ -332,13 +349,6 @@ const TextHighlight = {
     updatePositionsAfterChange(change, positions, newText) {
       const { modifiedLineIndex, lineDiff, isMultiLineChange } = change;
       
-      // 統計信息
-      let stats = {
-        unchanged: 0,
-        recalculate: 0,
-        adjusted: 0
-      };
-
       // 預先計算位移量（對於多行變化）
       let offsetY = 0;
       if (isMultiLineChange && lineDiff !== 0) {
@@ -349,11 +359,9 @@ const TextHighlight = {
         const posLineIndex = this.getLineNumber(newText, pos.index);
         
         if (posLineIndex < modifiedLineIndex) {
-          stats.unchanged++;
           return pos;
         } 
         else if (posLineIndex === modifiedLineIndex) {
-          stats.recalculate++;
           return {
             ...pos,
             needsRecalculation: true
@@ -361,22 +369,17 @@ const TextHighlight = {
         } 
         else {
           if (isMultiLineChange && offsetY !== 0) {
-            stats.adjusted++;
             return {
               ...pos,
               top: pos.top + offsetY,
               originalTop: pos.originalTop + offsetY
             };
           } else {
-            stats.unchanged++;
             return pos;
           }
         }
       });
 
-      // 輸出統計信息
-      console.log(`[PositionUpdate] 處理結果: ${stats.unchanged} 個位置在變化行之前或單行變化(不需調整), ${stats.recalculate} 個位置在變化行上(需重新計算), ${stats.adjusted} 個位置在變化行之後(需要位移調整)`);
-      
       return updatedPositions;
     },
 
@@ -404,6 +407,16 @@ const TextHighlight = {
       // 確保 div 存在
       if (!this.cache.div) {
         this.cache.div = document.createElement('div');
+        
+        // 獲取 textarea 的計算樣式和位置，使用和容器相同的定位邏輯
+        const textAreaStyles = window.getComputedStyle(textArea);
+        const textAreaRect = textArea.getBoundingClientRect();
+        const parentRect = textArea.parentElement.getBoundingClientRect();
+        
+        // 計算測量div應該的精確位置（與 textarea 完全對齊）
+        const divTop = textAreaRect.top - parentRect.top;
+        const divLeft = textAreaRect.left - parentRect.left;
+        
         this.cache.div.style.cssText = `
           position: absolute;
           visibility: hidden;
@@ -411,15 +424,15 @@ const TextHighlight = {
           width: ${textArea.offsetWidth}px;
           font: ${styles.font};
           line-height: ${styles.lineHeight}px;
-          padding: ${styles.paddingTop}px ${styles.paddingLeft}px;
           border: ${styles.border}px solid transparent;
           box-sizing: border-box;
           margin: 0;
+          padding: 0;
           overflow: hidden;
           background: none;
           pointer-events: none;
-          top: 0;
-          left: 0;
+          top: ${divTop}px;
+          left: ${divLeft}px;
           transform: none;
           max-height: ${textArea.offsetHeight}px;
           height: ${textArea.offsetHeight}px;
@@ -448,8 +461,6 @@ const TextHighlight = {
       }
       
       if (needsUpdate) {
-        console.log(`[${new Date().toISOString()}] 強制更新緩存文本: ${this.cache.lastText?.length || 0} → ${text.length}`);
-        
         // 強制清空並重新設置，確保同步
         this.cache.div.textContent = '';
         // 強制 DOM 同步
@@ -459,10 +470,17 @@ const TextHighlight = {
         // 立即驗證更新結果
         const verifyText = this.cache.div.textContent || '';
         if (verifyText.length !== text.length) {
-          console.error(`[${new Date().toISOString()}] DOM文本更新失敗: expected=${text.length}, actual=${verifyText.length}`);
           // 重新創建 div 作為最後手段
           this.cache.div.remove();
           this.cache.div = document.createElement('div');
+          
+          // 重新計算精確位置（與上面邏輯保持一致）
+          const textAreaStyles = window.getComputedStyle(textArea);
+          const textAreaRect = textArea.getBoundingClientRect();
+          const parentRect = textArea.parentElement.getBoundingClientRect();
+          const divTop = textAreaRect.top - parentRect.top;
+          const divLeft = textAreaRect.left - parentRect.left;
+          
           this.cache.div.style.cssText = `
             position: absolute;
             visibility: hidden;
@@ -470,15 +488,15 @@ const TextHighlight = {
             width: ${textArea.offsetWidth}px;
             font: ${styles.font};
             line-height: ${styles.lineHeight}px;
-            padding: ${styles.paddingTop}px ${styles.paddingLeft}px;
             border: ${styles.border}px solid transparent;
             box-sizing: border-box;
             margin: 0;
+            padding: 0;
             overflow: hidden;
             background: none;
             pointer-events: none;
-            top: 0;
-            left: 0;
+            top: ${divTop}px;
+            left: ${divLeft}px;
             transform: none;
             max-height: ${textArea.offsetHeight}px;
             height: ${textArea.offsetHeight}px;
@@ -489,24 +507,43 @@ const TextHighlight = {
         
         this.cache.lastText = text;
         this.cache.positions.clear();
+        
+        // 🎯 計算文字的自然偏移量（只需計算一次）
+        if (this.cache.textNaturalOffset === null && text.length > 0) {
+          try {
+            const range = document.createRange();
+            const textNode = this.cache.div.firstChild;
+            if (textNode && textNode.textContent.length > 0) {
+              range.setStart(textNode, 0);
+              range.setEnd(textNode, 1);
+              
+              const firstCharRect = range.getBoundingClientRect();
+              const divRect = this.cache.div.getBoundingClientRect();
+              this.cache.textNaturalOffset = firstCharRect.top - divRect.top;
+            }
+          } catch (offsetError) {
+            console.warn('[PositionCalculator] 計算文字自然偏移失敗，使用0:', offsetError);
+            this.cache.textNaturalOffset = 0;
+          }
+        }
       }
 
       try {
         const range = document.createRange();
         const textNode = this.cache.div.firstChild;
-        if (!textNode) return null;
+        if (!textNode) {
+          return null;
+        }
 
         // 邊界檢查：確保索引不超過文本節點的長度
         const nodeLength = textNode.textContent ? textNode.textContent.length : 0;
         if (index < 0 || index >= nodeLength) {
-          console.warn(`[${new Date().toISOString()}] 計算位置時索引超出範圍: index=${index}, nodeLength=${nodeLength}, text.length=${text.length}`);
           return null;
         }
         
         // 檢查結束位置
         const endIndex = index + matchedText.length;
         if (endIndex > nodeLength) {
-          console.warn(`[${new Date().toISOString()}] 計算位置時結束索引超出範圍: endIndex=${endIndex}, nodeLength=${nodeLength}`);
           return null;
         }
 
@@ -514,9 +551,10 @@ const TextHighlight = {
         range.setEnd(textNode, endIndex);
 
         const rects = range.getClientRects();
-        if (rects.length === 0) return null;
+        if (rects.length === 0) {
+          return null;
+        }
 
-        const divRect = this.cache.div.getBoundingClientRect();
         const positions = [];
         
         // 合併相鄰的矩形
@@ -539,11 +577,15 @@ const TextHighlight = {
             currentRect.width = (rect.left + rect.width) - currentRect.left;
           } else {
             // 不在同一行，保存當前矩形並開始新的矩形
+            const rawTop = currentRect.top - this.cache.div.getBoundingClientRect().top;
+            const calculatedTop = rawTop - (this.cache.textNaturalOffset || 0);
+            const calculatedLeft = currentRect.left - this.cache.div.getBoundingClientRect().left;
+            
             positions.push({
-              top: currentRect.top - divRect.top + styles.paddingTop,
-              left: currentRect.left - divRect.left + TextHighlight.CONFIG.FIXED_OFFSET.LEFT,
+              top: calculatedTop,
+              left: calculatedLeft,
               width: currentRect.width,
-              originalTop: currentRect.top - divRect.top + styles.paddingTop,
+              originalTop: calculatedTop,
               index,
               text: matchedText,
               needsRecalculation: false,
@@ -563,11 +605,15 @@ const TextHighlight = {
         
         // 添加最後一個矩形
         if (currentRect) {
+          const rawTop = currentRect.top - this.cache.div.getBoundingClientRect().top;
+          const calculatedTop = rawTop - (this.cache.textNaturalOffset || 0);
+          const calculatedLeft = currentRect.left - this.cache.div.getBoundingClientRect().left;
+          
           positions.push({
-            top: currentRect.top - divRect.top + styles.paddingTop,
-            left: currentRect.left - divRect.left + TextHighlight.CONFIG.FIXED_OFFSET.LEFT,
+            top: calculatedTop,
+            left: calculatedLeft,
             width: currentRect.width,
-            originalTop: currentRect.top - divRect.top + styles.paddingTop,
+            originalTop: calculatedTop,
             index,
             text: matchedText,
             needsRecalculation: false,
@@ -583,7 +629,6 @@ const TextHighlight = {
         return positions;
 
       } catch (error) {
-        console.error(`[${new Date().toISOString()}] 計算位置時發生錯誤:`, error);
         return null;
       }
     },
@@ -596,6 +641,7 @@ const TextHighlight = {
       }
       this.cache.lastText = '';
       this.cache.positions.clear();
+      this.cache.textNaturalOffset = null; // 重置文字自然偏移
       
       // 同時清理全局快取
       TextHighlight.GlobalPositionCache.clear();
@@ -658,6 +704,15 @@ const TextHighlight = {
         // 更新外層容器（text-highlight-outer-container）的尺寸
         const outerContainer = container.parentElement;
         if (outerContainer) {
+          // 重新計算容器的精確位置（與resize後的textarea對齊）
+          const textAreaRect = textArea.getBoundingClientRect();
+          const parentRect = textArea.parentElement.getBoundingClientRect();
+          const containerTop = textAreaRect.top - parentRect.top;
+          const containerLeft = textAreaRect.left - parentRect.left;
+          
+          // 更新位置和尺寸
+          outerContainer.style.top = `${containerTop}px`;
+          outerContainer.style.left = `${containerLeft}px`;
           outerContainer.style.width = `${offsetWidth}px`;
           outerContainer.style.height = `${offsetHeight}px`;
         }
@@ -738,53 +793,22 @@ const TextHighlight = {
       if (!textArea) return;
       
       let updateScheduled = false;
-      let lastLogTime = null;
-      
-      const logWithDiff = (message) => {
-        const currentTime = new Date();
-        const timeStr = currentTime.toISOString();
-        const diffStr = lastLogTime ? `, 耗時: ${currentTime - lastLogTime}ms` : '';
-        console.log(`[高亮效能計算][${timeStr}] ${message}${diffStr}`);
-        lastLogTime = currentTime;
-      };
       
       const scheduleUpdate = () => {
-        lastLogTime = new Date();
-        logWithDiff('輸入事件觸發');
-        logWithDiff('檢查 updateScheduled 狀態');
-        
         if (!updateScheduled) {
-          logWithDiff('準備排程 RAF');
           updateScheduled = true;
-          
-          logWithDiff('調用 requestAnimationFrame');
           requestAnimationFrame(() => {
-            logWithDiff('RAF 回調開始');
-            logWithDiff('RAF 開始執行更新');
             TextHighlight.updateHighlights();
-            logWithDiff('更新完成，重置 updateScheduled');
             updateScheduled = false;
-            logWithDiff('RAF 更新完成');
           });
-          logWithDiff('requestAnimationFrame 調用完成');
-        } else {
-          logWithDiff('已有更新排程，跳過');
         }
       };
 
       // 監聽輸入事件
-      textArea.addEventListener('input', (event) => {
-        logWithDiff('input 事件觸發');
-        scheduleUpdate();
-        logWithDiff('scheduleUpdate 完成');
-      });
+      textArea.addEventListener('input', scheduleUpdate);
 
       // 監聽 compositionend 事件
-      textArea.addEventListener('compositionend', (event) => {
-        logWithDiff('compositionend 事件觸發');
-        scheduleUpdate();
-        logWithDiff('scheduleUpdate 完成');
-      });
+      textArea.addEventListener('compositionend', scheduleUpdate);
     }
   },
 
@@ -996,22 +1020,6 @@ const TextHighlight = {
    * 更新所有標示
    */
   updateHighlights() {
-    let lastLogTime = new Date();
-    const logWithDiff = (message) => {
-      // 只在關鍵節點輸出日誌
-      if (message.includes('開始更新高亮') || 
-          message.includes('位置信息收集完成') || 
-          message.includes('高亮更新完成')) {
-        const currentTime = new Date();
-        const timeStr = currentTime.toISOString();
-        const diffStr = lastLogTime ? `, 耗時: ${currentTime - lastLogTime}ms` : '';
-        console.log(`[高亮效能計算][${timeStr}] ${message}${diffStr}`);
-        lastLogTime = currentTime;
-      }
-    };
-
-    logWithDiff('開始更新高亮');
-    
     const { textArea, container } = this.DOMManager.elements;
     if (!textArea || !container) {
       console.error('[TextHighlight] 更新高亮失敗：缺少必要元素');
@@ -1049,8 +1057,6 @@ const TextHighlight = {
     this._lastText = text;
     this._lastScrollTop = textArea.scrollTop;
 
-    logWithDiff('開始收集位置信息');
-    
     // 收集所有位置信息
     const allPositions = [];
     this.targetWords.forEach((targetWord) => {
@@ -1117,15 +1123,11 @@ const TextHighlight = {
       }
     });
 
-    logWithDiff('位置信息收集完成，開始更新 DOM');
-
     // 更新虛擬滾動數據
     this.DOMManager.elements.virtualScrollData.allPositions = allPositions;
     
     // 觸發可見性更新
     this.DOMManager.updateHighlightsVisibility();
-    
-    logWithDiff('高亮更新完成');
   },
 
   // 添加新的方法來新顏色射
@@ -1173,25 +1175,29 @@ const TextHighlight = {
       });
 
       // 更新或創建可見範圍內的高亮
-      visiblePositions.forEach(pos => {
+      visiblePositions.forEach((pos, index) => {
         const top = pos.position ? pos.position.top : pos.top;
         const left = pos.position ? pos.position.left : pos.left;
         const text = pos.position ? pos.position.text : pos.text;
+        const color = pos.color || 'rgba(50, 205, 50, 0.3)';
         
         const key = `${top}-${left}-${text}`;
         let highlight = existingHighlights.get(key);
 
+        // 計算最終渲染位置（滾動補償）
+        const finalTop = top - scrollTop;
+
         if (highlight) {
           // 重用現有元素，只更新 transform
           existingHighlights.delete(key);
-          highlight.style.transform = `translate3d(0, ${top - scrollTop}px, 0)`;
+          highlight.style.transform = `translate3d(0, ${finalTop}px, 0)`;
           highlight.style.display = 'block';
         } else {
           // 創建新元素時已經應用了 GPU 加速
           highlight = createHighlight(pos);
           highlight.className = highlightClass;
           // 直接設置正確的 transform
-          highlight.style.transform = `translate3d(0, ${top - scrollTop}px, 0)`;
+          highlight.style.transform = `translate3d(0, ${finalTop}px, 0)`;
           container.appendChild(highlight);
         }
 
@@ -1199,11 +1205,13 @@ const TextHighlight = {
       });
 
       // 隱藏不再可見的元素
-      existingHighlights.forEach(highlight => {
+      const hiddenCount = existingHighlights.size;
+      existingHighlights.forEach((highlight, key) => {
         highlight.style.display = 'none';
       });
 
       const endTime = new Date();
+      
       return visibleHighlights;
     },
 
