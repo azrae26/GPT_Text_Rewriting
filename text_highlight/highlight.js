@@ -33,20 +33,16 @@ const TextHighlight = {
    */
   ScrollHelper: {
     /**
-     * 創建防抖的滾動處理器
+     * 創建高性能滾動處理器（移除節流限制）
      * @param {Function} callback - 滾動時要執行的回調函數
      * @param {Object} options - 配置選項
      * @param {boolean} [options.passive=true] - 是否使用 passive 事件
      * @returns {Function} 處理滾動的函數
      */
     createScrollHandler(callback, options = { passive: true }) {
-      let ticking = false;
+      // 🚀 移除ticking節流機制，直接執行callback，提升跟隨響應速度
       return function scrollHandler(event) {
-        if (!ticking) {
-          ticking = true;
-          callback(event);
-          ticking = false;
-        }
+        callback(event);
       };
     },
 
