@@ -81,6 +81,60 @@ inputElement.value = settings.propertyName || '';
 4. 確認設定的匯入匯出功能正常
 5. **新功能測試**: 確認新功能資料正確儲存到 Local Storage
 
+### 新功能記憶實現檢查清單 - CRITICAL
+**基於 codeCheckModel/codeCheckInstruction 修復經驗總結**
+
+**最常失敗原因**: 忘記在 `settings-key.js` 註冊和 `loadSettings()` 載入列表中添加新設定鍵
+
+**必須完成的6個步驟:**
+
+**1. settings.js 屬性初始化**
+```javascript
+/** 新功能描述 */
+newFeatureName: '',
+```
+
+**2. settings-key.js 註冊分類**
+```javascript
+LARGE_CONTENT: [
+  // 其他設定...
+  'newFeatureName',  // ⚠️ 新功能都放這裡，最常忘記！
+],
+```
+
+**3. settings.js loadSettings() 載入列表**
+```javascript
+chrome.storage.local.get([
+  // 其他設定...
+  'newFeatureName',  // ⚠️ 加入載入列表，第二常忘記！
+], (items) => resolve(items));
+```
+
+**4. settings.js loadSettings() 載入邏輯**
+```javascript
+this.newFeatureName = localResult.newFeatureName || '';
+```
+
+**5. popup.js DOM引用 + 事件配置**
+```javascript
+// DOM引用
+const newFeatureInput = document.getElementById('newFeature');
+
+// 載入設定
+newFeatureInput.value = settings.newFeatureName || '';
+
+// 事件處理
+'newFeatureName': { type: 'input', element: newFeatureInput },
+```
+
+**6. popup.html 元素**
+```html
+<input id="newFeature" placeholder="輸入新功能內容">
+```
+
+**⚠️ 最常忘記**: 步驟2和3，導致載入時永遠是 `undefined`
+**✅ 驗證方法**: 輸入內容 → 關閉POP → 重開檢查是否保存
+
 ## Settings Management Architecture
 
 ### File Responsibilities

@@ -1,4 +1,4 @@
-/* global chrome, GlobalSettings, TextProcessor, Notification, UIManager, TranslateManager */
+/* global chrome, GlobalSettings, TextProcessor, Notification, UIManager, TranslateManager, StockMatcher */
 /**
  * content.js - 內容腳本主入口
  * 功能：在目標網頁中注入和初始化所有擴充功能
@@ -12,7 +12,8 @@
  * 
  * 依賴：
  * - GlobalSettings：全局設定管理
- * - UIManager：UI 元素管理
+ * - UIManager：UI 元素管理 (委派股票功能給 StockMatcher)
+ * - StockMatcher：股票代號自動匹配功能模組 (2025-01-08分離)
  * - TextHighlight：文本高亮功能
  * - TextProcessor, TranslateManager 等各功能模組
  * - Chrome Extensions API
@@ -336,19 +337,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         }
         
         // 處理股票清單更新
-        if (request.settings.stockList !== undefined && window.UIManager && window.UIManager._loadStockListFromSettings) {
+        if (request.settings.stockList !== undefined) {
           console.log('檢測到股票清單更新，重新初始化股票功能');
-          // 重新載入股票清單並更新UI
-          window.UIManager._loadStockListFromSettings()
-            .then(() => {
-              // 重新初始化股票代碼功能以應用新的清單
-              window.UIManager.removeStockCodeFeature();
-              window.UIManager.initializeStockCodeFeature();
-              console.log('股票清單已通過 updateSettings 成功更新');
-            })
-            .catch(error => {
-              console.error('通過 updateSettings 更新股票清單失敗:', error);
-            });
+          // 優先使用 StockMatcher 模組，回退到 UIManager
+          const stockManager = window.StockMatcher || window.UIManager;
+          if (stockManager && stockManager._loadStockListFromSettings) {
+            // 重新載入股票清單並更新UI
+            stockManager._loadStockListFromSettings()
+              .then(() => {
+                // 重新初始化股票代碼功能以應用新的清單
+                if (window.StockMatcher) {
+                  window.StockMatcher.removeStockCodeFeature();
+                  window.StockMatcher.initializeStockCodeFeature(true);
+                } else if (window.UIManager) {
+                  window.UIManager.removeStockCodeFeature();
+                  window.UIManager.initializeStockCodeFeature(true);
+                }
+                console.log('股票清單已通過 updateSettings 成功更新');
+              })
+              .catch(error => {
+                console.error('通過 updateSettings 更新股票清單失敗:', error);
+              });
+          }
         }
         
         console.log('更新的設置:', {
@@ -408,18 +418,24 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case "updateStockList":
       // 更新股票清單
       if (request.stockList !== undefined) {
-        // 重新載入股票清單並更新UI
-        if (window.UIManager && window.UIManager._loadStockListFromSettings) {
+        // 優先使用 StockMatcher 模組，回退到 UIManager
+        const stockManager = window.StockMatcher || window.UIManager;
+        if (stockManager && stockManager._loadStockListFromSettings) {
           // 保存到設定中
           window.GlobalSettings.saveSingleSetting('stockList', request.stockList)
             .then(() => {
               // 重新載入股票清單
-              return window.UIManager._loadStockListFromSettings();
+              return stockManager._loadStockListFromSettings();
             })
             .then(() => {
               // 重新初始化股票代碼功能以應用新的清單
-              window.UIManager.removeStockCodeFeature();
-              window.UIManager.initializeStockCodeFeature();
+              if (window.StockMatcher) {
+                window.StockMatcher.removeStockCodeFeature();
+                window.StockMatcher.initializeStockCodeFeature(true);
+              } else if (window.UIManager) {
+                window.UIManager.removeStockCodeFeature();
+                window.UIManager.initializeStockCodeFeature(true);
+              }
               sendResponse({success: true});
             })
             .catch(error => {
@@ -472,29 +488,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// 尚未實作的 AI 助手功能
-const AIAssistant = {
-  init: function() {
-    // 初始化代碼
-  },
-  processUserInput: function(input) {
-    // 處理用戶輸入
-  },
-  displayResponse: function(response) {
-    // 顯示 AI 應答
-  }
-};
 
-// 在頁面加載完成後初始化 AI 助手
-document.addEventListener('DOMContentLoaded', AIAssistant.init);
-
-// 監聽來自背景腳本的訊息，啟動 AI 助手
-chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
-  if (request.action === "activateAIAssistant") {
-    AIAssistant.init();
-  }
-  // 其他現有的消息處理...
-});
 
 // 確保在頁面加載完後初始化擴展
 if (document.readyState === 'loading') {

@@ -2,8 +2,9 @@
 
 ## 功能分類對照表
 
-### 股票代碼功能
-- `ui-manager.js`: 股票代碼按鈕的初始化和移除
+### 股票代碼功能 (已模組化 - 2025-01-08)
+- `stock_matcher/stock-matcher.js`: 股票代號自動匹配核心模組 ⭐**新增**
+- `ui-manager.js`: 股票代碼功能委派和向後兼容 (已重構)
 - `stock_list.js`: 股票代碼和名稱的對應資料
 - `content_script_uanalyze.css`: 股票代碼按鈕樣式
 
@@ -35,12 +36,12 @@
 ## 核心功能檔案
 
 ### ui-manager.js
-UI 管理模組，負責處理使用者介面相關功能
+UI 管理模組，負責處理使用者介面相關功能 (已重構 - 2025-01-08)
 - `addRewriteButton()`: 添加改寫按鈕
 - `_setupTextArea()`: 設置文本區域
 - `_handleDoubleClick()`: 處理雙擊改寫事件
-- `initializeStockCodeFeature()`: 初始化股票代號按鈕功能
-- `removeStockCodeFeature()`: 移除股票代號按鈕功能
+- `initializeStockCodeFeature()`: 委派給 StockMatcher 模組 (保持向後兼容)
+- `removeStockCodeFeature()`: 委派給 StockMatcher 模組 (保持向後兼容)
 - `removeRewriteButton()`: 移除改寫按鈕
 
 ### text-processor.js
@@ -79,6 +80,17 @@ UI 管理模組，負責處理使用者介面相關功能
 - 翻譯流程協調
 - 批次管理和進度更新
 - 向後兼容性支持
+
+### stock_matcher/stock-matcher.js ⭐**新增模組**
+股票代號自動匹配模組 (2025-01-08 從 ui-manager.js 分離)
+- `initializeStockCodeFeature()`: 初始化股票代碼功能
+- `removeStockCodeFeature()`: 移除股票代碼功能
+- `_loadStockListFromSettings()`: 從設定載入股票清單
+- `_parseStockList()`: 解析股票清單文字為物件陣列
+- `_getStockCodes()`: 從文本中智能提取股票代碼
+- `_updateStockButtons()`: 動態創建和管理股票代碼按鈕
+- `_getOrCreateContainer()`: 獲取或創建按鈕容器
+- `updateStockList()`: 更新股票清單並重新初始化
 
 ### notification.js
 通知系統模組
@@ -156,3 +168,11 @@ VS Code 編輯器設定
 
 ### npm-debug.log
 npm 除錯日誌檔案
+
+### stock_matcher/test-stock-matcher.html ⭐**新增**
+StockMatcher 模組測試檔案 (2025-01-08)
+- 獨立的 HTML 測試頁面
+- 測試股票清單解析功能
+- 測試股票代碼提取功能
+- 測試UI功能模擬
+- 提供視覺化測試結果

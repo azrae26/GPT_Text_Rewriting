@@ -35,7 +35,7 @@ class KeyClassifier {
     // 大型內容：指令、背景知識等大型文本
     LARGE_CONTENT: [
       'instruction', 'shortInstruction', 'autoRewritePatterns',
-      'translateInstruction', 'summaryInstruction', 'zhEnMapping',
+      'translateInstruction', 'summaryInstruction', 'codeCheckInstruction', 'codeCheckModel', 'zhEnMapping',
       'reflectInstruction', 'optimizeInstruction', 'generateInstruction',
       'reflect1Instruction', 'generationOptimize_1_Instruction',
       'reflect2Instruction', 'generationOptimize_2_Instruction',

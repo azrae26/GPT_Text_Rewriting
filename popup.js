@@ -90,7 +90,9 @@ document.addEventListener('DOMContentLoaded', async function() {
   const backgroundKnowledgeInput = document.getElementById('backgroundKnowledge');
   const summaryModelSelect = document.getElementById('summaryModel');
   const summaryInstructionInput = document.getElementById('summaryInstruction');
-  const aiAssistantButton = document.getElementById('aiAssistant');
+  const codeCheckModelSelect = document.getElementById('codeCheckModel');
+  const codeCheckInstructionInput = document.getElementById('codeCheckInstruction');
+
   const highlightWordsInput = document.getElementById('highlight-words');
   const stockListInput = document.getElementById('stock-list-input');
   const reflectModelSelect = document.getElementById('reflectModel');
@@ -179,6 +181,8 @@ document.addEventListener('DOMContentLoaded', async function() {
   optimizeInstructionInput.value = settings.optimizeInstruction || '';
   summaryModelSelect.value = settings.summaryModel || '';
   summaryInstructionInput.value = settings.summaryInstruction || '';
+  codeCheckModelSelect.value = settings.codeCheckModel || '';
+  codeCheckInstructionInput.value = settings.codeCheckInstruction || '';
   zhEnMappingInput.value = settings.zhEnMapping || '';
   stockListInput.value = settings.stockList || '';
   
@@ -311,17 +315,15 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // 10. 輔助功能
   function sendAutoRewritePatternsUpdate() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "updateAutoRewritePatterns",
-        patterns: autoRewritePatternsInput.value
-      }, function(response) {
-        if (response && response.success) {
-          console.log('自動改寫匹配模式已更新');
-        } else {
-          console.error('更新自動改寫匹配模式失敗');
-        }
-      });
+    sendMessageToTab({
+      action: "updateAutoRewritePatterns",
+      patterns: autoRewritePatternsInput.value
+    }, function(response) {
+      if (response && response.success) {
+        console.log('自動改寫匹配模式已更新');
+      } else {
+        console.error('更新自動改寫匹配模式失敗');
+      }
     });
   }
 
@@ -347,6 +349,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       },
       'translateInstruction': { type: 'input', element: translateInstructionInput },
       'summaryInstruction': { type: 'input', element: summaryInstructionInput },
+      'codeCheckInstruction': { type: 'input', element: codeCheckInstructionInput },
       'zhEnMapping': { type: 'input', element: zhEnMappingInput },
       'crawlerInterval': { 
         type: 'input', 
@@ -370,6 +373,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       'autoRewriteModel': { type: 'model', element: autoRewriteModelSelect },
       'translateModel': { type: 'model', element: translateModelSelect },
       'summaryModel': { type: 'model', element: summaryModelSelect },
+      'codeCheckModel': { type: 'model', element: codeCheckModelSelect },
       'reflectModel': { type: 'model', element: reflectModelSelect },
       'optimizeModel': { type: 'model', element: optimizeModelSelect }
     },
@@ -497,48 +501,38 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // 功能按鈕事件處理
   rewriteButton.addEventListener('click', function() {
-    chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, {
-        action: "rewrite",
-        apiKeys: apiKeys,
-        model: modelSelect.value,
-        instruction: instructionInput.value,
-        shortInstruction: shortInstructionInput.value,
-        autoRewritePatterns: autoRewritePatternsInput.value,
-        fullRewriteModel: fullRewriteModelSelect.value,
-        shortRewriteModel: shortRewriteModelSelect.value,
-        autoRewriteModel: autoRewriteModelSelect.value,
-        translateModel: translateModelSelect.value,
-        translateInstruction: translateInstructionInput.value,
-        reflectModel: reflectModelSelect.value,
-        reflectInstruction: reflectInstructionInput.value,
-        optimizeModel: optimizeModelSelect.value,
-        optimizeInstruction: optimizeInstructionInput.value,
-        removeHash: removeHashCheckbox.checked,
-        removeStar: removeStarCheckbox.checked
-      }, function(response) {
-        if (response && response.success) {
-          console.log('改寫請求已發送');
-        } else {
-          console.error('發送改寫請求失敗');
-        }
-      });
+    sendMessageToTab({
+      action: "rewrite",
+      apiKeys: apiKeys,
+      model: modelSelect.value,
+      instruction: instructionInput.value,
+      shortInstruction: shortInstructionInput.value,
+      autoRewritePatterns: autoRewritePatternsInput.value,
+      fullRewriteModel: fullRewriteModelSelect.value,
+      shortRewriteModel: shortRewriteModelSelect.value,
+      autoRewriteModel: autoRewriteModelSelect.value,
+      translateModel: translateModelSelect.value,
+      translateInstruction: translateInstructionInput.value,
+      reflectModel: reflectModelSelect.value,
+      reflectInstruction: reflectInstructionInput.value,
+      optimizeModel: optimizeModelSelect.value,
+      optimizeInstruction: optimizeInstructionInput.value,
+      removeHash: removeHashCheckbox.checked,
+      removeStar: removeStarCheckbox.checked
+    }, function(response) {
+      if (response && response.success) {
+        console.log('改寫請求已發送');
+      } else {
+        console.error('發送改寫請求失敗');
+      }
     });
   });
 
-  // AI 助理按鈕事件處理
-  if (aiAssistantButton) {
-    aiAssistantButton.addEventListener('click', function() {
-      chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
-        chrome.tabs.sendMessage(tabs[0].id, {action: "activateAIAssistant"});
-      });
-    });
-  }
+
 
   // 9. UI 相關功能
   // 分頁切換功能
   const tabs = document.querySelectorAll('.tab');
-  const tabContents = document.querySelectorAll('.tab-content');
 
   tabs.forEach(tab => {
     tab.addEventListener('click', function() {
@@ -1220,8 +1214,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     },
 
     updateCustomModelsList() {
-      const customModelsContainer = document.getElementById('custom-models-container');
-      
       if (!customModelsContainer) {
         console.error('找不到 customModelsContainer 元素');
         return;
@@ -1276,7 +1268,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         translateModelSelect, generateModelSelect, reflect1ModelSelect,
         generationOptimize_1_ModelSelect, reflect2ModelSelect, generationOptimize_2_ModelSelect,
         reflect3ModelSelect, generationOptimize_3_ModelSelect, summaryModelSelect,
-        reflectModelSelect, optimizeModelSelect
+        codeCheckModelSelect, reflectModelSelect, optimizeModelSelect
       ];
 
       if (modelSelect) {
@@ -1576,7 +1568,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     // 同步間隔輸入框
-    const syncIntervalInput = document.getElementById('sync-interval');
     if (syncIntervalInput && settingsIO) {
       syncIntervalInput.addEventListener('change', async () => {
         try {
@@ -1726,6 +1717,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         { setting: 'reflect3Model', element: reflect3ModelSelect },
         { setting: 'generationOptimize_3_Model', element: generationOptimize_3_ModelSelect },
         { setting: 'summaryModel', element: summaryModelSelect },
+        { setting: 'codeCheckModel', element: codeCheckModelSelect },
         { setting: 'reflectModel', element: reflectModelSelect },
         { setting: 'optimizeModel', element: optimizeModelSelect }
       ];

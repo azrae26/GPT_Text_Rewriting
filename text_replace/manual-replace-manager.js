@@ -358,34 +358,57 @@ const ManualReplaceManager = {
   /** 設置文本選擇功能 */
   _setupTextSelection(textArea, fromInput, toInput, updateButton) {
     const handleSelection = () => {
-      const selectedText = textArea.value.substring(
-        textArea.selectionStart,
-        textArea.selectionEnd
-      ).trim();
+      try {
+        const selectedText = textArea.value.substring(
+          textArea.selectionStart,
+          textArea.selectionEnd
+        ).trim();
 
-      if (selectedText) {
-        fromInput.value = selectedText;
-        toInput.value = '';
-        this._updateRule({ from: selectedText, to: '' }, 0, true);
-        // 有選取文字時展開輸入框
-        this._adjustInputWidth(fromInput);
-        // 更新替換按鈕狀態
-        updateButton();
-      } else if (!selectedText && fromInput.value) {
-        // 當沒有選取文字且 fromInput 有值時清空
-        fromInput.value = '';
-        toInput.value = '';
-        this._updateRule({ from: '', to: '' }, 0, true);
-        // 清空時收合輸入框
-        fromInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
-        toInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
-        // 清理主組的高亮預覽
-        this.PreviewHighlight.clearGroupHighlights(0);
-        // 更新替換按鈕狀態
-        updateButton();
+        console.log(`[ManualReplaceManager] 🎯 文本選取事件: 選取長度=${selectedText.length}, 內容="${selectedText}"`);
+
+        if (selectedText) {
+          console.log(`[ManualReplaceManager] ✅ 設定主組文字: "${selectedText}"`);
+          fromInput.value = selectedText;
+          toInput.value = '';
+          
+          // 更新主組規則
+          this._updateRule({ from: selectedText, to: '' }, 0, true);
+          
+          // 有選取文字時展開輸入框
+          this._adjustInputWidth(fromInput);
+          
+          // 更新替換按鈕狀態
+          updateButton();
+          
+          // 強制立即更新預覽
+          setTimeout(() => {
+            console.log(`[ManualReplaceManager] 🔄 強制更新主組預覽`);
+            this._updatePreviews();
+          }, 50);
+          
+        } else if (!selectedText && fromInput.value) {
+          console.log(`[ManualReplaceManager] 🧹 清空主組內容`);
+          // 當沒有選取文字且 fromInput 有值時清空
+          fromInput.value = '';
+          toInput.value = '';
+          this._updateRule({ from: '', to: '' }, 0, true);
+          
+          // 清空時收合輸入框
+          fromInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+          toInput.style.cssText = `width: ${this.CONFIG.MIN_WIDTH}px !important;`;
+          
+          // 清理主組的高亮預覽
+          this.PreviewHighlight.clearGroupHighlights(0);
+          
+          // 更新替換按鈕狀態
+          updateButton();
+        }
+      } catch (error) {
+        console.error('[ManualReplaceManager] ❌ 處理文本選取時出錯:', error);
       }
     };
 
+    // 綁定事件處理器
     textArea.addEventListener('mouseup', handleSelection);
     textArea.addEventListener('keyup', (e) => {
       if (e.key === 'Shift') handleSelection();
@@ -473,10 +496,10 @@ const ManualReplaceManager = {
       
       textArea.parentElement.appendChild(this.container);
       
-      // 使用 TextHighlight 的滾動處理器
+      // 使用 TextHighlight 的滾動處理器 - 滾動時使用輕量級更新
       TextHighlight.ScrollHelper.bindScrollEvent(
         textArea,
-        () => this._updateVirtualScrolling(textArea)
+        () => this._updateScrollVisibility(textArea)
       );
       
       this._setupResizeObserver(textArea);
@@ -526,6 +549,89 @@ const ManualReplaceManager = {
     },
 
     _updateVirtualScrolling(textArea) {
+      // 🔍 統一緩存同步驗證 - 在處理所有組之前統一檢查
+      const currentText = textArea.value;
+      console.log(`[ManualReplaceManager] 🎯 開始虛擬滾動更新，文本長度: ${currentText.length}`);
+      
+      // 🔥 強制性 DOM 同步 - 確保位置計算的 DOM 內容完全一致
+      if (TextHighlight.PositionCalculator && TextHighlight.PositionCalculator.cache) {
+        const cachedText = TextHighlight.PositionCalculator.cache.lastText || '';
+        
+        // 無論如何都要強制同步，確保 DOM 內容正確
+        console.log(`[ManualReplaceManager] 🔄 強制同步 DOM 內容: cached=${cachedText.length}, actual=${currentText.length}`);
+        
+        // 完全清理緩存 - 修復作用域問題
+        ManualReplaceManager._forceCleanAllCaches();
+        
+        // 多重強制同步策略
+        if (TextHighlight.PositionCalculator.cache.div) {
+          const div = TextHighlight.PositionCalculator.cache.div;
+          
+          // 1. 完全重置 div
+          div.textContent = '';
+          div.innerHTML = '';
+          
+          // 2. 強制瀏覽器重排
+          div.offsetHeight;
+          div.scrollTop;
+          
+          // 3. 分步設置內容，確保同步
+          div.textContent = currentText;
+          
+          // 4. 再次強制重排並驗證
+          div.offsetHeight;
+          const verifyText = div.textContent || '';
+          console.log(`[ManualReplaceManager] 🔍 DOM 同步驗證: div.length=${verifyText.length}, textarea.length=${currentText.length}`);
+          
+          // 5. 如果同步失敗，重新創建 div
+          if (verifyText.length !== currentText.length || verifyText !== currentText) {
+            console.warn(`[ManualReplaceManager] ⚠️ DOM 同步失敗，重新創建計算容器`);
+            
+            // 移除舊的 div
+            if (div.parentNode) {
+              div.parentNode.removeChild(div);
+            }
+            
+            // 重新創建 div 並設置樣式
+            const newDiv = document.createElement('div');
+            const styles = TextHighlight.PositionCalculator.getTextAreaStyles(textArea);
+            newDiv.style.cssText = `
+              position: absolute;
+              visibility: hidden;
+              pointer-events: none;
+              white-space: pre-wrap;
+              word-wrap: break-word;
+              overflow-wrap: break-word;
+              font: ${styles.font};
+              line-height: ${styles.lineHeight}px;
+              width: ${textArea.offsetWidth}px;
+              height: auto;
+              border: none;
+              margin: 0;
+              padding: ${styles.padding};
+              left: -9999px;
+              top: -9999px;
+            `;
+            
+            // 添加到 DOM 並設置內容
+            document.body.appendChild(newDiv);
+            newDiv.textContent = currentText;
+            
+            // 強制重排並更新緩存
+            newDiv.offsetHeight;
+            TextHighlight.PositionCalculator.cache.div = newDiv;
+            
+            console.log(`[ManualReplaceManager] ✅ 重新創建計算容器完成，新 div.length=${newDiv.textContent.length}`);
+          }
+        }
+        
+        // 強制更新緩存狀態
+        TextHighlight.PositionCalculator.cache.lastText = currentText;
+        TextHighlight.PositionCalculator.cache.positions.clear();
+        
+        console.log(`[ManualReplaceManager] ✅ DOM 強制同步完成`);
+      }
+
       const scrollTop = textArea.scrollTop;
       const scrollBottom = scrollTop + textArea.clientHeight;
       const bufferSize = 200;
@@ -533,69 +639,177 @@ const ManualReplaceManager = {
       // 使用 SharedVirtualScroll 的多組更新方法
       const groupedPositions = new Map();
       
-      // 先清理所有組，再重新添加有內容的組
-      // 這確保空的組會被正確清理
+      // 清理所有組，再重新添加有內容的組
       const activeGroups = new Set();
       
-      // 收集所有組的位置數據
-      ManualReplaceManager._rules.extraGroups.forEach((rule, index) => {
-        if (rule.from?.trim()) {
-          // 獲取該組的位置數據（這裡需要從已有的位置快取中獲取）
-          const positions = this._getGroupPositions(textArea, rule.from, index + 1);
-          if (positions && positions.length > 0) {
-            groupedPositions.set(index + 1, positions);
-            activeGroups.add(index + 1);
-          }
-        }
-      });
-      
-      // 主組
+      // 🎯 優先處理主組（索引 0）- 確保用戶選取的文字立即顯示
       if (ManualReplaceManager._rules.mainGroup?.from?.trim()) {
+        console.log(`[ManualReplaceManager] 🔥 處理主組: "${ManualReplaceManager._rules.mainGroup.from}"`);
         const positions = this._getGroupPositions(textArea, ManualReplaceManager._rules.mainGroup.from, 0);
         if (positions && positions.length > 0) {
           groupedPositions.set(0, positions);
           activeGroups.add(0);
+          console.log(`[ManualReplaceManager] ✅ 主組成功獲取 ${positions.length} 個位置`);
+        } else {
+          console.warn(`[ManualReplaceManager] ⚠️ 主組位置獲取失敗: "${ManualReplaceManager._rules.mainGroup.from}"`);
         }
       }
+      
+      // 然後處理額外組
+      ManualReplaceManager._rules.extraGroups.forEach((rule, index) => {
+        if (rule.from?.trim()) {
+          console.log(`[ManualReplaceManager] 🔧 處理額外組 ${index + 1}: "${rule.from}"`);
+          const positions = this._getGroupPositions(textArea, rule.from, index + 1);
+          if (positions && positions.length > 0) {
+            groupedPositions.set(index + 1, positions);
+            activeGroups.add(index + 1);
+            console.log(`[ManualReplaceManager] ✅ 額外組 ${index + 1} 成功獲取 ${positions.length} 個位置`);
+          } else {
+            console.warn(`[ManualReplaceManager] ⚠️ 額外組 ${index + 1} 位置獲取失敗: "${rule.from}"`);
+          }
+        }
+      });
       
       // 清理非活躍組的高亮
       this.groupHighlights.forEach((groupHighlightMap, groupIndex) => {
         if (!activeGroups.has(groupIndex)) {
+          console.log(`[ManualReplaceManager] 🧹 清理非活躍組 ${groupIndex} 的高亮`);
           this.clearGroupHighlights(groupIndex);
         }
       });
       
+      console.log(`[ManualReplaceManager] 📊 總共處理 ${activeGroups.size} 個活躍組`);
+      
       // 使用 SharedVirtualScroll 更新可見性
-      TextHighlight.SharedVirtualScroll.updateMultiGroupVirtualView({
-        groupedPositions,
-        groupHighlights: this.groupHighlights,
-        visibleTop: scrollTop - bufferSize,
-        visibleBottom: scrollBottom + bufferSize,
-        scrollTop,
-        createHighlight: (pos) => {
-          return TextHighlight.Renderer.createPreviewHighlight(
-            pos.position,
-            pos.position.width,
-            pos.lineHeight,
-            pos.color
-          );
-        },
-        container: this.container,
-        highlightClass: 'replace-preview-highlight'
+      try {
+        TextHighlight.SharedVirtualScroll.updateMultiGroupVirtualView({
+          groupedPositions,
+          groupHighlights: this.groupHighlights,
+          visibleTop: scrollTop - bufferSize,
+          visibleBottom: scrollBottom + bufferSize,
+          scrollTop,
+          createHighlight: (pos) => {
+            const element = TextHighlight.Renderer.createPreviewHighlight(
+              pos.position,
+              pos.position.width,
+              pos.lineHeight,
+              pos.color
+            );
+            // 🔗 存儲位置數據供滾動時重用
+            element.positionData = pos;
+            return element;
+          },
+          container: this.container,
+          highlightClass: 'replace-preview-highlight'
+        });
+        console.log(`[ManualReplaceManager] ✅ 虛擬滾動更新完成`);
+      } catch (error) {
+        console.error(`[ManualReplaceManager] ❌ 虛擬滾動更新失敗:`, error);
+      }
+    },
+
+    // 🚀 輕量級滾動更新 - 專門用於滾動時的性能優化
+    _updateScrollVisibility(textArea) {
+      // 滾動時只更新可見性，不重新計算位置
+      const scrollTop = textArea.scrollTop;
+      const scrollBottom = scrollTop + textArea.clientHeight;
+      const bufferSize = 200;
+      
+      // 獲取已緩存的位置數據
+      const groupedPositions = new Map();
+      
+      // 收集已有的位置數據（不重新計算）
+      this.groupHighlights.forEach((groupHighlightMap, groupIndex) => {
+        const positions = [];
+        groupHighlightMap.forEach((element, key) => {
+          // 從已有的高亮元素中提取位置信息
+          if (element && element.positionData) {
+            positions.push(element.positionData);
+          }
+        });
+        
+        if (positions.length > 0) {
+          groupedPositions.set(groupIndex, positions);
+        }
       });
+      
+      // 如果沒有已緩存的位置數據，回退到完整更新
+      if (groupedPositions.size === 0) {
+        console.log(`[ManualReplaceManager] ⚠️ 無緩存位置數據，回退到完整更新`);
+        this._updateVirtualScrolling(textArea);
+        return;
+      }
+      
+      console.log(`[ManualReplaceManager] 🏎️ 快速滾動更新: ${groupedPositions.size} 個組`);
+      
+      // 使用 SharedVirtualScroll 僅更新可見性
+      try {
+        TextHighlight.SharedVirtualScroll.updateMultiGroupVirtualView({
+          groupedPositions,
+          groupHighlights: this.groupHighlights,
+          visibleTop: scrollTop - bufferSize,
+          visibleBottom: scrollBottom + bufferSize,
+          scrollTop,
+          createHighlight: (pos) => {
+            const element = TextHighlight.Renderer.createPreviewHighlight(
+              pos.position,
+              pos.position.width,
+              pos.lineHeight,
+              pos.color
+            );
+            // 🔗 存儲位置數據供滾動時重用
+            element.positionData = pos;
+            return element;
+          },
+          container: this.container,
+          highlightClass: 'replace-preview-highlight'
+        });
+      } catch (error) {
+        console.error(`[ManualReplaceManager] ❌ 快速滾動更新失敗，回退到完整更新:`, error);
+        this._updateVirtualScrolling(textArea);
+      }
     },
 
     // 新增：獲取組的位置數據的輔助方法
     _getGroupPositions(textArea, searchText, groupIndex) {
       try {
-        const text = textArea.value;
-        const regex = RegexHelper.createRegex(searchText);
-        const matches = Array.from(text.matchAll(regex));
+        console.log(`[ManualReplaceManager] 🔍 開始獲取組 ${groupIndex} 位置，搜尋文字: "${searchText}"`);
         
-        if (matches.length === 0) return [];
+        // 確保獲取最新的文本內容
+        const text = textArea.value;
+        
+        // 驗證文本合法性
+        if (!text || typeof text !== 'string') {
+          console.warn(`[ManualReplaceManager] ❌ 無效的文本內容，組 ${groupIndex}`);
+          return [];
+        }
+        
+        // 驗證搜尋文字
+        if (!searchText || !searchText.trim()) {
+          console.warn(`[ManualReplaceManager] ❌ 搜尋文字為空，組 ${groupIndex}`);
+          return [];
+        }
+        
+        // 創建正則表達式並查找匹配
+        let regex, matches;
+        try {
+          regex = RegexHelper.createRegex(searchText);
+          matches = Array.from(text.matchAll(regex));
+          console.log(`[ManualReplaceManager] 🎯 組 ${groupIndex} 找到 ${matches.length} 個匹配`);
+        } catch (regexError) {
+          console.error(`[ManualReplaceManager] ❌ 正則表達式創建失敗，組 ${groupIndex}:`, regexError);
+          console.error(`[ManualReplaceManager] ❌ 問題文字: "${searchText}"`);
+          return [];
+        }
+        
+        if (matches.length === 0) {
+          console.log(`[ManualReplaceManager] ⚠️ 組 ${groupIndex} 沒有找到匹配項`);
+          return [];
+        }
 
         // 檢查匹配數量是否超過上限
         if (matches.length > ManualReplaceManager.CONFIG.MAX_PREVIEWS) {
+          console.warn(`[ManualReplaceManager] ⚠️ 組 ${groupIndex} 匹配數量 ${matches.length} 超過上限，截取到 ${ManualReplaceManager.CONFIG.MAX_PREVIEWS}`);
           matches.length = ManualReplaceManager.CONFIG.MAX_PREVIEWS;
         }
 
@@ -605,53 +819,141 @@ const ManualReplaceManager = {
           groupIndex % ManualReplaceManager.CONFIG.PREVIEW_COLORS.length
         ];
 
+        console.log(`[ManualReplaceManager] 🎨 組 ${groupIndex} 使用顏色: ${color}`);
+
         // 收集所有位置信息
         const positions = [];
+        let successCount = 0;
+        let failCount = 0;
         
-        for (const match of matches) {
-          const positionList = TextHighlight.PositionCalculator.calculatePosition(
-            textArea,
-            match.index,
-            text,
-            match[0],
-            styles
-          );
+        // 🔍 預先驗證 DOM 同步狀態
+        let domContentLength = 0;
+        if (TextHighlight.PositionCalculator && TextHighlight.PositionCalculator.cache && TextHighlight.PositionCalculator.cache.div) {
+          const divText = TextHighlight.PositionCalculator.cache.div.textContent || '';
+          domContentLength = divText.length;
+          console.log(`[ManualReplaceManager] 🔍 組 ${groupIndex} DOM 內容長度驗證: ${domContentLength}, 文本長度: ${text.length}`);
           
-          if (positionList) {
-            positionList.forEach(position => {
-              positions.push({
-                position: {
-                  ...position,
-                  text: match[0],
-                  width: position.width
-                },
-                color,
-                targetWord: searchText,
-                lineHeight: styles.lineHeight
+          if (domContentLength !== text.length) {
+            console.error(`[ManualReplaceManager] ❌ 組 ${groupIndex} DOM 內容與文本不同步！DOM: ${domContentLength}, Text: ${text.length}`);
+            return [];
+          }
+        } else {
+          console.error(`[ManualReplaceManager] ❌ 組 ${groupIndex} 找不到位置計算的 DOM 容器`);
+          return [];
+        }
+        
+        for (let i = 0; i < matches.length; i++) {
+          const match = matches[i];
+          
+          // 🔥 加強邊界檢查：多重驗證
+          if (match.index < 0 || match.index >= text.length) {
+            console.warn(`[ManualReplaceManager] ⚠️ 組 ${groupIndex} 跳過無效匹配索引: ${match.index}, 文本長度: ${text.length}`);
+            failCount++;
+            continue;
+          }
+          
+          // 檢查匹配文本的結束位置
+          const endIndex = match.index + match[0].length;
+          if (endIndex > text.length) {
+            console.warn(`[ManualReplaceManager] ⚠️ 組 ${groupIndex} 跳過無效匹配結束位置: ${endIndex}, 文本長度: ${text.length}`);
+            failCount++;
+            continue;
+          }
+          
+          // 🆕 檢查索引是否在 DOM 範圍內
+          if (match.index >= domContentLength) {
+            console.warn(`[ManualReplaceManager] ⚠️ 組 ${groupIndex} 跳過超出 DOM 範圍的匹配: index=${match.index}, DOM長度=${domContentLength}`);
+            failCount++;
+            continue;
+          }
+          
+          // 🆕 檢查結束位置是否在 DOM 範圍內
+          if (endIndex > domContentLength) {
+            console.warn(`[ManualReplaceManager] ⚠️ 組 ${groupIndex} 跳過超出 DOM 範圍的匹配結束位置: endIndex=${endIndex}, DOM長度=${domContentLength}`);
+            failCount++;
+            continue;
+          }
+          
+          // 🆕 檢查匹配的字符是否一致
+          const textSubstring = text.substring(match.index, endIndex);
+          if (textSubstring !== match[0]) {
+            console.warn(`[ManualReplaceManager] ⚠️ 組 ${groupIndex} 匹配內容不一致: 期望="${match[0]}", 實際="${textSubstring}"`);
+            failCount++;
+            continue;
+          }
+          
+          console.log(`[ManualReplaceManager] ✅ 組 ${groupIndex} 匹配 ${i} 通過所有檢查: index=${match.index}, length=${match[0].length}, text="${match[0]}"`);
+          
+          try {
+            const positionList = TextHighlight.PositionCalculator.calculatePosition(
+              textArea,
+              match.index,
+              text,
+              match[0],
+              styles
+            );
+            
+            if (positionList && positionList.length > 0) {
+              positionList.forEach(position => {
+                positions.push({
+                  position: {
+                    ...position,
+                    text: match[0],
+                    width: position.width
+                  },
+                  color,
+                  targetWord: searchText,
+                  lineHeight: styles.lineHeight
+                });
               });
-            });
+              successCount++;
+              console.log(`[ManualReplaceManager] ✅ 組 ${groupIndex} 匹配 ${i} 位置計算成功，獲得 ${positionList.length} 個位置`);
+            } else {
+              console.warn(`[ManualReplaceManager] ⚠️ 組 ${groupIndex} 匹配 ${i} 位置計算失敗`);
+              failCount++;
+            }
+          } catch (posError) {
+            console.error(`[ManualReplaceManager] ❌ 組 ${groupIndex} 匹配 ${i} 位置計算出錯:`, posError);
+            console.error(`[ManualReplaceManager] ❌ 錯誤詳情: index=${match.index}, text="${match[0]}", textLength=${text.length}, domLength=${domContentLength}`);
+            failCount++;
           }
         }
 
+        console.log(`[ManualReplaceManager] 📊 組 ${groupIndex} 位置獲取完成: 成功 ${successCount}, 失敗 ${failCount}, 總位置 ${positions.length}`);
         return positions;
+        
       } catch (error) {
-        console.error('獲取組位置數據失敗:', error);
+        console.error(`[ManualReplaceManager] ❌ 組 ${groupIndex} 獲取位置數據失敗:`, error);
+        console.error(`[ManualReplaceManager] ❌ 詳細信息: 搜尋文字="${searchText}", 文本長度=${textArea.value?.length || 'undefined'}`);
         return [];
       }
     },
 
     updatePreview(textArea, searchText, groupIndex) {
+      console.log(`[ManualReplaceManager] 🔄 updatePreview 被調用: 組 ${groupIndex}, 搜尋文字: "${searchText}"`);
+      
       if (!searchText || !searchText.trim()) {
+        console.log(`[ManualReplaceManager] 🧹 清理組 ${groupIndex} 高亮（搜尋文字為空）`);
         this.clearGroupHighlights(groupIndex);
         return;
       }
 
-      // 使用防抖機制，避免頻繁更新
+      // 清除現有的防抖計時器
       if (this._updateTimer) {
         clearTimeout(this._updateTimer);
       }
       
+      // 🎯 主組（用戶選取的文字）立即更新，不使用防抖
+      if (groupIndex === 0) {
+        console.log(`[ManualReplaceManager] ⚡ 主組立即更新高亮`);
+        this._updateVirtualScrolling(textArea);
+        return;
+      }
+      
+      // 其他組使用防抖機制，避免頻繁更新
+      console.log(`[ManualReplaceManager] ⏳ 組 ${groupIndex} 使用防抖更新（16ms 延遲）`);
       this._updateTimer = setTimeout(() => {
+        console.log(`[ManualReplaceManager] 🔄 執行防抖更新: 組 ${groupIndex}`);
         this._updateVirtualScrolling(textArea);
       }, 16); // 約60fps的更新頻率
     },
@@ -751,15 +1053,66 @@ const ManualReplaceManager = {
   /** 設置文本區域變化監聽器 */
   _setupTextAreaChangeListener(textArea) {
     let lastValue = textArea.value;
+    let lastLength = textArea.value.length;
+    let lastHash = this._hashText(textArea.value);
     
     const checkValue = () => {
-      if (textArea.value !== lastValue) {
-        lastValue = textArea.value;
-        this._updatePreviews();
+      const currentValue = textArea.value;
+      const currentLength = currentValue.length;
+      const currentHash = this._hashText(currentValue);
+      
+      if (currentValue !== lastValue || currentLength !== lastLength || currentHash !== lastHash) {
+        console.log(`[ManualReplaceManager] 📝 文本變化: ${lastLength} → ${currentLength} 字符`);
+        
+        // 🧹 強制清理所有相關緩存
+        this._forceCleanAllCaches();
+        
+        lastValue = currentValue;
+        lastLength = currentLength;
+        lastHash = currentHash;
+        
+        // 延遲更新預覽，確保 DOM 和緩存完全清理
+        setTimeout(() => {
+          this._updatePreviews();
+        }, 15);
       }
       requestAnimationFrame(checkValue);
     };
     checkValue();
+  },
+
+  /** 強制清理所有緩存 */
+  _forceCleanAllCaches() {
+    // 清理位置計算器緩存
+    if (TextHighlight.PositionCalculator && TextHighlight.PositionCalculator.cache) {
+      TextHighlight.PositionCalculator.cache.lastText = '';
+      TextHighlight.PositionCalculator.cache.positions.clear();
+      
+      // 強制重置 div 內容
+      if (TextHighlight.PositionCalculator.cache.div) {
+        TextHighlight.PositionCalculator.cache.div.textContent = '';
+      }
+    }
+    
+    // 清理全局位置緩存
+    if (TextHighlight.GlobalPositionCache && TextHighlight.GlobalPositionCache.clear) {
+      TextHighlight.GlobalPositionCache.clear();
+    }
+    
+    // 清理當前高亮
+    this.PreviewHighlight.clearAllHighlights();
+  },
+
+  /** 計算文本簡單哈希 */
+  _hashText(text) {
+    if (!text) return '';
+    let hash = 0;
+    for (let i = 0; i < Math.min(text.length, 100); i++) {
+      const char = text.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // 轉為32位整數
+    }
+    return hash.toString();
   },
 
   /** 清理資源 */
