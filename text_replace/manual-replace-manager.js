@@ -467,6 +467,7 @@ const ManualReplaceManager = {
   PreviewHighlight: {
     container: null,
     groupHighlights: new Map(), // 存儲每個組的高亮元素 Map<groupIndex, Map<key, element>>
+    cachedGroupPositions: new Map(), // 🆕 獨立位置緩存 Map<groupIndex, positions[]>
     observer: null, // IntersectionObserver 實例
     _updateTimer: null, // 防抖計時器
 
@@ -551,14 +552,12 @@ const ManualReplaceManager = {
     _updateVirtualScrolling(textArea) {
       // 🔍 統一緩存同步驗證 - 在處理所有組之前統一檢查
       const currentText = textArea.value;
-      console.log(`[ManualReplaceManager] 🎯 開始虛擬滾動更新，文本長度: ${currentText.length}`);
       
       // 🔥 強制性 DOM 同步 - 確保位置計算的 DOM 內容完全一致
       if (TextHighlight.PositionCalculator && TextHighlight.PositionCalculator.cache) {
         const cachedText = TextHighlight.PositionCalculator.cache.lastText || '';
         
         // 無論如何都要強制同步，確保 DOM 內容正確
-        console.log(`[ManualReplaceManager] 🔄 強制同步 DOM 內容: cached=${cachedText.length}, actual=${currentText.length}`);
         
         // 完全清理緩存 - 修復作用域問題
         ManualReplaceManager._forceCleanAllCaches();
@@ -581,7 +580,6 @@ const ManualReplaceManager = {
           // 4. 再次強制重排並驗證
           div.offsetHeight;
           const verifyText = div.textContent || '';
-          console.log(`[ManualReplaceManager] 🔍 DOM 同步驗證: div.length=${verifyText.length}, textarea.length=${currentText.length}`);
           
           // 5. 如果同步失敗，重新創建 div
           if (verifyText.length !== currentText.length || verifyText !== currentText) {
@@ -620,16 +618,12 @@ const ManualReplaceManager = {
             // 強制重排並更新緩存
             newDiv.offsetHeight;
             TextHighlight.PositionCalculator.cache.div = newDiv;
-            
-            console.log(`[ManualReplaceManager] ✅ 重新創建計算容器完成，新 div.length=${newDiv.textContent.length}`);
           }
         }
         
         // 強制更新緩存狀態
         TextHighlight.PositionCalculator.cache.lastText = currentText;
         TextHighlight.PositionCalculator.cache.positions.clear();
-        
-        console.log(`[ManualReplaceManager] ✅ DOM 強制同步完成`);
       }
 
       const scrollTop = textArea.scrollTop;
@@ -658,14 +652,10 @@ const ManualReplaceManager = {
       // 然後處理額外組
       ManualReplaceManager._rules.extraGroups.forEach((rule, index) => {
         if (rule.from?.trim()) {
-          console.log(`[ManualReplaceManager] 🔧 處理額外組 ${index + 1}: "${rule.from}"`);
           const positions = this._getGroupPositions(textArea, rule.from, index + 1);
           if (positions && positions.length > 0) {
             groupedPositions.set(index + 1, positions);
             activeGroups.add(index + 1);
-            console.log(`[ManualReplaceManager] ✅ 額外組 ${index + 1} 成功獲取 ${positions.length} 個位置`);
-          } else {
-            console.warn(`[ManualReplaceManager] ⚠️ 額外組 ${index + 1} 位置獲取失敗: "${rule.from}"`);
           }
         }
       });
@@ -678,8 +668,13 @@ const ManualReplaceManager = {
         }
       });
       
-      console.log(`[ManualReplaceManager] 📊 總共處理 ${activeGroups.size} 個活躍組`);
-      
+      // 🆕 保存位置數據到獨立緩存
+      console.log(`[ManualReplaceManager] 💾 保存 ${groupedPositions.size} 個組的位置數據到緩存`);
+      this.cachedGroupPositions.clear();
+      groupedPositions.forEach((positions, groupIndex) => {
+        this.cachedGroupPositions.set(groupIndex, positions);
+      });
+
       // 使用 SharedVirtualScroll 更新可見性
       try {
         TextHighlight.SharedVirtualScroll.updateMultiGroupVirtualView({
@@ -702,7 +697,6 @@ const ManualReplaceManager = {
           container: this.container,
           highlightClass: 'replace-preview-highlight'
         });
-        console.log(`[ManualReplaceManager] ✅ 虛擬滾動更新完成`);
       } catch (error) {
         console.error(`[ManualReplaceManager] ❌ 虛擬滾動更新失敗:`, error);
       }
@@ -715,32 +709,24 @@ const ManualReplaceManager = {
       const scrollBottom = scrollTop + textArea.clientHeight;
       const bufferSize = 200;
       
-      // 獲取已緩存的位置數據
+      // 🆕 直接從獨立緩存獲取位置數據（不依賴DOM元素）
       const groupedPositions = new Map();
       
-      // 收集已有的位置數據（不重新計算）
-      this.groupHighlights.forEach((groupHighlightMap, groupIndex) => {
-        const positions = [];
-        groupHighlightMap.forEach((element, key) => {
-          // 從已有的高亮元素中提取位置信息
-          if (element && element.positionData) {
-            positions.push(element.positionData);
-          }
-        });
-        
-        if (positions.length > 0) {
+      // 複製緩存的位置數據
+      this.cachedGroupPositions.forEach((positions, groupIndex) => {
+        if (positions && positions.length > 0) {
           groupedPositions.set(groupIndex, positions);
         }
       });
       
-      // 如果沒有已緩存的位置數據，回退到完整更新
+      // 如果沒有緩存位置數據，回退到完整更新
       if (groupedPositions.size === 0) {
         console.log(`[ManualReplaceManager] ⚠️ 無緩存位置數據，回退到完整更新`);
         this._updateVirtualScrolling(textArea);
         return;
       }
       
-      console.log(`[ManualReplaceManager] 🏎️ 快速滾動更新: ${groupedPositions.size} 個組`);
+      console.log(`[ManualReplaceManager] 🏎️ 快速滾動更新: ${groupedPositions.size} 個組，共 ${Array.from(groupedPositions.values()).reduce((sum, positions) => sum + positions.length, 0)} 個位置`);
       
       // 使用 SharedVirtualScroll 僅更新可見性
       try {
@@ -773,8 +759,6 @@ const ManualReplaceManager = {
     // 新增：獲取組的位置數據的輔助方法
     _getGroupPositions(textArea, searchText, groupIndex) {
       try {
-        console.log(`[ManualReplaceManager] 🔍 開始獲取組 ${groupIndex} 位置，搜尋文字: "${searchText}"`);
-        
         // 確保獲取最新的文本內容
         const text = textArea.value;
         
@@ -795,7 +779,6 @@ const ManualReplaceManager = {
         try {
           regex = RegexHelper.createRegex(searchText);
           matches = Array.from(text.matchAll(regex));
-          console.log(`[ManualReplaceManager] 🎯 組 ${groupIndex} 找到 ${matches.length} 個匹配`);
         } catch (regexError) {
           console.error(`[ManualReplaceManager] ❌ 正則表達式創建失敗，組 ${groupIndex}:`, regexError);
           console.error(`[ManualReplaceManager] ❌ 問題文字: "${searchText}"`);
@@ -803,7 +786,6 @@ const ManualReplaceManager = {
         }
         
         if (matches.length === 0) {
-          console.log(`[ManualReplaceManager] ⚠️ 組 ${groupIndex} 沒有找到匹配項`);
           return [];
         }
 
@@ -819,8 +801,6 @@ const ManualReplaceManager = {
           groupIndex % ManualReplaceManager.CONFIG.PREVIEW_COLORS.length
         ];
 
-        console.log(`[ManualReplaceManager] 🎨 組 ${groupIndex} 使用顏色: ${color}`);
-
         // 收集所有位置信息
         const positions = [];
         let successCount = 0;
@@ -831,7 +811,6 @@ const ManualReplaceManager = {
         if (TextHighlight.PositionCalculator && TextHighlight.PositionCalculator.cache && TextHighlight.PositionCalculator.cache.div) {
           const divText = TextHighlight.PositionCalculator.cache.div.textContent || '';
           domContentLength = divText.length;
-          console.log(`[ManualReplaceManager] 🔍 組 ${groupIndex} DOM 內容長度驗證: ${domContentLength}, 文本長度: ${text.length}`);
           
           if (domContentLength !== text.length) {
             console.error(`[ManualReplaceManager] ❌ 組 ${groupIndex} DOM 內容與文本不同步！DOM: ${domContentLength}, Text: ${text.length}`);
@@ -882,7 +861,7 @@ const ManualReplaceManager = {
             continue;
           }
           
-          console.log(`[ManualReplaceManager] ✅ 組 ${groupIndex} 匹配 ${i} 通過所有檢查: index=${match.index}, length=${match[0].length}, text="${match[0]}"`);
+
           
           try {
             const positionList = TextHighlight.PositionCalculator.calculatePosition(
@@ -907,7 +886,6 @@ const ManualReplaceManager = {
                 });
               });
               successCount++;
-              console.log(`[ManualReplaceManager] ✅ 組 ${groupIndex} 匹配 ${i} 位置計算成功，獲得 ${positionList.length} 個位置`);
             } else {
               console.warn(`[ManualReplaceManager] ⚠️ 組 ${groupIndex} 匹配 ${i} 位置計算失敗`);
               failCount++;
@@ -919,7 +897,6 @@ const ManualReplaceManager = {
           }
         }
 
-        console.log(`[ManualReplaceManager] 📊 組 ${groupIndex} 位置獲取完成: 成功 ${successCount}, 失敗 ${failCount}, 總位置 ${positions.length}`);
         return positions;
         
       } catch (error) {
@@ -965,6 +942,10 @@ const ManualReplaceManager = {
         this.groupHighlights, 
         this.observer
       );
+      
+      // 🆕 同時清理該組的位置緩存
+      this.cachedGroupPositions.delete(groupIndex);
+      console.log(`[ManualReplaceManager] 🧹 清理組 ${groupIndex} 的位置緩存`);
     },
 
     clearAllHighlights() {
@@ -973,6 +954,10 @@ const ManualReplaceManager = {
         this.groupHighlights, 
         this.observer
       );
+      
+      // 🆕 同時清理所有位置緩存
+      this.cachedGroupPositions.clear();
+      console.log(`[ManualReplaceManager] 🧹 清理所有組的位置緩存`);
     }
   },
 
@@ -1098,6 +1083,10 @@ const ManualReplaceManager = {
     if (TextHighlight.GlobalPositionCache && TextHighlight.GlobalPositionCache.clear) {
       TextHighlight.GlobalPositionCache.clear();
     }
+    
+    // 🆕 清理獨立位置緩存
+    this.PreviewHighlight.cachedGroupPositions.clear();
+    console.log(`[ManualReplaceManager] 🧹 清理獨立位置緩存`);
     
     // 清理當前高亮
     this.PreviewHighlight.clearAllHighlights();
