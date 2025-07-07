@@ -612,4 +612,172 @@ window.ManualReplaceCore = {
 };
 
 // 初始化模組
-window.ManualReplaceCore.initialize(); 
+window.ManualReplaceCore.initialize();
+
+// 向後兼容的 ManualReplaceManager 包裝器
+window.ManualReplaceManager = {
+  /**
+   * 向後兼容：初始化手動替換組
+   * @param {HTMLElement} mainContainer 主容器
+   * @param {HTMLElement} otherContainer 其他容器
+   * @param {HTMLTextAreaElement} textArea 文本區域
+   */
+  initializeManualGroups(mainContainer, otherContainer, textArea) {
+    console.log(`[ManualReplaceManager][${ManualReplaceCore._getTimeStamp()}] 向後兼容：初始化手動替換組`);
+    
+    if (!window.ReplaceManager?.initializeReplaceGroups) {
+      console.error('[ManualReplaceManager] ReplaceManager.initializeReplaceGroups 不可用');
+      return;
+    }
+
+    // 委託給新的架構，傳遞手動替換的配置
+    return window.ReplaceManager.initializeReplaceGroups({
+      mainContainer: mainContainer,
+      otherContainer: otherContainer,
+      textArea: textArea,
+      storageKey: 'replace_' + ManualReplaceCore.CONFIG.MANUAL_REPLACE_KEY,
+      createGroupFn: this.createReplaceGroup.bind(this),
+      onInitialized: () => {
+        // 設置文本變化監聽
+        this._setupTextAreaChangeListener(textArea);
+
+        // 初始化規則狀態
+        const mainGroup = mainContainer.querySelector('.replace-main-group');
+        const mainFromInput = mainGroup?.querySelector('.replace-input');
+        if (mainFromInput) {
+          ManualReplaceCore.RuleManager._rules.mainGroup = {
+            from: mainFromInput.value,
+            to: mainGroup.querySelector('.replace-input:last-of-type').value
+          };
+        }
+
+        const extraGroups = document.querySelectorAll('.manual-replace-container .replace-extra-group');
+        ManualReplaceCore.RuleManager._rules.extraGroups = Array.from(extraGroups).map(group => ({
+          from: group.querySelector('.replace-input').value,
+          to: group.querySelector('.replace-input:last-of-type').value
+        }));
+
+        // 設置所有拖曳事件
+        this._setupAllSortDragEvents();
+
+        // 更新預覽
+        this._updatePreviews();
+      },
+      isManual: true
+    });
+  },
+
+  /**
+   * 向後兼容：創建替換組
+   * @param {HTMLTextAreaElement} textArea 文本區域
+   * @param {boolean} isMainGroup 是否為主組
+   * @param {Object} initialData 初始資料
+   * @param {number} groupIndex 組索引
+   * @returns {HTMLElement} 組元素
+   */
+  createReplaceGroup(textArea, isMainGroup = false, initialData = null, groupIndex = null) {
+    if (!window.ReplaceUIFactory) {
+      console.error('[ManualReplaceManager] ReplaceUIFactory 不可用');
+      return document.createElement('div');
+    }
+
+    // 委託給 UI 工廠創建手動替換組
+    return window.ReplaceUIFactory.createManualReplaceGroup(textArea, isMainGroup, initialData, groupIndex);
+  },
+
+  /**
+   * 向後兼容：設置文本區域變化監聽器
+   * @param {HTMLTextAreaElement} textArea 文本區域
+   */
+  _setupTextAreaChangeListener(textArea) {
+    // 委託給新的文本變化監聽器
+    ManualReplaceCore.TextChangeMonitor.onTextChanged = () => {
+      this._updatePreviews();
+    };
+    ManualReplaceCore.TextChangeMonitor.setupTextAreaChangeListener(textArea);
+  },
+
+  /**
+   * 向後兼容：更新預覽
+   */
+  _updatePreviews() {
+    console.log(`[ManualReplaceManager][${ManualReplaceCore._getTimeStamp()}] 向後兼容：更新預覽`);
+    
+    // 委託給預覽管理器
+    if (window.ReplacePreview) {
+      window.ReplacePreview.updateAllPreviews();
+    } else {
+      console.warn('[ManualReplaceManager] ReplacePreview 模組未載入');
+    }
+  },
+
+  /**
+   * 向後兼容：設置所有拖曳事件
+   */
+  _setupAllSortDragEvents() {
+    console.log(`[ManualReplaceManager][${ManualReplaceCore._getTimeStamp()}] 向後兼容：設置拖曳事件`);
+    
+    // 委託給拖曳管理器
+    if (window.ReplaceDrag) {
+      const container = document.querySelector('.manual-replace-container');
+      if (container) {
+        window.ReplaceDrag.setupGroupDragEvents(container, {
+          groupSelector: '.replace-extra-group',
+          lockHorizontal: true,
+          placeholderId: 'manual-drag-placeholder'
+        });
+      }
+    } else {
+      console.warn('[ManualReplaceManager] ReplaceDrag 模組未載入');
+    }
+  },
+
+  /**
+   * 向後兼容：從存儲刷新
+   */
+  refreshFromStorage() {
+    console.log(`[ManualReplaceManager][${ManualReplaceCore._getTimeStamp()}] 向後兼容：從存儲刷新`);
+    
+    // 委託給存儲管理器
+    ManualReplaceCore.StorageManager.loadRules((rules) => {
+      console.log(`[ManualReplaceManager] 載入了 ${rules.length} 個規則`);
+      // 這裡可以添加重新渲染UI的邏輯
+    });
+  },
+
+  /**
+   * 向後兼容：檢查是否需要刷新
+   * @param {Array} changedKeys 變化的鍵值
+   * @returns {boolean} 是否需要刷新
+   */
+  shouldRefresh(changedKeys) {
+    const manualKey = 'replace_' + ManualReplaceCore.CONFIG.MANUAL_REPLACE_KEY;
+    return changedKeys.includes(manualKey);
+  },
+
+  /**
+   * 配置常量（向後兼容）
+   */
+  CONFIG: {
+    MIN_WIDTH: 80,
+    MAX_WIDTH: 600,
+    MAIN_GROUP_MAX_WIDTH: 330,
+    PADDING: 24,
+    MANUAL_REPLACE_KEY: 'manualReplaceRules',
+    MAX_PREVIEWS: 1000,
+    PREVIEW_COLORS: [
+      '#FF0000', '#FF8C00', '#0095FF', '#AB00FF', '#00AF06', '#9932CC'
+    ],
+    PREVIEW_CONTAINER_ID: 'replace-preview-container'
+  },
+
+  /**
+   * 內部規則狀態（向後兼容）
+   */
+  _rules: {
+    mainGroup: { from: '', to: '' },
+    extraGroups: []
+  }
+};
+
+console.log('[ManualReplaceManager] 向後兼容包裝器已建立'); 

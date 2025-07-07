@@ -290,7 +290,7 @@ window.ReplaceManager = {
      * @param {HTMLElement} checkboxOrButton 複選框或按鈕
      * @param {Object} options 配置選項
      */
-    setupGroupEvents(group, textArea, fromInput, toInput, checkboxOrButton, options = {}) {
+  setupGroupEvents(group, textArea, fromInput, toInput, checkboxOrButton, options = {}) {
       if (window.ReplaceEvents) {
         window.ReplaceEvents.setupGroupEvents(group, textArea, fromInput, toInput, checkboxOrButton, options);
       } else {
@@ -309,7 +309,7 @@ window.ReplaceManager = {
     updateAllPreviews() {
       if (window.ReplacePreview) {
         window.ReplacePreview.updateAllPreviews();
-      } else {
+            } else {
         console.warn(`[ReplaceManager][${window.ReplaceManager._getTimeStamp()}] ReplacePreview 模組未載入，無法更新預覽`);
       }
     },
@@ -323,7 +323,7 @@ window.ReplaceManager = {
     updateGroupPreview(textArea, searchText, groupIndex) {
       if (window.ReplacePreview) {
         window.ReplacePreview.updateGroupPreview(textArea, searchText, groupIndex);
-      } else {
+    } else {
         console.warn(`[ReplaceManager][${window.ReplaceManager._getTimeStamp()}] ReplacePreview 模組未載入，無法更新組預覽`);
       }
     },
@@ -336,9 +336,9 @@ window.ReplaceManager = {
         window.ReplacePreview.cleanup();
       }
     }
-  },
+    },
 
-  /**
+    /**
    * 工具方法
    */
   Utils: {
@@ -360,7 +360,7 @@ window.ReplaceManager = {
       const globalName = moduleMap[moduleName];
       return globalName && !!window[globalName];
     },
-
+    
     /**
      * 獲取已載入的模組列表
      * @returns {Array} 模組名稱陣列
@@ -382,7 +382,7 @@ window.ReplaceManager = {
       };
     }
   },
-
+  
   /**
    * 生命週期管理
    */
@@ -420,15 +420,111 @@ window.ReplaceManager = {
      */
     reinitialize(options) {
       this.cleanup();
-      setTimeout(() => {
+        setTimeout(() => {
         window.ReplaceManager.initializeReplaceGroups(options);
-      }, 100);
+        }, 100);
     }
   },
-
+  
   /**
    * 向後兼容的方法 - 維持原有API
    */
+   
+  /**
+   * 初始化替換UI (向後兼容)
+   * 這是舊版API的主要入口點，重新實現原有邏輯
+   */
+  initializeReplaceUI() {
+    console.log(`[ReplaceManager][${this._getTimeStamp()}] 🔄 initializeReplaceUI (向後兼容)`);
+    
+    try {
+      // 先檢查是否應該啟用功能
+      if (typeof window.shouldEnableFeatures === 'function' && !window.shouldEnableFeatures()) {
+        console.log(`[ReplaceManager][${this._getTimeStamp()}] 不在目標頁面，跳過初始化`);
+        return;
+      }
+
+      // 先移除現有UI
+      this.removeReplaceUI();
+
+      // 找到文本區域
+      const textArea = document.querySelector('textarea[name="content"]');
+      if (!textArea) {
+        console.error(`[ReplaceManager][${this._getTimeStamp()}] ❌ 找不到文本區域元素`);
+        return null;
+      }
+
+      // 創建主組容器（第一組）
+      const mainContainer = document.createElement('div');
+      mainContainer.id = 'text-replace-main';
+      mainContainer.className = 'replace-controls-main';
+
+      // 創建其他組容器（第二組和自動組）
+      const otherContainer = document.createElement('div');
+      otherContainer.id = 'text-replace-container';
+      otherContainer.className = 'replace-controls';
+
+      // 設置容器樣式
+      otherContainer.style.cssText = 'right: 20px; top: 20px;';
+
+      // 添加拖動圖示
+      const dragHandle = document.createElement('div');
+      dragHandle.className = 'replace-drag-handle';
+      otherContainer.appendChild(dragHandle);
+
+      // 插入到頁面
+      if (textArea.parentElement) {
+        textArea.parentElement.insertBefore(mainContainer, textArea);
+      }
+      document.body.appendChild(otherContainer);
+
+      // 初始化手動替換組
+      if (window.ManualReplaceManager) {
+        console.log(`[ReplaceManager][${this._getTimeStamp()}] 🔧 初始化手動替換組`);
+        window.ManualReplaceManager.initializeManualGroups(mainContainer, otherContainer, textArea);
+            } else {
+        console.warn(`[ReplaceManager][${this._getTimeStamp()}] ⚠️ ManualReplaceManager 模組未載入`);
+      }
+
+      // 初始化自動替換組
+      if (window.AutoReplaceManager) {
+        console.log(`[ReplaceManager][${this._getTimeStamp()}] 🔧 初始化自動替換組`);
+        window.AutoReplaceManager.initializeAutoReplaceGroups(otherContainer, textArea);
+      } else {
+        console.warn(`[ReplaceManager][${this._getTimeStamp()}] ⚠️ AutoReplaceManager 模組未載入`);
+      }
+
+      console.log(`[ReplaceManager][${this._getTimeStamp()}] ✅ 替換UI初始化完成`);
+      return { mainContainer, otherContainer };
+      
+        } catch (error) {
+      console.error(`[ReplaceManager][${this._getTimeStamp()}] initializeReplaceUI 失敗:`, error);
+      this.removeReplaceUI(); // 清理已創建的元素
+      return null;
+    }
+  },
+  
+  /**
+   * 移除替換UI (向後兼容)
+   */
+  removeReplaceUI() {
+    console.log(`[ReplaceManager][${this._getTimeStamp()}] 🧹 removeReplaceUI (向後兼容)`);
+    
+    // 移除主容器
+    const mainContainer = document.getElementById('text-replace-main');
+    if (mainContainer) {
+      mainContainer.remove();
+    }
+    
+    // 移除其他容器
+    const otherContainer = document.getElementById('text-replace-container');
+    if (otherContainer) {
+      otherContainer.remove();
+    }
+    
+    // 委託給生命週期管理器
+    this.LifecycleManager.cleanup();
+  },
   
   /**
    * 檢查手動替換一致性 (向後兼容)
@@ -440,7 +536,7 @@ window.ReplaceManager = {
       console.log(`[ReplaceManager][${this._getTimeStamp()}] 檢查手動替換一致性 - 委託給 ManualReplaceManager`);
     }
   },
-
+  
   /**
    * 設置組事件 (向後兼容)
    */
@@ -452,8 +548,8 @@ window.ReplaceManager = {
 // 全局事件處理
 document.addEventListener('DOMContentLoaded', () => {
   // 檢查手動替換一致性 (向後兼容)
-  if (window.ReplaceManager) {
-    window.ReplaceManager._checkManualReplaceConsistency();
+      if (window.ReplaceManager) {
+        window.ReplaceManager._checkManualReplaceConsistency();
   }
 });
 

@@ -27,6 +27,41 @@ const ReplaceDragManager = {
   },
 
   /**
+   * 初始化拖移管理器（向後兼容方法）
+   */
+  initialize() {
+    ReplaceCore.Logger.info('拖移管理器已初始化', 'ReplaceDragManager');
+  },
+
+  /**
+   * 設置組拖移事件（向後兼容方法）
+   * @param {HTMLElement} container - 容器元素
+   * @param {Object} options - 選項配置
+   */
+  setupGroupDragEvents(container, options = {}) {
+    if (!container) {
+      ReplaceCore.Logger.error('容器元素不存在，無法設置組拖移事件', null, 'ReplaceDragManager');
+      return;
+    }
+
+    // 查找所有拖移把手
+    const dragSelector = options.dragSelector || '.drag-handle, .replace-drag-handle';
+    const dragHandles = container.querySelectorAll(dragSelector);
+    
+    if (dragHandles.length === 0) {
+      ReplaceCore.Logger.warn('未找到拖移把手元素', 'ReplaceDragManager');
+      return;
+    }
+
+    // 為每個把手設置拖移事件
+    dragHandles.forEach(handle => {
+      this.setupSortDragEvents(handle, options);
+    });
+
+    ReplaceCore.Logger.info(`設置組拖移事件完成: ${dragHandles.length} 個把手`, 'ReplaceDragManager');
+  },
+
+  /**
    * 設置拖移排序事件
    * @param {HTMLElement} dragHandle - 拖移把手元素
    * @param {Object} options - 配置選項
@@ -458,4 +493,6 @@ const ReplaceDragManager = {
 };
 
 // 暴露到全局
-window.ReplaceDragManager = ReplaceDragManager; 
+window.ReplaceDragManager = ReplaceDragManager;
+// 向後兼容映射
+window.ReplaceDrag = ReplaceDragManager; 

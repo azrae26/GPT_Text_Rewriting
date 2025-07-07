@@ -343,7 +343,8 @@ const ReplaceUIFactory = {
   createSortButton() {
     const sortButton = document.createElement('button');
     sortButton.innerHTML = '<span>⋮⋮</span>';
-    sortButton.className = ReplaceCore.CSS_CLASSES.SORT_BUTTON;
+    // 同時設置排序按鈕和拖移把手的CSS類名
+    sortButton.className = `${ReplaceCore.CSS_CLASSES.SORT_BUTTON} ${ReplaceCore.CSS_CLASSES.DRAG_HANDLE}`;
     sortButton.draggable = true;
     sortButton.title = '拖移排序';
     
@@ -478,8 +479,483 @@ const ReplaceUIFactory = {
       // 觸發值同步事件
       input.dispatchEvent(new Event('value-sync'));
     }
-  }
-};
+  },
 
-// 暴露到全局
-window.ReplaceUIFactory = ReplaceUIFactory; 
+  /**
+   * 創建手動替換組（向後兼容方法）
+   * @param {HTMLTextAreaElement} textArea - 文本區域
+   * @param {boolean} isMainGroup - 是否為主組
+   * @param {Object} initialData - 初始資料
+   * @param {number} groupIndex - 組索引
+   * @returns {HTMLElement} 組元素
+   */
+  createManualReplaceGroup(textArea, isMainGroup = false, initialData = null, groupIndex = null) {
+    const group = document.createElement('div');
+    group.className = isMainGroup ? 'replace-main-group' : 'replace-extra-group';
+
+    // 非主組需要控制按鈕
+    if (!isMainGroup) {
+      const controlButtons = this.createControlButtons({
+        onAdd: (index) => {
+          // 通知添加規則
+          if (window.ManualReplaceCore?.RuleManager?.addRule) {
+            window.ManualReplaceCore.RuleManager.addRule(index);
+          }
+        },
+        onRemove: () => {
+          // 通知移除規則
+          const container = group.parentElement;
+          if (container) {
+            const groups = Array.from(container.querySelectorAll('.replace-extra-group'));
+            const index = groups.indexOf(group);
+            if (index !== -1 && window.ManualReplaceCore?.RuleManager?.removeRule) {
+              window.ManualReplaceCore.RuleManager.removeRule(index);
+            }
+          }
+        },
+        groupIndex: groupIndex,
+        includeSortButton: true
+      });
+      group.appendChild(controlButtons);
+    }
+
+    // 創建輸入框
+    const fromInput = this.createInput({
+      placeholder: '替換文字',
+      width: ReplaceCore.CONFIG.MIN_WIDTH,
+      isMainGroup: isMainGroup
+    });
+    
+    const toInput = this.createInput({
+      placeholder: '替換為',
+      width: ReplaceCore.CONFIG.MIN_WIDTH,
+      isMainGroup: isMainGroup
+    });
+
+    // 創建替換按鈕
+    const replaceButton = this.createReplaceButton({
+      text: '替換',
+      disabled: true
+    });
+
+    // 設置初始值
+    if (initialData) {
+      this.setValue(fromInput, initialData.from || '');
+      this.setValue(toInput, initialData.to || '');
+      this._updateButtonState(fromInput, textArea, replaceButton);
+    }
+
+    // 設置事件處理
+    this._setupManualGroupEvents(group, textArea, fromInput, toInput, replaceButton, isMainGroup);
+
+    // 添加元素到組
+    group.appendChild(fromInput);
+    group.appendChild(toInput);
+    group.appendChild(replaceButton);
+
+    return group;
+  },
+
+  /**
+   * 設置手動替換組事件
+   * @param {HTMLElement} group - 組元素
+   * @param {HTMLTextAreaElement} textArea - 文本區域
+   * @param {HTMLElement} fromInput - 源輸入框
+   * @param {HTMLElement} toInput - 目標輸入框
+   * @param {HTMLElement} replaceButton - 替換按鈕
+   * @param {boolean} isMainGroup - 是否為主組
+   */
+  _setupManualGroupEvents(group, textArea, fromInput, toInput, replaceButton, isMainGroup) {
+    // 獲取實際的輸入元素
+    const fromInputElement = this.getInputElement(fromInput);
+    const toInputElement = this.getInputElement(toInput);
+
+    // 創建統一的更新處理器
+    const updateButton = () => {
+      this._updateButtonState(fromInputElement, textArea, replaceButton);
+    };
+
+    const handleInput = () => {
+      const rule = {
+        from: this.getValue(fromInput),
+        to: this.getValue(toInput)
+      };
+
+      // 更新規則
+      if (window.ManualReplaceCore?.RuleManager) {
+        const index = isMainGroup ? 0 : Array.from(group.parentElement.children).indexOf(group);
+        window.ManualReplaceCore.RuleManager.updateRule(rule, index, isMainGroup);
+      }
+
+      updateButton();
+      
+      // 調整輸入框寬度
+      this._adjustInputWidthForGroup(fromInput, toInput, isMainGroup);
+    };
+
+    // 為輸入框添加事件監聽器
+    [fromInputElement, toInputElement].forEach(input => {
+      input.addEventListener('input', handleInput);
+      input.addEventListener('blur', handleInput);
+      input.addEventListener('focus', () => {
+        if (!input.dataset.skipExpand) {
+          this._adjustInputWidth(input);
+        }
+      });
+      input.addEventListener('value-sync', handleInput);
+    });
+
+    // 監聽文本區域的變化以更新按鈕狀態
+    textArea.addEventListener('input', updateButton);
+
+    // 替換按鈕點擊事件
+    replaceButton.addEventListener('click', () => {
+      const fromText = this.getValue(fromInput);
+      const toText = this.getValue(toInput);
+      this._executeManualReplace(textArea, fromText, toText);
+    });
+
+    // 主組需要設置文本選擇功能
+    if (isMainGroup) {
+      this._setupTextSelection(textArea, fromInputElement, toInputElement, updateButton);
+    }
+  },
+
+  /**
+   * 調整組內輸入框寬度
+   * @param {HTMLElement} fromInput - 源輸入框
+   * @param {HTMLElement} toInput - 目標輸入框
+   * @param {boolean} isMainGroup - 是否為主組
+   */
+  _adjustInputWidthForGroup(fromInput, toInput, isMainGroup) {
+    const fromElement = this.getInputElement(fromInput);
+    const toElement = this.getInputElement(toInput);
+
+    if (isMainGroup) {
+      // 主組在有文字時調整寬度
+      if (fromElement.value) {
+        this._adjustInputWidth(fromElement);
+      }
+      if (toElement.value) {
+        this._adjustInputWidth(toElement);
+      }
+    } else {
+      // 其他組根據焦點狀態調整
+      if (document.activeElement === fromElement) {
+        this._adjustInputWidth(fromElement);
+      }
+      if (document.activeElement === toElement) {
+        this._adjustInputWidth(toElement);
+      }
+    }
+  },
+
+  /**
+   * 設置文本選擇功能（主組專用）
+   * @param {HTMLTextAreaElement} textArea - 文本區域
+   * @param {HTMLInputElement} fromInput - 源輸入框
+   * @param {HTMLInputElement} toInput - 目標輸入框
+   * @param {Function} updateButton - 更新按鈕回調
+   */
+  _setupTextSelection(textArea, fromInput, toInput, updateButton) {
+    let lastSelectedText = '';
+    
+    const handleSelection = () => {
+      try {
+        const selectedText = textArea.value.substring(
+          textArea.selectionStart,
+          textArea.selectionEnd
+        ).trim();
+
+        if (selectedText === lastSelectedText) {
+          return;
+        }
+
+        lastSelectedText = selectedText;
+
+        if (selectedText) {
+          fromInput.value = selectedText;
+          toInput.value = '';
+          
+          // 更新規則
+          if (window.ManualReplaceCore?.RuleManager) {
+            window.ManualReplaceCore.RuleManager.updateRule({ from: selectedText, to: '' }, 0, true);
+          }
+          
+          this._adjustInputWidth(fromInput);
+          updateButton();
+          
+          // 觸發預覽更新
+          if (window.ReplacePreview?.updateAllPreviews) {
+            window.ReplacePreview.updateAllPreviews();
+          }
+        } else if (!selectedText && fromInput.value) {
+          fromInput.value = '';
+          toInput.value = '';
+          lastSelectedText = '';
+          
+          // 更新規則
+          if (window.ManualReplaceCore?.RuleManager) {
+            window.ManualReplaceCore.RuleManager.updateRule({ from: '', to: '' }, 0, true);
+          }
+          
+          fromInput.style.cssText = `width: ${ReplaceCore.CONFIG.MIN_WIDTH}px !important;`;
+          toInput.style.cssText = `width: ${ReplaceCore.CONFIG.MIN_WIDTH}px !important;`;
+          
+          updateButton();
+        }
+      } catch (error) {
+        console.error('[ReplaceUIFactory] 處理文本選取時出錯:', error);
+      }
+    };
+
+    // 設置選擇事件監聽器
+    document.addEventListener('selectionchange', () => {
+      if (document.activeElement === textArea) {
+        handleSelection();
+      }
+    });
+    
+    textArea.addEventListener('mouseup', () => {
+      setTimeout(handleSelection, 10);
+    });
+    
+    textArea.addEventListener('click', () => {
+      setTimeout(handleSelection, 20);
+    });
+  },
+
+  /**
+   * 更新替換按鈕狀態
+   * @param {HTMLInputElement} fromInput - 源輸入框
+   * @param {HTMLTextAreaElement} textArea - 文本區域
+   * @param {HTMLButtonElement} button - 按鈕元素
+   */
+  _updateButtonState(fromInput, textArea, button) {
+    const searchText = fromInput.value.trim();
+    if (!searchText) {
+      button.textContent = '替換';
+      button.classList.add(ReplaceCore.CSS_CLASSES.DISABLED);
+      return;
+    }
+
+    try {
+      if (window.RegexHelper?.createRegex) {
+        const regex = window.RegexHelper.createRegex(searchText);
+        const count = (textArea.value.match(regex) || []).length;
+        button.textContent = count > 0 ? `替換 (${count})` : '替換';
+        button.classList.toggle(ReplaceCore.CSS_CLASSES.DISABLED, count === 0);
+      } else {
+        button.textContent = '替換';
+        button.classList.add(ReplaceCore.CSS_CLASSES.DISABLED);
+      }
+    } catch (error) {
+      button.textContent = '替換';
+      button.classList.add(ReplaceCore.CSS_CLASSES.DISABLED);
+    }
+  },
+
+  /**
+   * 執行手動替換
+   * @param {HTMLTextAreaElement} textArea - 文本區域
+   * @param {string} fromText - 源文字
+   * @param {string} toText - 目標文字
+   */
+  _executeManualReplace(textArea, fromText, toText) {
+    fromText = fromText.trim();
+    if (!fromText || !textArea.value) return;
+
+    try {
+      const selectionStart = textArea.selectionStart;
+      const selectionEnd = textArea.selectionEnd;
+      
+      if (window.RegexHelper?.createRegex) {
+        const regex = window.RegexHelper.createRegex(fromText);
+        const newText = textArea.value.replace(regex, toText);
+
+        if (newText !== textArea.value) {
+          textArea.value = newText;
+          textArea.dispatchEvent(new Event('input', { bubbles: true }));
+          textArea.setSelectionRange(selectionStart, selectionEnd);
+          
+          // 更新預覽
+          if (window.ReplacePreview?.updateAllPreviews) {
+            window.ReplacePreview.updateAllPreviews();
+          }
+        }
+      }
+         } catch (error) {
+       console.error('[ReplaceUIFactory] 替換錯誤:', error);
+     }
+   },
+
+   /**
+    * 創建自動替換組（向後兼容方法）
+    * @param {HTMLTextAreaElement} textArea - 文本區域
+    * @param {boolean} isMain - 是否為主組
+    * @param {Object} initialData - 初始資料
+    * @param {number} index - 組索引
+    * @returns {HTMLElement} 組元素
+    */
+   createAutoReplaceGroup(textArea, isMain = false, initialData = null, index = 0) {
+     const group = document.createElement('div');
+     group.className = 'auto-replace-group';
+
+     // 創建控制按鈕（包含排序和移除功能）
+     const controlButtons = this.createControlButtons({
+       onAdd: () => {
+         // 通知添加自動替換規則
+         const container = group.parentElement;
+         if (container && window.AutoReplaceCore?.StorageManager) {
+           // 觸發添加新規則邏輯
+           this._addNewAutoReplaceGroup(container, textArea);
+         }
+       },
+       onRemove: () => {
+         // 移除規則
+         const container = group.parentElement;
+         if (container) {
+           group.remove();
+           // 保存變更
+           if (window.AutoReplaceCore?.StorageManager) {
+             window.AutoReplaceCore.StorageManager.saveAutoReplaceRules(container);
+           }
+         }
+       },
+       groupIndex: index,
+       includeSortButton: true
+     });
+     group.appendChild(controlButtons);
+
+     // 創建啟用/禁用複選框
+     const checkbox = this.createCheckbox({
+       checked: initialData?.enabled !== false,
+       id: `auto-replace-checkbox-${index}`
+     });
+     group.appendChild(checkbox);
+
+     // 創建輸入框（自動調整高度）
+     const fromInput = this.createInput({
+       placeholder: '原始文字',
+       autoResize: true,
+       isFromInput: true
+     });
+     
+     const toInput = this.createInput({
+       placeholder: '替換為',
+       autoResize: true,
+       isFromInput: false
+     });
+
+     // 設置初始值
+     if (initialData) {
+       this.setValue(fromInput, initialData.from || '');
+       this.setValue(toInput, initialData.to || '');
+       checkbox.checked = initialData.enabled !== false;
+     }
+
+     // 設置事件處理
+     this._setupAutoGroupEvents(group, textArea, fromInput, toInput, checkbox);
+
+     // 添加元素到組
+     group.appendChild(fromInput);
+     group.appendChild(toInput);
+
+     return group;
+   },
+
+   /**
+    * 添加新的自動替換組
+    * @param {HTMLElement} container - 容器元素
+    * @param {HTMLTextAreaElement} textArea - 文本區域
+    */
+   _addNewAutoReplaceGroup(container, textArea) {
+     const existingGroups = container.querySelectorAll('.auto-replace-group');
+     const newIndex = existingGroups.length;
+     
+     const newGroup = this.createAutoReplaceGroup(textArea, false, null, newIndex);
+     container.appendChild(newGroup);
+     
+     // 設置拖曳功能
+     if (window.ReplaceDrag) {
+       window.ReplaceDrag.setupGroupDragEvents(container, {
+         groupSelector: '.auto-replace-group',
+         lockHorizontal: true,
+         placeholderId: 'auto-drag-placeholder'
+       });
+     }
+     
+     // 保存變更
+     if (window.AutoReplaceCore?.StorageManager) {
+       window.AutoReplaceCore.StorageManager.saveAutoReplaceRules(container);
+     }
+   },
+
+   /**
+    * 設置自動替換組事件
+    * @param {HTMLElement} group - 組元素
+    * @param {HTMLTextAreaElement} textArea - 文本區域
+    * @param {HTMLElement} fromInput - 源輸入框
+    * @param {HTMLElement} toInput - 目標輸入框
+    * @param {HTMLInputElement} checkbox - 啟用複選框
+    */
+   _setupAutoGroupEvents(group, textArea, fromInput, toInput, checkbox) {
+     // 獲取實際的輸入元素
+     const fromInputElement = this.getInputElement(fromInput);
+     const toInputElement = this.getInputElement(toInput);
+
+     // 創建統一的保存處理器
+     const saveRules = () => {
+       const container = group.parentElement;
+       if (container && window.AutoReplaceCore?.StorageManager) {
+         window.AutoReplaceCore.StorageManager.saveAutoReplaceRules(container);
+       }
+     };
+
+     // 處理輸入變化
+     const handleInput = () => {
+       // 自動觸發保存（防抖）
+       if (this._autoSaveTimeout) {
+         clearTimeout(this._autoSaveTimeout);
+       }
+       this._autoSaveTimeout = setTimeout(saveRules, 500);
+     };
+
+     // 為所有輸入元素添加事件監聽器
+     [fromInputElement, toInputElement].forEach(input => {
+       input.addEventListener('input', handleInput);
+       input.addEventListener('blur', handleInput);
+       input.addEventListener('value-sync', handleInput);
+     });
+
+     // 複選框變化事件
+     checkbox.addEventListener('change', () => {
+       // 立即保存啟用狀態變化
+       saveRules();
+       
+       // 更新組的視覺狀態
+       group.classList.toggle('disabled', !checkbox.checked);
+     });
+
+     // 設置初始視覺狀態
+     group.classList.toggle('disabled', !checkbox.checked);
+
+     // 監聽文本區域變化以觸發自動替換
+     const handleTextAreaChange = () => {
+       if (window.AutoReplaceCore?.handleAutoReplace) {
+         // 防抖的自動替換觸發
+         if (this._autoReplaceTimeout) {
+           clearTimeout(this._autoReplaceTimeout);
+         }
+         this._autoReplaceTimeout = setTimeout(() => {
+           window.AutoReplaceCore.handleAutoReplace(textArea);
+         }, 300);
+       }
+     };
+
+     textArea.addEventListener('input', handleTextAreaChange);
+   }
+ };
+ 
+ // 暴露到全局
+ window.ReplaceUIFactory = ReplaceUIFactory; 

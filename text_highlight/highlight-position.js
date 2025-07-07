@@ -420,6 +420,15 @@ const HighlightPositionCalculator = {
   },
 
   /**
+   * 獲取文本區域樣式（向後兼容公開方法）
+   * @param {HTMLElement} textArea - 文本區域元素
+   * @returns {Object} 樣式信息
+   */
+  getTextAreaStyles(textArea) {
+    return this._getTextAreaStyles(textArea);
+  },
+
+  /**
    * 記錄日誌
    * @param {string} message - 日誌訊息
    * @param {string} source - 來源標識

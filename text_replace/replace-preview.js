@@ -93,8 +93,12 @@ window.ReplacePreview = {
         pointer-events: none;
         z-index: 1001;
         overflow: hidden;
-        font: ${styles.font};
+        font-family: ${styles.fontFamily};
+        font-size: ${styles.fontSize}px;
+        font-weight: ${styles.fontWeight};
         line-height: ${styles.lineHeight}px;
+        letter-spacing: ${styles.letterSpacing};
+        word-spacing: ${styles.wordSpacing};
       `;
       
       textArea.parentElement.appendChild(this.container);
@@ -347,13 +351,17 @@ window.ReplacePreview = {
               white-space: pre-wrap;
               word-wrap: break-word;
               overflow-wrap: break-word;
-              font: ${styles.font};
+              font-family: ${styles.fontFamily};
+              font-size: ${styles.fontSize}px;
+              font-weight: ${styles.fontWeight};
               line-height: ${styles.lineHeight}px;
+              letter-spacing: ${styles.letterSpacing};
+              word-spacing: ${styles.wordSpacing};
               width: ${textArea.offsetWidth}px;
               height: auto;
               border: none;
               margin: 0;
-              padding: ${styles.padding};
+              padding: ${styles.paddingTop}px ${styles.paddingRight}px ${styles.paddingBottom}px ${styles.paddingLeft}px;
               left: -9999px;
               top: -9999px;
             `;

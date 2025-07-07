@@ -401,7 +401,16 @@ window.TextHighlight = {
   PositionCalculator: window.HighlightPositionCalculator,
   GlobalPositionCache: window.GlobalPositionCache,
   Renderer: window.HighlightRenderer,
-  CONFIG: window.TextHighlightCore?.CONFIG,
+  CONFIG: {
+    // 合併核心配置和向後兼容配置
+    ...(window.TextHighlightCore?.CONFIG || {}),
+    FIXED_OFFSET: {
+      LEFT: 14,
+      TOP: 16
+    },
+    DEFAULT_COLOR: 'rgba(50, 205, 50, 0.3)',
+    CACHE_CLEANUP_INTERVAL: 60000
+  },
   
   // 內部狀態（模擬原來的狀態）
   targetWords: [],
@@ -425,8 +434,26 @@ window.TextHighlight = {
     },
     
     initialize() {
-      // 直接初始化高亮容器
-      this.setupHighlightContainer();
+      // 延遲初始化，確保 DOM 已載入
+      this.initWithRetry();
+    },
+    
+    initWithRetry(maxRetries = 5, currentRetry = 0) {
+      const textArea = document.querySelector('textarea[name="content"]');
+      if (textArea) {
+        this.setupHighlightContainer();
+        return true;
+      }
+      
+      if (currentRetry < maxRetries) {
+        console.log(`[TextHighlight] DOM 未就緒，${100 * (currentRetry + 1)}ms 後重試 (${currentRetry + 1}/${maxRetries})`);
+        setTimeout(() => {
+          this.initWithRetry(maxRetries, currentRetry + 1);
+        }, 100 * (currentRetry + 1)); // 遞增延遲：100ms, 200ms, 300ms...
+      } else {
+        console.warn('[TextHighlight] 初始化失敗：找不到 textarea[name="content"] 元素');
+      }
+      return false;
     },
     
     setupHighlightContainer() {
@@ -438,11 +465,11 @@ window.TextHighlight = {
       const container = document.createElement('div');
       container.id = 'text-highlight-container';
       
-      // 設置容器樣式
-      const CONFIG = window.TextHighlightCore?.CONFIG || { FIXED_OFFSET: { LEFT: 14, TOP: 16 } };
+      // 設置容器樣式 - 使用固定的偏移值
+      const FIXED_OFFSET = { LEFT: 14, TOP: 16 };
       container.style.cssText = `
         position: absolute;
-        top: ${CONFIG.FIXED_OFFSET.TOP}px;
+        top: ${FIXED_OFFSET.TOP}px;
         left: 0;
         width: ${textArea.offsetWidth}px;
         height: ${textArea.offsetHeight}px;
@@ -467,6 +494,16 @@ window.TextHighlight = {
         const highlights = this.elements.container.querySelectorAll('.text-highlight');
         highlights.forEach(h => h.remove());
         this.elements.highlights = [];
+      }
+    },
+    
+    /**
+     * 更新高亮元素陣列（用於檢測）
+     */
+    updateHighlightsArray() {
+      if (this.elements.container) {
+        const highlights = this.elements.container.querySelectorAll('.text-highlight');
+        this.elements.highlights = Array.from(highlights);
       }
     }
   },

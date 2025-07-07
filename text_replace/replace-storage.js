@@ -14,6 +14,13 @@
 
 const ReplaceStorageManager = {
   /**
+   * 初始化存儲管理器（向後兼容方法）
+   */
+  initialize() {
+    ReplaceCore.Logger.info('存儲管理器已初始化', 'ReplaceStorageManager');
+  },
+
+  /**
    * 保存規則到存儲
    * @param {string} storageKey - 存儲鍵名
    * @param {Array} rules - 規則數組
@@ -451,8 +458,17 @@ const ReplaceStorageManager = {
         callback(stats);
       }
     });
+  },
+
+  /**
+   * 清理存儲管理器（向後兼容方法）
+   */
+  cleanup() {
+    ReplaceCore.Logger.info('存儲管理器已清理', 'ReplaceStorageManager');
   }
 };
 
 // 暴露到全局
-window.ReplaceStorageManager = ReplaceStorageManager; 
+window.ReplaceStorageManager = ReplaceStorageManager;
+// 向後兼容映射
+window.ReplaceStorage = ReplaceStorageManager; 

@@ -553,4 +553,94 @@ window.AutoReplaceCore = {
 };
 
 // 初始化模組
-window.AutoReplaceCore.initialize(); 
+window.AutoReplaceCore.initialize();
+
+// 向後兼容的 AutoReplaceManager 包裝器
+window.AutoReplaceManager = {
+  /**
+   * 向後兼容：初始化自動替換組 
+   * @param {HTMLElement} container 容器
+   * @param {HTMLTextAreaElement} textArea 文本區域
+   */
+  initializeAutoReplaceGroups(container, textArea) {
+    console.log(`[AutoReplaceManager][${AutoReplaceCore._getTimeStamp()}] 向後兼容：初始化自動替換組`);
+    
+    if (!window.ReplaceManager?.initializeReplaceGroups) {
+      console.error('[AutoReplaceManager] ReplaceManager.initializeReplaceGroups 不可用');
+      return;
+    }
+
+    // 委託給新的架構，傳遞自動替換的配置
+    return window.ReplaceManager.initializeReplaceGroups({
+      otherContainer: container,
+      textArea: textArea,
+      storageKey: 'replace_autoReplaceRules',
+      createGroupFn: this.createAutoReplaceGroup.bind(this),
+      onInitialized: () => this.handleAutoReplace(textArea),
+      isManual: false
+    });
+  },
+
+  /**
+   * 向後兼容：創建自動替換組
+   * @param {HTMLTextAreaElement} textArea 文本區域
+   * @param {boolean} isMain 是否為主組
+   * @param {Object} initialData 初始資料
+   * @param {number} index 組索引
+   * @returns {HTMLElement} 組元素
+   */
+  createAutoReplaceGroup(textArea, isMain = false, initialData = null, index = 0) {
+    if (!window.ReplaceUIFactory) {
+      console.error('[AutoReplaceManager] ReplaceUIFactory 不可用');
+      return document.createElement('div');
+    }
+
+    // 委託給 UI 工廠創建自動替換組
+    return window.ReplaceUIFactory.createAutoReplaceGroup(textArea, isMain, initialData, index);
+  },
+
+  /**
+   * 向後兼容：處理自動替換
+   * @param {HTMLTextAreaElement} textArea 文本區域
+   * @returns {Promise<Object>} 執行結果
+   */
+  async handleAutoReplace(textArea) {
+    console.log(`[AutoReplaceManager][${AutoReplaceCore._getTimeStamp()}] 向後兼容：處理自動替換`);
+    
+    // 委託給新的核心模組
+    return await window.AutoReplaceCore.handleAutoReplace(textArea);
+  },
+
+  /**
+   * 向後兼容：保存自動替換規則
+   * @param {HTMLElement} container 容器
+   */
+  saveAutoReplaceRules(container) {
+    console.log(`[AutoReplaceManager][${AutoReplaceCore._getTimeStamp()}] 向後兼容：保存自動替換規則`);
+    
+    // 委託給新的存儲管理器
+    if (window.AutoReplaceCore?.StorageManager) {
+      window.AutoReplaceCore.StorageManager.saveAutoReplaceRules(container);
+    } else {
+      console.error('[AutoReplaceManager] AutoReplaceCore.StorageManager 不可用');
+    }
+  },
+
+  /**
+   * 配置常量（向後兼容）
+   */
+  CONFIG: {
+    AUTO_REPLACE_KEY: 'autoReplaceRules',
+    FROM_INPUT_WIDTH: 367,
+    TO_INPUT_WIDTH: 115,
+    INPUT_HEIGHT: 32,
+    YEAR_FETCH_DELAY: 10
+  },
+
+  /**
+   * 活動規則快取（向後兼容）
+   */
+  _activeRules: []
+};
+
+console.log('[AutoReplaceManager] 向後兼容包裝器已建立'); 

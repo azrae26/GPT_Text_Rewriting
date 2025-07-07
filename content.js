@@ -156,30 +156,44 @@ function initializeExtension() {
       return;
     }
 
-    // 先初始化基本功能
-    window.TextHighlight.initialize();
-
-    // 等所有設定都載入完成後，再標記為初始化完成
-    chrome.storage.sync.get(['highlightWords', 'highlightColors'], function(data) {
-      if (data.highlightWords) {
-        const words = data.highlightWords.split('\n').filter(word => word.trim());
-        const colors = data.highlightColors || {};
-        
-        // 確保設定已完全載入
-        window.TextHighlight.setTargetWords(words, colors);
-        
-        // 確認高亮是否成功
-        const highlights = document.querySelectorAll('.text-highlight');
-        if (highlights.length === 0) {
-          window.TextHighlight.forceUpdate();
+    // 先初始化基本功能（等待 Promise 完成）
+    window.TextHighlight.initialize().then(() => {
+      console.log('[content.js] TextHighlight 初始化完成');
+      
+      // 等所有設定都載入完成後，再標記為初始化完成
+      chrome.storage.sync.get(['highlightWords', 'highlightColors'], function(data) {
+        if (data.highlightWords) {
+          const words = data.highlightWords.split('\n').filter(word => word.trim());
+          const colors = data.highlightColors || {};
+          
+          console.log('[content.js] 設置高亮目標詞彙:', words);
+          
+          // 確保設定已完全載入
+          window.TextHighlight.setTargetWords(words, colors);
+          
+          // 延遲檢查高亮是否成功
+          setTimeout(() => {
+            const highlights = document.querySelectorAll('.text-highlight, .replace-preview-highlight');
+            console.log('[content.js] 找到高亮元素:', highlights.length, '個');
+            
+            if (highlights.length === 0 && words.length > 0) {
+              console.log('[content.js] 沒有找到高亮，強制更新');
+              window.TextHighlight.forceUpdate();
+            }
+            
+            // 最後才標記為初始化完成
+            highlightInitialized = true;
+          }, 500);
+        } else {
+          console.log('[content.js] 沒有高亮設定，標記為初始化完成');
+          // 即使沒有設定，也要標記為初始化完成
+          highlightInitialized = true;
         }
-        
-        // 最後才標記為初始化完成
-        highlightInitialized = true;
-      } else {
-        // 即使沒有設定，也要標記為初始化完成
-        highlightInitialized = true;
-      }
+      });
+    }).catch(error => {
+      console.error('[content.js] TextHighlight 初始化失敗:', error);
+      // 即使初始化失敗，也要標記為完成，避免卡住
+      highlightInitialized = true;
     });
   }
 
