@@ -879,9 +879,7 @@ const ManualReplaceManager = {
             console.warn(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 組 ${groupIndex} 匹配內容不一致: 期望="${match[0]}", 實際="${textSubstring}"`);
             failCount++;
             continue;
-          }
-          
-
+          }   
           
           try {
             const positionList = TextHighlight.PositionCalculator.calculatePosition(
