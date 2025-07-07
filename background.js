@@ -1391,6 +1391,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return null;
   }
 
+  // 🐛 調試：處理來自 content script 的調試訊息
+  if (request.action === 'debug') {
+    handleDebugMessage(request, sender);
+    sendResponse({ success: true });
+    return;
+  }
+
   return false; // 未處理的消息，不需要保持連接
 });
 
@@ -1408,3 +1415,32 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         tabContentScriptStatus.set(tabId, false);
     }
 });
+
+// 🐛 調試：處理來自 content script 的調試訊息
+function handleDebugMessage(message, sender) {
+  const tabId = sender.tab ? sender.tab.id : 'unknown';
+  const url = sender.tab ? sender.tab.url : 'unknown';
+  
+  console.log(`🐛 [Debug][Tab-${tabId}][${message.timestamp}] ${message.message}`);
+  
+  if (message.debugInfo) {
+    const { startTime, refreshCount, autoReloadAttempts } = message.debugInfo;
+    const elapsed = Date.now() - startTime;
+    
+    console.log(`📊 [Debug][Tab-${tabId}] 統計資訊:`, {
+      運行時間: `${elapsed}ms`,
+      重新整理次數: refreshCount,
+      檢查次數: autoReloadAttempts,
+      頁面: url.split('/').pop()
+    });
+    
+    // 如果檢測到過多的自動重新整理嘗試，發出警告
+    if (autoReloadAttempts > 5) {
+      console.warn(`⚠️ [Debug][Tab-${tabId}] 可能的惡性循環：檢查次數過多 (${autoReloadAttempts})`);
+    }
+    
+    if (refreshCount > 2) {
+      console.error(`🚨 [Debug][Tab-${tabId}] 檢測到重複重新整理！次數：${refreshCount}`);
+    }
+  }
+}
