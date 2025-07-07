@@ -393,4 +393,228 @@ if (window.TextHighlightCore && window.TextHighlightCore.CONFIG) {
   window.TextHighlight.CONFIG = window.TextHighlightCore.CONFIG;
 }
 
-console.log('[TextHighlightVirtualScroll] 虛擬滾動模組和向後兼容映射已載入'); 
+// 🔗 建立主要 API 的向後兼容映射
+window.TextHighlight = {
+  // 保留現有的模組映射
+  SharedVirtualScroll: window.TextHighlightVirtualScroll.SharedVirtualScroll,
+  ScrollHelper: window.TextHighlightVirtualScroll.ScrollHelper,
+  PositionCalculator: window.HighlightPositionCalculator,
+  GlobalPositionCache: window.GlobalPositionCache,
+  Renderer: window.HighlightRenderer,
+  CONFIG: window.TextHighlightCore?.CONFIG,
+  
+  // 內部狀態（模擬原來的狀態）
+  targetWords: [],
+  wordColors: {},
+  _lastText: null,
+  _lastScrollTop: null,
+  
+  // 模擬 DOMManager 
+  DOMManager: {
+    elements: {
+      highlights: [],
+      container: null,
+      textArea: null,
+      highlightPositions: [],
+      virtualScrollData: {
+        allPositions: [],
+        visibleHighlights: new Map(),
+        lastScrollTop: 0,
+        bufferSize: 200
+      }
+    },
+    
+    initialize() {
+      // 直接初始化高亮容器
+      this.setupHighlightContainer();
+    },
+    
+    setupHighlightContainer() {
+      // 獲取 textarea 元素
+      const textArea = document.querySelector('textarea[name="content"]');
+      if (!textArea) return;
+      
+      // 創建容器
+      const container = document.createElement('div');
+      container.id = 'text-highlight-container';
+      
+      // 設置容器樣式
+      const CONFIG = window.TextHighlightCore?.CONFIG || { FIXED_OFFSET: { LEFT: 14, TOP: 16 } };
+      container.style.cssText = `
+        position: absolute;
+        top: ${CONFIG.FIXED_OFFSET.TOP}px;
+        left: 0;
+        width: ${textArea.offsetWidth}px;
+        height: ${textArea.offsetHeight}px;
+        pointer-events: none;
+        z-index: 1000;
+        overflow: hidden;
+      `;
+
+      // 添加到父元素
+      const textAreaParent = textArea.parentElement;
+      if (textAreaParent) {
+        textAreaParent.style.position = 'relative';
+        textAreaParent.appendChild(container);
+        this.elements.container = container;
+        this.elements.textArea = textArea;
+      }
+    },
+    
+    clearHighlights() {
+      // 清理高亮元素
+      if (this.elements.container) {
+        const highlights = this.elements.container.querySelectorAll('.text-highlight');
+        highlights.forEach(h => h.remove());
+        this.elements.highlights = [];
+      }
+    }
+  },
+  
+  // 模擬 EventHandler
+  EventHandler: {
+    initialize() {
+      // 如果需要事件處理，可以在這裡添加
+      console.log('[TextHighlight] EventHandler 初始化');
+    }
+  },
+  
+  // 🔑 主要 API 方法
+  initialize() {
+    console.log('初始化文字標示功能');
+    
+    return new Promise((resolve) => {
+      this.DOMManager.initialize();
+      this.EventHandler.initialize();
+      
+      // 從 storage 載入顏色設置
+      chrome.storage.local.get(['highlightColors'], (result) => {
+        if (result.highlightColors) {
+          this.wordColors = result.highlightColors;
+          console.log('已載入顏色設置:', this.wordColors);
+        }
+        
+        // 確保 DOM 結構初始化
+        if (!this.DOMManager.elements.container) {
+          this.DOMManager.setupHighlightContainer();
+        }
+
+        // 等待 DOM 完全渲染
+        requestAnimationFrame(() => {
+          // 強制執行第一次更新
+          this.forceUpdate();
+          
+          // 設置定期檢查
+          this.startPeriodicCheck();
+          
+          resolve();
+        });
+      });
+    });
+  },
+  
+  setTargetWords(words, colors = {}) {
+    console.log('設定目標文字:', words);
+    this.targetWords = words || [];
+    if (colors && Object.keys(colors).length > 0) {
+      this.wordColors = { ...this.wordColors, ...colors };
+    }
+    this.updateHighlights();
+  },
+  
+  forceUpdate() {
+    // 清除所有快取
+    if (this.PositionCalculator && this.PositionCalculator.clearCache) {
+      this.PositionCalculator.clearCache();
+    }
+    if (this.GlobalPositionCache && this.GlobalPositionCache.clear) {
+      this.GlobalPositionCache.clear();
+    }
+    this._lastText = null;
+    this._lastScrollTop = null;
+    
+    // 直接執行更新
+    this.DOMManager.clearHighlights();
+    this.updateHighlights();
+  },
+  
+  updateHighlights() {
+    console.log('[TextHighlight] 開始更新高亮');
+    
+    const { textArea, container } = this.DOMManager.elements;
+    if (!textArea || !container) {
+      console.error('[TextHighlight] 更新高亮失敗：缺少必要元素');
+      return;
+    }
+
+    const text = textArea.value;
+    if (!text || this.targetWords.length === 0) {
+      this.DOMManager.clearHighlights();
+      return;
+    }
+
+    // 使用核心模組進行高亮更新
+    if (window.TextHighlightCore) {
+      try {
+        // 確保 TextHighlightCore 已初始化
+        if (!window.TextHighlightCore.isInitialized()) {
+          window.TextHighlightCore.initialize();
+        }
+        
+        // 設置目標詞彙和顏色映射
+        window.TextHighlightCore.setTargetWords(this.targetWords, this.wordColors);
+        
+        // 確保文本區域已添加到核心模組
+        window.TextHighlightCore.addTextArea(textArea);
+        
+        // 執行高亮更新
+        window.TextHighlightCore.updateHighlights(textArea);
+        
+      } catch (error) {
+        console.error('[TextHighlight] 高亮更新出錯:', error);
+        // 如果核心模組出錯，回退到簡單的清理
+        this.DOMManager.clearHighlights();
+      }
+    }
+  },
+  
+  setWordColors(colors) {
+    this.wordColors = colors || {};
+    // 保存到 storage
+    chrome.storage.local.set({ highlightColors: this.wordColors });
+    this.updateHighlights();
+  },
+  
+  getColorForWord(word) {
+    return this.wordColors[word] || (this.CONFIG && this.CONFIG.DEFAULT_COLOR) || 'rgba(50, 205, 50, 0.3)';
+  },
+  
+  startPeriodicCheck() {
+    // 在前幾秒多次檢查
+    const checkTimes = [100, 500, 1000, 2000];
+    checkTimes.forEach(delay => {
+      setTimeout(() => {
+        this.checkAndForceUpdate();
+      }, delay);
+    });
+  },
+  
+  checkAndForceUpdate() {
+    const { textArea, container } = this.DOMManager.elements;
+    if (!textArea || !container) return;
+
+    // 檢查是否有有效的高亮元素
+    const highlights = this.DOMManager.elements.highlights;
+    const hasValidHighlights = highlights.some(h => 
+      h.style.display !== 'none' && 
+      parseFloat(h.style.width) > 0
+    );
+
+    if (!hasValidHighlights && this.targetWords.length > 0) {
+      console.log('未檢測到有效高亮，強制更新');
+      this.forceUpdate();
+    }
+  }
+};
+
+console.log('[TextHighlightVirtualScroll] 虛擬滾動模組和完整向後兼容映射已載入'); 
