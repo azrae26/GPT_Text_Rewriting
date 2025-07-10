@@ -25,16 +25,16 @@ const UIManager = {
 
   /** 添加改寫按鈕 */
   addRewriteButton() {
-    window.console.log('開始添加改寫按鈕');
+    LogUtils.log('開始添加改寫按鈕');
     if (!window.shouldEnableFeatures() || document.getElementById('gpt-rewrite-button')) {
-      window.console.log('不符合添加按鈕條件');
+      LogUtils.log('不符合添加按鈕條件');
       return;
     }
 
     // 獲取textarea元素
     const textArea = document.querySelector('textarea[name="content"]');
     if (!textArea) {
-      window.console.log('找不到文本區域');
+      LogUtils.log('找不到文本區域');
       return;
     }
 
@@ -67,9 +67,9 @@ const UIManager = {
         
         this.disabled = true;
         await window.TextProcessor.rewriteText();
-        window.console.log('改寫完成');
+        LogUtils.log('改寫完成');
       } catch (error) {
-        window.console.error('改寫錯誤:', error);
+        LogUtils.error('改寫錯誤:', error);
         alert('改寫錯誤: ' + error.message);
       } finally {
         this.disabled = false;
@@ -84,7 +84,7 @@ const UIManager = {
       translateButton.id = 'ai-translate-button';
       translateButton.textContent = 'AI翻譯';
       translateButton.addEventListener('click', () => {
-        console.log('AI翻譯按鈕被點擊');
+        LogUtils.log('AI翻譯按鈕被點擊');
         
         const textArea = document.querySelector('textarea[name="content"]');
         if (!textArea || !textArea.value.trim()) {
@@ -95,13 +95,13 @@ const UIManager = {
         if (window.TranslateManager && window.TranslateManager.handleTranslateClick) {
           window.TranslateManager.handleTranslateClick(translateButton);
         } else {
-          console.error('TranslateManager 不存在或 handleTranslateClick 方法未定義');
+          LogUtils.error('TranslateManager 不存在或 handleTranslateClick 方法未定義');
           alert('翻譯功能未正確載入，請重新整理頁面');
         }
       });
       buttonContainer.appendChild(translateButton);
     } else {
-      console.warn('TranslateManager 未定義，跳過創建AI翻譯按鈕');
+      LogUtils.warn('TranslateManager 未定義，跳過創建AI翻譯按鈕');
     }
 
     // 創建 Google 翻譯按鈕容器
@@ -170,11 +170,11 @@ const UIManager = {
       
       // 點擊按鈕主體開始翻譯（如果已選擇語言）
       googleTranslateButton.addEventListener('click', (e) => {
-        console.log('Google翻譯按鈕被點擊');
+        LogUtils.log('Google翻譯按鈕被點擊');
         
         // 檢查 GoogleTranslateManager 是否存在
         if (!window.GoogleTranslateManager) {
-          console.error('GoogleTranslateManager 不存在');
+          LogUtils.error('GoogleTranslateManager 不存在');
           alert('Google翻譯功能未正確載入，請重新整理頁面');
           return;
         }
@@ -184,7 +184,7 @@ const UIManager = {
         const clickX = e.clientX - rect.left;
         const isArrowClick = clickX > rect.width - 30; // 箭頭區域寬度約30px
         
-        console.log('點擊位置分析:', {
+        LogUtils.log('點擊位置分析:', {
           clickX: clickX,
           buttonWidth: rect.width,
           isArrowClick: isArrowClick,
@@ -192,7 +192,7 @@ const UIManager = {
         });
         
         if (isArrowClick) {
-          console.log('箭頭區域被點擊，切換下拉選單');
+          LogUtils.log('箭頭區域被點擊，切換下拉選單');
           e.stopPropagation();
           const isVisible = languageDropdown.style.display === 'block';
           languageDropdown.style.display = isVisible ? 'none' : 'block';
@@ -204,7 +204,7 @@ const UIManager = {
             googleTranslateButton.classList.add('dropdown-open');
           }
         } else {
-          console.log('按鈕主體被點擊');
+          LogUtils.log('按鈕主體被點擊');
           
           const textArea = document.querySelector('textarea[name="content"]');
           if (!textArea || !textArea.value.trim()) {
@@ -214,11 +214,11 @@ const UIManager = {
 
           // 如果已設置目標語言，直接開始翻譯
           if (window.GoogleTranslateManager.targetLanguage) {
-            console.log('開始翻譯，目標語言:', window.GoogleTranslateManager.targetLanguage);
+            LogUtils.log('開始翻譯，目標語言:', window.GoogleTranslateManager.targetLanguage);
             window.GoogleTranslateManager.handleGoogleTranslateClick(googleTranslateButton);
           } else {
             // 未設置語言時顯示下拉選單並提示用戶
-            console.log('未設置目標語言，顯示下拉選單');
+            LogUtils.log('未設置目標語言，顯示下拉選單');
             languageDropdown.style.display = 'block';
             googleTranslateButton.classList.add('dropdown-open');
           }
@@ -253,7 +253,7 @@ const UIManager = {
     }
 
     this._setupTextArea(textArea, buttonContainer);
-    window.console.log('改寫按鈕添加成功');
+    LogUtils.log('改寫按鈕添加成功');
   },
 
   /** 設置文本區域樣式和事件 */
@@ -278,7 +278,7 @@ const UIManager = {
       const url = location.href;
       if (url !== lastUrl) {
         lastUrl = url;
-        window.console.log('URL變化檢測到，重新檢查是否需要初始化UI');
+        LogUtils.log('URL變化檢測到，重新檢查是否需要初始化UI');
         if (window.shouldEnableFeatures()) {
           this.initializeAllUI();
         } else {
@@ -345,7 +345,7 @@ const UIManager = {
       }
 
     } catch (error) {
-      window.console.error('自動改寫錯誤:', error);
+      LogUtils.error('自動改寫錯誤:', error);
       alert('自動改寫錯誤: ' + error.message);
     } finally {
       if (typeof rewriteTask !== 'undefined') {
@@ -370,7 +370,7 @@ const UIManager = {
     if (window.StockMatcher && window.StockMatcher.initializeStockCodeFeature) {
       return window.StockMatcher.initializeStockCodeFeature(isFromSettingsUpdate);
     } else {
-      window.console.warn('StockMatcher 模組未載入，無法初始化股票代碼功能');
+      LogUtils.warn('StockMatcher 模組未載入，無法初始化股票代碼功能');
     }
   },
 
@@ -392,19 +392,19 @@ const UIManager = {
     const container = document.getElementById('gpt-button-container');
     if (container) {
       container.remove();
-      window.console.log('改寫按鈕已移除');
+      LogUtils.log('改寫按鈕已移除');
     }
   },
 
   /** 初始化所有UI元素 */
   initializeAllUI() {
     if (!window.shouldEnableFeatures()) {
-      window.console.log('不符合啟用功能條件，移除所有UI元素');
+      LogUtils.log('不符合啟用功能條件，移除所有UI元素');
       this.removeAllUI();
       return;
     }
     
-    window.console.log('初始化所有UI元素');
+    LogUtils.log('初始化所有UI元素');
     this.addRewriteButton();
     this.initializeStockCodeFeature();
     window.ReplaceManager.initializeReplaceUI();
@@ -425,7 +425,7 @@ const UIManager = {
 
   /** 移除所有UI元素 */
   removeAllUI() {
-    window.console.log('移除所有UI元素');
+    LogUtils.log('移除所有UI元素');
     this.removeRewriteButton();
     this.removeStockCodeFeature();
     window.ReplaceManager.removeReplaceUI();

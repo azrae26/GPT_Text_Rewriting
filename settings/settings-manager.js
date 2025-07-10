@@ -264,7 +264,7 @@ class SettingsFileManager {
         delete filtered[key];
       });
       
-      console.log(`進階過濾模式：額外排除了 ${dynamicKeys.length} 個動態鍵值:`, dynamicKeys.slice(0, 5));
+      LogUtils.log(`進階過濾模式：額外排除了 ${dynamicKeys.length} 個動態鍵值:`, dynamicKeys.slice(0, 5));
     }
     
     // 如果排除複雜內容，也要排除所有 replace_ 開頭的鍵值
@@ -504,7 +504,7 @@ class SettingsUI {
   #getElement(id) {
     const element = document.getElementById(id);
     if (!element) {
-      console.error(`找不到元素: ${id}`);
+      LogUtils.error(`找不到元素: ${id}`);
     }
     return element;
   }
@@ -709,7 +709,7 @@ class ErrorHandler {
   ]);
 
   static handle(error) {
-    console.error('發生錯誤:', error);
+    LogUtils.error('發生錯誤:', error);
     
     // 特殊處理配額錯誤
     if (error.message.includes('QUOTA_BYTES')) {
@@ -739,8 +739,8 @@ function sendLog(type, message, data = null) {
 document.addEventListener('DOMContentLoaded', () => {
   try {
     new SettingsFileManager();
-    console.log('設定檔案管理器初始化成功');
+    LogUtils.log('設定檔案管理器初始化成功');
   } catch (error) {
-    console.error('設定檔案管理器初始化失敗:', error);
+    LogUtils.error('設定檔案管理器初始化失敗:', error);
   }
 }); 

@@ -77,11 +77,11 @@ class TranslateAdapter {
    * 初始化翻譯功能
    */
   initialize() {
-    console.log('TranslateAdapter 初始化...');
+    LogUtils.log('🚀 TranslateAdapter 初始化...');
     
     // 訂閱控制器狀態變更
     this.controller.subscribe((state, phase) => {
-      console.log(`[TranslateAdapter] 收到狀態變更通知: ${state} (${phase})`);
+      LogUtils.log(`收到狀態變更通知: ${state} (${phase})`);
       
       // 根據狀態更新 UI
       const button = document.getElementById('ai-translate-button');
@@ -109,7 +109,7 @@ class TranslateAdapter {
     try {
       // 如果正在翻譯，執行取消
       if (this.controller.isActive()) {
-        console.log('取消翻譯');
+        LogUtils.log('🛑 取消翻譯');
         await this.cancelTranslation();
         return;
       }
@@ -129,7 +129,7 @@ class TranslateAdapter {
 
       await this.startTranslation(button);
     } catch (error) {
-      console.error('翻譯錯誤:', error);
+      LogUtils.error('翻譯錯誤:', error);
       alert('翻譯錯誤: ' + error.message);
       this.resetTranslation();
     }
@@ -187,7 +187,7 @@ class TranslateAdapter {
       throw new Error(`請先設置 ${apiType.toUpperCase()} API 金鑰`);
     }
 
-    console.log(`總共分割成 ${this.totalBatches} 個批次，間隔時間：${this.batchInterval/1000}秒`);
+    LogUtils.important(`📋 總共分割成 ${this.totalBatches} 個批次，間隔時間：${this.batchInterval/1000}秒`);
     await Notification.showNotification(`
       模型: ${GlobalSettings.getModelDisplayName(finalModel)}<br>
       API KEY: ${apiKey.substring(0, 5)}...<br>
@@ -205,7 +205,7 @@ class TranslateAdapter {
    * 處理下一個批次
    */
   async processNextBatch() {
-    console.log('processNextBatch called. currentBatchIndex:', this.currentBatchIndex, ', totalBatches:', this.totalBatches);
+    LogUtils.log('processNextBatch called. currentBatchIndex:', this.currentBatchIndex, ', totalBatches:', this.totalBatches);
 
     // 如果已經處理完所有批次，直接返回
     if (this.currentBatchIndex >= this.translationQueue.length) {
@@ -233,7 +233,7 @@ class TranslateAdapter {
       if (error.message === '翻譯請求已取消') {
         return;
       }
-      console.error(`批次 ${batchIndex + 1} 翻譯錯誤:`, error);
+      LogUtils.error(`批次 ${batchIndex + 1} 翻譯錯誤:`, error);
       this.failedTranslations.add(batchIndex);
       
       // 檢查是否需要處理完成邏輯
@@ -265,32 +265,32 @@ class TranslateAdapter {
   updateTranslatedText(batchIndex, translatedText, settings) {
     // 檢查取消狀態，防止已取消的翻譯更新文本
     if (this.controller.isCancelled()) {
-      console.log('[updateTranslatedText] 翻譯已取消，停止文本更新');
+      LogUtils.log('翻譯已取消，停止文本更新');
       return;
     }
 
     const textArea = document.querySelector('textarea[name="content"]');
     if (!textArea) {
-      console.log('[updateTranslatedText] 找不到文本區域');
+      LogUtils.log('找不到文本區域');
       return;
     }
 
     // 防護：檢查 batchIndex 有效性
     if (batchIndex < 0 || batchIndex >= this.translationQueue.length) {
-      console.log(`[updateTranslatedText] 無效的批次索引: ${batchIndex}，隊列長度: ${this.translationQueue.length}`);
+      LogUtils.log(`無效的批次索引: ${batchIndex}，隊列長度: ${this.translationQueue.length}`);
       return;
     }
 
     const originalText = this.translationQueue[batchIndex];
     // 防護：檢查 originalText 是否存在
     if (!originalText) {
-      console.log(`[updateTranslatedText] 找不到批次 ${batchIndex} 的原始文本`);
+      LogUtils.log(`找不到批次 ${batchIndex} 的原始文本`);
       return;
     }
 
     // 防護：檢查 translatedText 是否存在
     if (!translatedText) {
-      console.log(`[updateTranslatedText] 批次 ${batchIndex} 的翻譯文本為空`);
+      LogUtils.log(`批次 ${batchIndex} 的翻譯文本為空`);
       return;
     }
 
@@ -312,15 +312,14 @@ class TranslateAdapter {
     // 增加完成步驟計數
     this.completedStepsCount++;
     
-    console.log(`\n=== 批次 ${batchIndex + 1}/${this.totalBatches} 翻譯更新 ===`);
-    console.log('原始文本：\n' + (originalText.length > 500 ? originalText.substring(0, 500) + '...' : originalText));
-    console.log('翻譯結果：\n' + (finalTranslatedText.length > 500 ? finalTranslatedText.substring(0, 500) + '...' : finalTranslatedText));
-    console.log(`原始長度：${originalText.length}，翻譯後長度：${finalTranslatedText.length}`);
-    console.log('=====================================\n');
+    LogUtils.important(`📄 批次 ${batchIndex + 1}/${this.totalBatches} 翻譯更新完成`);
+    LogUtils.log('原始文本：\n' + (originalText.length > 500 ? originalText.substring(0, 500) + '...' : originalText));
+    LogUtils.log('翻譯結果：\n' + (finalTranslatedText.length > 500 ? finalTranslatedText.substring(0, 500) + '...' : finalTranslatedText));
+    LogUtils.log(`原始長度：${originalText.length}，翻譯後長度：${finalTranslatedText.length}`);
 
     // 最終檢查：確保還沒有被取消
     if (this.controller.isCancelled()) {
-      console.log('[updateTranslatedText] 翻譯在更新過程中被取消，停止 DOM 更新');
+      LogUtils.log('翻譯在更新過程中被取消，停止 DOM 更新');
       return;
     }
 
@@ -338,7 +337,7 @@ class TranslateAdapter {
       
       // 如果有失敗的批次且還沒達到重試上限，嘗試重試
       if (this.failedTranslations.size > 0 && this.finalRetryAttempts < this.maxFinalRetries) {
-        console.log(`檢測到 ${this.failedTranslations.size} 個失敗批次，開始第 ${this.finalRetryAttempts + 1} 次最終重試`);
+        LogUtils.important(`🔄 檢測到 ${this.failedTranslations.size} 個失敗批次，開始第 ${this.finalRetryAttempts + 1} 次最終重試`);
         await Notification.showNotification(`
           檢測到 ${this.failedTranslations.size} 個失敗批次<br>
           開始第 ${this.finalRetryAttempts + 1}/${this.maxFinalRetries} 次重試<br>
@@ -351,19 +350,19 @@ class TranslateAdapter {
         }, 15000);
       } else if (this.isAllBatchesCompleted()) {
         // 所有批次都成功完成，開始反思和優化
-        console.log('所有翻譯批次已完成，開始分區塊反思和優化流程');
+        LogUtils.important('✅ 所有翻譯批次已完成，開始分區塊反思和優化流程');
         try {
           const finalText = await this.processAllBlocks();
           // 移除立即重置，讓 processAllBlocks 負責延遲重置
           await Notification.showNotification(TranslateConfig.STAGES.COMPLETED, false);
         } catch (error) {
-          console.error('反思優化處理失敗:', error);
+          LogUtils.error('反思優化處理失敗:', error);
           this.resetTranslation();
           await Notification.showNotification('反思優化處理失敗: ' + error.message, false);
         }
       } else {
         // 有些批次最終失敗了，結束流程
-        console.log(`翻譯完成，但有 ${this.failedTranslations.size} 個批次失敗`);
+        LogUtils.warn(`⚠️ 翻譯完成，但有 ${this.failedTranslations.size} 個批次失敗`);
         this.resetTranslation();
         await Notification.showNotification(`
           翻譯完成，但有 ${this.failedTranslations.size} 個批次失敗<br>
@@ -460,10 +459,10 @@ class TranslateAdapter {
         }
       } catch (error) {
         if (error.message === '翻譯請求已取消') {
-          console.log('反思優化流程已取消');
+          LogUtils.log('反思優化流程已取消');
           return;
         }
-        console.error(`區塊 ${i} 處理失敗:`, error);
+        LogUtils.error(`區塊 ${i} 處理失敗:`, error);
         // 使用初始翻譯作為備選
         const fallbackText = this.service.getTranslatedTextForBlock(i);
         if (fallbackText) {
@@ -516,23 +515,23 @@ class TranslateAdapter {
    */
   async retryFailedBatches() {
     if (this.controller.isCancelled()) {
-      console.log('翻譯已取消，停止重試');
+      LogUtils.log('翻譯已取消，停止重試');
       return;
     }
 
     this.finalRetryAttempts++;
     const failedIndexes = Array.from(this.failedTranslations);
-    console.log(`開始重試失敗的批次: [${failedIndexes.join(', ')}]`);
+    LogUtils.important(`🔄 開始重試失敗的批次: [${failedIndexes.join(', ')}]`);
 
     for (const batchIndex of failedIndexes) {
       if (this.controller.isCancelled()) {
-        console.log('翻譯已取消，停止重試');
+        LogUtils.log('翻譯已取消，停止重試');
         break;
       }
 
       try {
         const originalText = this.translationQueue[batchIndex];
-        console.log(`重試批次 ${batchIndex + 1}/${this.totalBatches}`);
+        LogUtils.log(`重試批次 ${batchIndex + 1}/${this.totalBatches}`);
 
         await Notification.showNotification(`
           重試失敗批次 ${batchIndex + 1}/${this.totalBatches}<br>
@@ -547,7 +546,7 @@ class TranslateAdapter {
         this.failedTranslations.delete(batchIndex);
         this.completedTranslations.add(batchIndex);
 
-        console.log(`批次 ${batchIndex + 1} 重試成功`);
+        LogUtils.important(`✅ 批次 ${batchIndex + 1} 重試成功`);
 
         // 重試間隔20秒（除了最後一個）
         if (batchIndex !== failedIndexes[failedIndexes.length - 1]) {
@@ -555,7 +554,7 @@ class TranslateAdapter {
         }
 
       } catch (error) {
-        console.error(`批次 ${batchIndex + 1} 重試失敗:`, error);
+        LogUtils.error(`批次 ${batchIndex + 1} 重試失敗:`, error);
         // 保持在失敗列表中
       }
     }
@@ -571,7 +570,7 @@ class TranslateAdapter {
   updateFinalText(finalText) {
     // 檢查取消狀態，防止已取消的翻譯覆蓋用戶數據
     if (this.controller.isCancelled()) {
-      console.log('[updateFinalText] 翻譯已取消，停止文本更新');
+      LogUtils.log('翻譯已取消，停止文本更新');
       return;
     }
 
@@ -593,8 +592,8 @@ class TranslateAdapter {
    * 取消翻譯
    */
   async cancelTranslation() {
-    console.log('[cancelTranslation] 開始取消翻譯流程');
-    console.log('[cancelTranslation] 當前狀態:', {
+    LogUtils.important('🛑 開始取消翻譯流程');
+    LogUtils.log('當前狀態:', {
       isTranslating: this.controller.isActive(),
       state: this.controller.state,
       completedTranslations: this.completedTranslations.size
@@ -605,19 +604,19 @@ class TranslateAdapter {
 
     // 清除計時器
     if (this.timeoutId) {
-      console.log('[cancelTranslation] 清除計時器');
+      LogUtils.log('清除計時器');
       clearTimeout(this.timeoutId);
       this.timeoutId = null;
     }
 
     // 等待所有活動請求完成
-    console.log('[cancelTranslation] 等待活動請求完成...');
+    LogUtils.log('等待活動請求完成...');
     const waitForRequests = async () => {
       let attempts = 0;
       while (this.service.activeRequests.size > 0 && attempts < 50) { // 最多等待5秒
         await new Promise(resolve => setTimeout(resolve, 100));
         attempts++;
-        console.log(`[cancelTranslation] 等待中... 剩餘請求: ${this.service.activeRequests.size}`);
+        LogUtils.log(`等待中... 剩餘請求: ${this.service.activeRequests.size}`);
       }
       
       // 額外等待一點時間，確保請求處理完成
@@ -625,7 +624,7 @@ class TranslateAdapter {
       
       // 只有在仍然是取消狀態時才重置
       if (this.controller.isCancelled()) {
-        console.log('[cancelTranslation] 開始智能重置翻譯狀態');
+        LogUtils.log('開始智能重置翻譯狀態');
         this.resetTranslation();
       }
     };
@@ -634,14 +633,14 @@ class TranslateAdapter {
     waitForRequests();
 
     await Notification.showNotification(TranslateConfig.STAGES.CANCELLED, false);
-    console.log('[cancelTranslation] 翻譯取消流程完成');
+    LogUtils.important('✅ 翻譯取消流程完成');
   }
 
   /**
    * 重置翻譯狀態
    */
   resetTranslation() {
-    console.log('[resetTranslation] 開始重置翻譯狀態');
+    LogUtils.important('🔄 開始重置翻譯狀態');
     
     // 重置控制器
     this.controller.reset();
@@ -665,7 +664,7 @@ class TranslateAdapter {
       this.timeoutId = null;
     }
 
-    console.log('[resetTranslation] 重置完成');
+    LogUtils.important('✅ 重置完成');
   }
 
   /**
@@ -674,9 +673,9 @@ class TranslateAdapter {
    * @param {HTMLElement} removeStarCheckbox - 移除星號checkbox
    */
   setCheckboxes(removeHashCheckbox, removeStarCheckbox) {
-    console.log('設置 checkboxes...');
-    console.log('removeHashCheckbox:', removeHashCheckbox ? '已提供' : '未提供');
-    console.log('removeStarCheckbox:', removeStarCheckbox ? '已提供' : '未提供');
+    LogUtils.log('設置 checkboxes...');
+    LogUtils.log('removeHashCheckbox:', removeHashCheckbox ? '已提供' : '未提供');
+    LogUtils.log('removeStarCheckbox:', removeStarCheckbox ? '已提供' : '未提供');
 
     this.removeHashCheckbox = removeHashCheckbox;
     this.removeStarCheckbox = removeStarCheckbox;
@@ -740,4 +739,4 @@ class TranslateAdapter {
 // 創建全局實例，保持向後兼容
 window.TranslateManager = new TranslateAdapter();
 
-console.log('[TranslateAdapter] 翻譯適配器模組已載入'); 
+LogUtils.important('📚 翻譯適配器模組已載入'); 

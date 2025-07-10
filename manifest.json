@@ -25,12 +25,12 @@
         "https://data.uanalyze.twobitto.com/*"
       ],
       "js": [
+        "default.js",
         "regex_helper/regex-helper.js",
         "text_highlight/highlight.js",
         "text_replace/manual-replace-manager.js",
         "text_replace/auto-replace-manager.js",
         "text_replace/replace-manager.js",
-        "default.js",
         "settings/settings-key.js",
         "settings/storage-manager.js",
         "settings/api-key-manager.js",

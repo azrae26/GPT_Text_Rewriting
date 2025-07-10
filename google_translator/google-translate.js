@@ -107,7 +107,7 @@ window.GoogleTranslateManager = {
    * 初始化 Google 翻譯功能
    */
   initialize() {
-    console.log('GoogleTranslateManager 初始化...');
+    LogUtils.log('GoogleTranslateManager 初始化...');
     // 按鈕由 UIManager 統一創建，這裡確保按鈕文字與預設語言一致
     const button = document.getElementById('google-translate-button');
     if (button && this.targetLanguage) {
@@ -138,7 +138,7 @@ window.GoogleTranslateManager = {
       }
 
       if (this.isTranslating) {
-        console.log('取消 Google 翻譯');
+        LogUtils.log('取消 Google 翻譯');
         this.shouldCancel = true;
         button.disabled = true;
         button.classList.remove('canceling');
@@ -163,7 +163,7 @@ window.GoogleTranslateManager = {
 
       await this.startGoogleTranslation(button);
     } catch (error) {
-      console.error('Google 翻譯錯誤:', error);
+      LogUtils.error('Google 翻譯錯誤:', error);
       alert('Google 翻譯錯誤: ' + error.message);
       this.resetTranslation();
     }
@@ -182,10 +182,10 @@ window.GoogleTranslateManager = {
         try {
           // 解析 JSON 憑證
           const credentials = JSON.parse(googleCredentials);
-          console.log('從 popup 設定載入 Google 憑證成功');
+          LogUtils.log('從 popup 設定載入 Google 憑證成功');
           return credentials;
         } catch (parseError) {
-          console.error('解析 Google 憑證 JSON 失敗:', parseError);
+          LogUtils.error('解析 Google 憑證 JSON 失敗:', parseError);
           alert('Google 憑證格式錯誤，請檢查 JSON 格式是否正確');
           return null;
         }
@@ -195,14 +195,14 @@ window.GoogleTranslateManager = {
       try {
         const response = await fetch(chrome.runtime.getURL('google_translator/gen-lang-client-0507957210-3b8a690087e2.json'));
         const credentials = await response.json();
-        console.log('從預設檔案載入 Google 憑證成功');
+        LogUtils.log('從預設檔案載入 Google 憑證成功');
         return credentials;
       } catch (fileError) {
-        console.log('預設憑證檔案不存在或無法讀取');
+        LogUtils.log('預設憑證檔案不存在或無法讀取');
         return null;
       }
     } catch (error) {
-      console.error('載入 Google 認證資訊失敗:', error);
+      LogUtils.error('載入 Google 認證資訊失敗:', error);
       return null;
     }
   },
@@ -212,7 +212,7 @@ window.GoogleTranslateManager = {
    */
   async getAccessToken(credentials) {
     try {
-      console.log('開始獲取 Google API 訪問令牌...');
+      LogUtils.log('開始獲取 Google API 訪問令牌...');
       
       // 創建 JWT
       const header = {
@@ -250,10 +250,10 @@ window.GoogleTranslateManager = {
       }
 
       const tokenData = await tokenResponse.json();
-      console.log('成功獲取訪問令牌');
+      LogUtils.log('成功獲取訪問令牌');
       return tokenData.access_token;
     } catch (error) {
-      console.error('獲取訪問令牌失敗:', error);
+      LogUtils.error('獲取訪問令牌失敗:', error);
       throw new Error('無法獲取 Google 翻譯 API 訪問令牌: ' + error.message);
     }
   },
@@ -262,8 +262,8 @@ window.GoogleTranslateManager = {
    * 重置翻譯狀態
    */
   resetTranslation() {
-    console.log('[resetTranslation] 開始重置 Google 翻譯狀態');
-    console.log('[resetTranslation] 重置前狀態:', {
+    LogUtils.log('開始重置 Google 翻譯狀態');
+    LogUtils.log('重置前狀態:', {
       isTranslating: this.isTranslating,
       shouldCancel: this.shouldCancel,
       currentBatchIndex: this.currentBatchIndex,
@@ -288,7 +288,7 @@ window.GoogleTranslateManager = {
     this.selectionEnd = null;
 
     if (this.timeoutId) { 
-      console.log('[resetTranslation] 清除計時器');
+      LogUtils.log('清除計時器');
       clearTimeout(this.timeoutId);
       this.timeoutId = null;
     }
@@ -296,7 +296,7 @@ window.GoogleTranslateManager = {
     // 重置按鈕文本
     const button = document.getElementById('google-translate-button'); 
     if (button) { 
-      console.log('[resetTranslation] 重置按鈕狀態');
+      LogUtils.log('重置按鈕狀態');
       // 如果有選中的語言，保留語言資訊
       if (this.targetLanguage) {
         const languageNames = {
@@ -324,7 +324,7 @@ window.GoogleTranslateManager = {
     }
 
     this.activeRequests.clear();
-    console.log('[resetTranslation] 重置完成');
+    LogUtils.log('重置完成');
   },
 
   /**
@@ -428,7 +428,7 @@ window.GoogleTranslateManager = {
     }
     button.classList.add('canceling');
 
-    console.log(`總共分割成 ${this.totalBatches} 個批次，間隔時間：${this.batchInterval/1000}秒`);
+    LogUtils.log(`總共分割成 ${this.totalBatches} 個批次，間隔時間：${this.batchInterval/1000}秒`);
     await window.Notification.showNotification(`
       Google 翻譯<br>
       翻譯中<br>
@@ -457,7 +457,7 @@ window.GoogleTranslateManager = {
    * 處理下一個批次
    */
   async processNextBatch() {
-    console.log('processNextBatch called. currentBatchIndex:', this.currentBatchIndex, ', totalBatches:', this.totalBatches);
+    LogUtils.log('processNextBatch called. currentBatchIndex:', this.currentBatchIndex, ', totalBatches:', this.totalBatches);
 
     // 如果已經處理完所有批次，直接返回
     if (this.currentBatchIndex >= this.translationQueue.length) {
@@ -471,7 +471,7 @@ window.GoogleTranslateManager = {
     this.currentBatchIndex++;
 
     try {
-      console.log(`正在翻譯第 ${batchIndex + 1}/${this.totalBatches} 批次`);
+      LogUtils.log(`正在翻譯第 ${batchIndex + 1}/${this.totalBatches} 批次`);
       
       // 使用簡化的翻譯方式（暫時使用免費的翻譯服務或備用方案）
       const translatedText = await this.translateText(originalText);
@@ -482,7 +482,7 @@ window.GoogleTranslateManager = {
         this.completedTranslations.add(batchIndex);
 
         if (this.isAllBatchesCompleted()) {
-          console.log('所有 Google 翻譯批次已完成');
+          LogUtils.log('所有 Google 翻譯批次已完成');
           clearTimeout(this.timeoutId);
           
           const finalText = this.getFinalTranslatedText();
@@ -507,7 +507,7 @@ window.GoogleTranslateManager = {
       if (error.message === 'Google 翻譯請求已取消') {
         return;
       }
-      console.error(`批次 ${batchIndex + 1} Google 翻譯錯誤:`, error);
+      LogUtils.error(`批次 ${batchIndex + 1} Google 翻譯錯誤:`, error);
       this.pendingTranslations.delete(batchIndex);
     }
   },
@@ -527,7 +527,7 @@ window.GoogleTranslateManager = {
 
       // 方案一：使用演示模式（當前實現）
       if (false) { // 設為 false 啟用實際 API，true 使用演示模式
-        console.log('使用演示模式翻譯...');
+        LogUtils.log('使用演示模式翻譯...');
         await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000));
         return `[Google翻譯演示] ${text}`;
       }
@@ -549,7 +549,7 @@ window.GoogleTranslateManager = {
         requestBody.sourceLanguageCode = this.sourceLanguage;
       }
 
-      console.log('發送 Google Translation API 請求:', {
+      LogUtils.log('發送 Google Translation API 請求:', {
         endpoint,
         body: requestBody
       });
@@ -577,7 +577,7 @@ window.GoogleTranslateManager = {
       }
 
     } catch (error) {
-      console.error('Google 翻譯處理失敗:', error);
+      LogUtils.error('Google 翻譯處理失敗:', error);
       
       // 如果是演示模式或 API 調用失敗，返回標記過的文本
       if (error.message.includes('演示') || error.message.includes('DEMO')) {
@@ -607,11 +607,11 @@ window.GoogleTranslateManager = {
     // 增加完成步驟計數
     this.completedStepsCount++;
     
-    console.log(`\n=== 批次 ${batchIndex + 1}/${this.totalBatches} Google 翻譯更新 ===`);
-    console.log('原始文本：\n' + (originalText.length > 500 ? originalText.substring(0, 500) + '...' : originalText));
-    console.log('翻譯結果：\n' + (finalTranslatedText.length > 500 ? finalTranslatedText.substring(0, 500) + '...' : finalTranslatedText));
-    console.log(`原始長度：${originalText.length}，翻譯後長度：${finalTranslatedText.length}`);
-    console.log('=====================================\n');
+    LogUtils.log(`\n=== 批次 ${batchIndex + 1}/${this.totalBatches} Google 翻譯更新 ===`);
+    LogUtils.log('原始文本：\n' + (originalText.length > 500 ? originalText.substring(0, 500) + '...' : originalText));
+    LogUtils.log('翻譯結果：\n' + (finalTranslatedText.length > 500 ? finalTranslatedText.substring(0, 500) + '...' : finalTranslatedText));
+    LogUtils.log(`原始長度：${originalText.length}，翻譯後長度：${finalTranslatedText.length}`);
+    LogUtils.log('=====================================\n');
 
     textArea.value = textArea.value.replace(originalText, finalTranslatedText);
     textArea.dispatchEvent(new Event('input', { bubbles: true }));
@@ -633,7 +633,7 @@ window.GoogleTranslateManager = {
    */
   updateFinalText(finalText) {
     if (this.shouldCancel) {
-      console.log('流程已取消，停止文本更新');
+      LogUtils.log('流程已取消，停止文本更新');
       return;
     }
 
@@ -655,19 +655,19 @@ window.GoogleTranslateManager = {
    * 取消 Google 翻譯
    */
   async cancelTranslation() {
-    console.log('[cancelTranslation] 開始取消 Google 翻譯流程');
+    LogUtils.log('開始取消 Google 翻譯流程');
     
     this.shouldCancel = true;
 
     // 取消所有進行中的請求
     if (this.activeRequests) {
-      console.log(`[cancelTranslation] 準備取消 ${this.activeRequests.size} 個進行中的請求`);
+      LogUtils.log(`準備取消 ${this.activeRequests.size} 個進行中的請求`);
       this.activeRequests.forEach((controller, index) => {
         try {
-          console.log(`[cancelTranslation] 取消第 ${index + 1} 個請求`);
+          LogUtils.log(`取消第 ${index + 1} 個請求`);
           controller.abort();
         } catch (error) {
-          console.error('[cancelTranslation] 取消請求時發生錯誤:', error);
+          LogUtils.error('取消請求時發生錯誤:', error);
         }
       });
       this.activeRequests.clear();
@@ -682,7 +682,7 @@ window.GoogleTranslateManager = {
     // 重置所有翻譯相關的狀態
     this.resetTranslation();
     await window.Notification.showNotification(GoogleTranslateConfig.STAGES.CANCELLED, false);
-    console.log('[cancelTranslation] Google 翻譯取消流程完成');
+    LogUtils.log('Google 翻譯取消流程完成');
   },
 
   /**
@@ -691,7 +691,7 @@ window.GoogleTranslateManager = {
    */
   setTargetLanguage(languageCode) {
     this.targetLanguage = languageCode;
-    console.log('設置目標語言為:', languageCode);
+    LogUtils.log('設置目標語言為:', languageCode);
   },
 
   /**
@@ -700,6 +700,6 @@ window.GoogleTranslateManager = {
    */
   setSourceLanguage(languageCode) {
     this.sourceLanguage = languageCode;
-    console.log('設置源語言為:', languageCode);
+    LogUtils.log('設置源語言為:', languageCode);
   },
 }; 

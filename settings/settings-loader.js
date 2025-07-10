@@ -22,7 +22,7 @@ window.SettingsLoader = {
    */
   async loadSettings(settingsInstance) {
     try {
-      console.log('[SettingsLoader] 開始載入設定...');
+      LogUtils.log('開始載入設定...');
       
       // 驗證 settingsInstance 參數
       if (!settingsInstance || typeof settingsInstance !== 'object') {
@@ -70,10 +70,10 @@ window.SettingsLoader = {
       // 記錄載入結果
       this._logLoadingResults(settingsInstance);
 
-      console.log('[SettingsLoader] 設定載入完成');
+      LogUtils.log('設定載入完成');
       return settingsInstance;
     } catch (error) {
-      console.error('[SettingsLoader] 載入設置時出錯:', error);
+      LogUtils.error('載入設置時出錯:', error);
       // 確保 settingsInstance 存在且有效
       if (settingsInstance && typeof settingsInstance.getGlobalDefaultSettings === 'function') {
         return settingsInstance.getGlobalDefaultSettings();
@@ -99,7 +99,7 @@ window.SettingsLoader = {
     if (window.SettingsCleanup) {
       await window.SettingsCleanup.cleanupZombieSettings();
     } else {
-      console.warn('[SettingsLoader] SettingsCleanup 未載入，使用後備清理方法');
+      LogUtils.warn('SettingsCleanup 未載入，使用後備清理方法');
       await settingsInstance.cleanupZombieSettings();
     }
   },
@@ -115,7 +115,7 @@ window.SettingsLoader = {
       new Promise((resolve) => {
         chrome.storage.sync.get(null, (items) => {
           if (chrome.runtime.lastError) {
-            console.warn('[SettingsLoader] 同步儲存載入警告:', chrome.runtime.lastError);
+            LogUtils.warn('同步儲存載入警告:', chrome.runtime.lastError);
             resolve({});
           } else {
             resolve(items);
@@ -148,7 +148,7 @@ window.SettingsLoader = {
         
         chrome.storage.local.get(localKeys, (items) => {
           if (chrome.runtime.lastError) {
-            console.warn('[SettingsLoader] 本地儲存載入警告:', chrome.runtime.lastError);
+            LogUtils.warn('本地儲存載入警告:', chrome.runtime.lastError);
             resolve({});
           } else {
             resolve(items);
@@ -157,7 +157,7 @@ window.SettingsLoader = {
       })
     ]);
 
-    console.log('[SettingsLoader] 儲存資料載入完成:', {
+    LogUtils.log('儲存資料載入完成:', {
       syncCount: Object.keys(syncResult).length,
       localCount: Object.keys(localResult).length
     });
@@ -178,7 +178,7 @@ window.SettingsLoader = {
     };
 
     // 清理未實際設置的舊 API 金鑰
-    console.log('[SettingsLoader] 清理未實際設置的 API 金鑰...');
+    LogUtils.log('清理未實際設置的 API 金鑰...');
     const keysToRemove = [];
     
     Object.entries(settingsInstance.apiKeys).forEach(([key, value]) => {
@@ -196,20 +196,20 @@ window.SettingsLoader = {
         });
         
         if (!hasMatchingCustomModel) {
-          console.log(`[SettingsLoader] 發現舊版本硬編碼金鑰: ${key}，準備移除`);
+          LogUtils.log(`發現舊版本硬編碼金鑰: ${key}，準備移除`);
           keysToRemove.push(key);
         }
       }
     });
     
     if (keysToRemove.length > 0) {
-      console.log('[SettingsLoader] 移除無效的 API 金鑰:', keysToRemove);
+      LogUtils.log('移除無效的 API 金鑰:', keysToRemove);
       keysToRemove.forEach(key => delete settingsInstance.apiKeys[key]);
       
       // 立即保存更新後的金鑰列表
       chrome.storage.sync.set({ apiKeys: settingsInstance.apiKeys }, () => {
         if (chrome.runtime.lastError) {
-          console.warn('[SettingsLoader] 保存清理後的 API 金鑰時出現警告:', chrome.runtime.lastError);
+          LogUtils.warn('保存清理後的 API 金鑰時出現警告:', chrome.runtime.lastError);
         }
       });
     }
@@ -219,7 +219,7 @@ window.SettingsLoader = {
     Object.keys(settingsInstance.apiKeys).forEach(key => {
       apiKeyStatus[key] = settingsInstance.apiKeys[key] ? '已設置' : '未設置';
     });
-    console.log('[SettingsLoader] 載入的 API 金鑰:', apiKeyStatus);
+    LogUtils.log('載入的 API 金鑰:', apiKeyStatus);
   },
 
   /**
@@ -263,7 +263,7 @@ window.SettingsLoader = {
     settingsInstance.crawlerInterval = syncResult.crawlerInterval || 30;
     settingsInstance.autoSyncEnabled = syncResult.autoSyncEnabled || false;
 
-    console.log('[SettingsLoader] 基本設定載入完成');
+    LogUtils.log('基本設定載入完成');
   },
 
   /**
@@ -286,7 +286,7 @@ window.SettingsLoader = {
     settingsInstance.removeStar = syncResult.removeStar === undefined ? 
       defaultSettings?.removeStar : syncResult.removeStar;
 
-    console.log('[SettingsLoader] 預設值設定載入完成');
+    LogUtils.log('預設值設定載入完成');
   },
 
   /**
@@ -309,7 +309,7 @@ window.SettingsLoader = {
       settingsInstance.updateAutoRewritePatterns(defaultSettings.autoRewritePatterns);
     }
 
-    console.log('[SettingsLoader] 自動改寫匹配模式處理完成');
+    LogUtils.log('自動改寫匹配模式處理完成');
   },
 
   /**
@@ -320,7 +320,7 @@ window.SettingsLoader = {
    */
   async _handleFirstRun(settingsInstance, syncResult) {
     if (syncResult.firstRun === undefined) {
-      console.log('[SettingsLoader] 檢測到首次運行，設置預設值...');
+      LogUtils.log('檢測到首次運行，設置預設值...');
       
       try {
         await settingsInstance.saveSettings();
@@ -328,16 +328,16 @@ window.SettingsLoader = {
         await new Promise((resolve, reject) => {
           chrome.storage.sync.set({ firstRun: false }, () => {
             if (chrome.runtime.lastError) {
-              console.warn('[SettingsLoader] 設置首次運行標記時出現警告:', chrome.runtime.lastError);
+              LogUtils.warn('設置首次運行標記時出現警告:', chrome.runtime.lastError);
               reject(chrome.runtime.lastError);
             } else {
-              console.log('[SettingsLoader] 首次運行處理完成');
+              LogUtils.log('首次運行處理完成');
               resolve();
             }
           });
         });
       } catch (error) {
-        console.warn('[SettingsLoader] 首次運行處理時出現錯誤:', error);
+        LogUtils.warn('首次運行處理時出現錯誤:', error);
       }
     }
   },
@@ -352,7 +352,7 @@ window.SettingsLoader = {
     settingsInstance.generationSettingsGroups = syncResult.generationSettingsGroups || {};
     settingsInstance.currentGenerationSettings = syncResult.currentGenerationSettings || '';
 
-    console.log('[SettingsLoader] 生成設定組合載入完成:', {
+    LogUtils.log('生成設定組合載入完成:', {
       群組數量: Object.keys(settingsInstance.generationSettingsGroups).length,
       當前選擇: settingsInstance.currentGenerationSettings
     });
@@ -375,7 +375,7 @@ window.SettingsLoader = {
       settingsInstance.API.models[key] = model.displayName;
     });
 
-    console.log('[SettingsLoader] 自定義模型載入完成:', {
+    LogUtils.log('自定義模型載入完成:', {
       自定義模型數量: Object.keys(settingsInstance.customModels).length,
       可用模型: Object.keys(settingsInstance.API.models)
     });
@@ -387,7 +387,7 @@ window.SettingsLoader = {
    * @param {Object} settingsInstance - GlobalSettings 實例
    */
   async _cleanupInvalidModelSettings(settingsInstance) {
-    console.log('[SettingsLoader] 清理舊版本或無效的模型選擇...');
+    LogUtils.log('清理舊版本或無效的模型選擇...');
     
     const modelSettingKeys = [
       'model', 'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel',
@@ -404,14 +404,14 @@ window.SettingsLoader = {
       const currentModel = settingsInstance[key];
       
       if (currentModel && !settingsInstance.customModels[currentModel] && !settingsInstance.API.models[currentModel]) {
-        console.log(`[SettingsLoader] 發現無效的模型設定 ${key}: ${currentModel}，將其重置為空`);
+        LogUtils.log(`發現無效的模型設定 ${key}: ${currentModel}，將其重置為空`);
         settingsInstance[key] = '';
         updatedSettingsToSave[key] = '';
         settingsUpdated = true;
       } else if (currentModel && (currentModel.includes('-1.5-') || currentModel.includes('-2.0-') || currentModel.includes('-exp'))) {
         // 如果是舊格式的模型名稱，且不在自定義模型列表中，也重置
         if (!settingsInstance.customModels[currentModel]) {
-          console.log(`[SettingsLoader] 發現舊格式模型設定 ${key}: ${currentModel}，將其重置為空`);
+          LogUtils.log(`發現舊格式模型設定 ${key}: ${currentModel}，將其重置為空`);
           settingsInstance[key] = '';
           updatedSettingsToSave[key] = '';
           settingsUpdated = true;
@@ -420,22 +420,22 @@ window.SettingsLoader = {
     });
 
     if (settingsUpdated) {
-      console.log('[SettingsLoader] 模型設定已更新，正在保存...', updatedSettingsToSave);
+      LogUtils.log('模型設定已更新，正在保存...', updatedSettingsToSave);
       
       try {
         await new Promise((resolve, reject) => {
           chrome.storage.sync.set(updatedSettingsToSave, () => {
             if (chrome.runtime.lastError) {
-              console.warn('[SettingsLoader] 保存更新的模型設定時出現警告:', chrome.runtime.lastError);
+              LogUtils.warn('保存更新的模型設定時出現警告:', chrome.runtime.lastError);
               reject(chrome.runtime.lastError);
             } else {
-              console.log('[SettingsLoader] 模型設定更新完成');
+              LogUtils.log('模型設定更新完成');
               resolve();
             }
           });
         });
       } catch (error) {
-        console.warn('[SettingsLoader] 保存模型設定時出現錯誤:', error);
+        LogUtils.warn('保存模型設定時出現錯誤:', error);
       }
     }
   },
@@ -446,7 +446,7 @@ window.SettingsLoader = {
    * @param {Object} settingsInstance - GlobalSettings 實例
    */
   _logLoadingResults(settingsInstance) {
-    console.log('[SettingsLoader] 設置載入完成:', {
+    LogUtils.log('設置載入完成:', {
       model: settingsInstance.model,
       apiKeysStatus: Object.keys(settingsInstance.apiKeys).map(key => ({ 
         [key]: settingsInstance.apiKeys[key] ? '已設置' : '未設置' 
@@ -487,7 +487,7 @@ window.SettingsLoader = {
 
     const isValid = warnings.length === 0;
 
-    console.log('[SettingsLoader] 載入設定驗證:', { isValid, warnings, statistics });
+    LogUtils.log('載入設定驗證:', { isValid, warnings, statistics });
 
     return { isValid, warnings, statistics };
   }
@@ -498,4 +498,4 @@ if (typeof window !== 'undefined') {
   window.SettingsLoader = window.SettingsLoader;
 }
 
-console.log('[SettingsLoader] 設定載入管理器已載入'); 
+LogUtils.log('設定載入管理器已載入'); 

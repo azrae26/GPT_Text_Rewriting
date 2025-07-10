@@ -23,7 +23,7 @@ window.SettingsClassifier = {
     const replaceSettings = {};
 
     if (!settings || typeof settings !== 'object') {
-      console.warn('[SettingsClassifier] 無效的設定物件');
+      LogUtils.warn('無效的設定物件');
       return { syncSettings, localSettings, replaceSettings };
     }
 
@@ -31,7 +31,7 @@ window.SettingsClassifier = {
       try {
         // 跳過分塊資料
         if (key.includes('_chunk_') || key.includes('_chunks')) {
-          console.log('[SettingsClassifier] 跳過分塊資料:', key);
+          LogUtils.log('跳過分塊資料:', key);
           return;
         }
         
@@ -51,13 +51,13 @@ window.SettingsClassifier = {
           syncSettings[key] = value;
         }
       } catch (error) {
-        console.error(`[SettingsClassifier] 處理設定 ${key} 時出錯:`, error);
+        LogUtils.error(`處理設定 ${key} 時出錯:`, error);
         // 出錯時預設放入 sync storage
         syncSettings[key] = value;
       }
     });
 
-    console.log('[SettingsClassifier] 設定分類完成:', {
+    LogUtils.log('設定分類完成:', {
       syncCount: Object.keys(syncSettings).length,
       localCount: Object.keys(localSettings).length,
       replaceCount: Object.keys(replaceSettings).length
@@ -73,7 +73,7 @@ window.SettingsClassifier = {
    */
   filterValidSettings(result) {
     if (!result || typeof result !== 'object') {
-      console.warn('[SettingsClassifier] 無效的設定物件');
+      LogUtils.warn('無效的設定物件');
       return {};
     }
 
@@ -83,14 +83,14 @@ window.SettingsClassifier = {
         const isValid = value !== undefined && value !== null && value !== '';
         
         if (!isValid) {
-          console.log(`[SettingsClassifier] 過濾無效設定: ${key} = ${value}`);
+          LogUtils.log(`過濾無效設定: ${key} = ${value}`);
         }
         
         return isValid;
       })
     );
 
-    console.log('[SettingsClassifier] 設定過濾完成:', {
+    LogUtils.log('設定過濾完成:', {
       原始數量: Object.keys(result).length,
       過濾後數量: Object.keys(filtered).length
     });
@@ -149,7 +149,7 @@ window.SettingsClassifier = {
         return { key: formattedKey, value: value };
       }
     } catch (error) {
-      console.error(`[SettingsClassifier] 處理替換規則 ${key} 時出錯:`, error);
+      LogUtils.error(`處理替換規則 ${key} 時出錯:`, error);
       return null;
     }
   },
@@ -189,11 +189,11 @@ window.SettingsClassifier = {
     const isValid = errors.length === 0;
 
     if (warnings.length > 0) {
-      console.warn('[SettingsClassifier] 設定驗證警告:', warnings);
+      LogUtils.warn('設定驗證警告:', warnings);
     }
 
     if (errors.length > 0) {
-      console.error('[SettingsClassifier] 設定驗證錯誤:', errors);
+      LogUtils.error('設定驗證錯誤:', errors);
     }
 
     return { isValid, errors, warnings };
@@ -205,4 +205,4 @@ if (typeof window !== 'undefined') {
   window.SettingsClassifier = window.SettingsClassifier;
 }
 
-console.log('[SettingsClassifier] 設定分類管理器已載入'); 
+LogUtils.log('設定分類管理器已載入'); 

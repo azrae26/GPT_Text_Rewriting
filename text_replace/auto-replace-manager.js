@@ -298,7 +298,7 @@ const AutoReplaceManager = {
     // 獲取容器
     const container = group.parentElement;
     if (!container) {
-      console.error('無法找到自動替換組的父容器');
+      LogUtils.error('無法找到自動替換組的父容器');
       return;
     }
     
@@ -328,7 +328,7 @@ const AutoReplaceManager = {
   sendMessageToTab(message) {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       if (!tabs[0]) {
-        console.debug('沒有找到活動的標籤頁');
+        LogUtils.log('沒有找到活動的標籤頁');
         return;
       }
       
@@ -336,12 +336,12 @@ const AutoReplaceManager = {
         chrome.tabs.sendMessage(tabs[0].id, message, function(response) {
           if (chrome.runtime.lastError) {
             // 這是正常的情況，不需要顯示為錯誤
-            console.debug('Content script 正在載入中...');
+            LogUtils.log('Content script 正在載入中...');
             return;
           }
         });
       } catch (error) {
-        console.debug('發送消息時出錯:', error);
+        LogUtils.log('發送消息時出錯:', error);
       }
     });
   },
@@ -360,7 +360,7 @@ const AutoReplaceManager = {
 
   /** 保存自動替換規則 */
   saveAutoReplaceRules(container) {
-    console.group('保存自動替換規則');
+    LogUtils.log('保存自動替換規則');
     
     // 使用 ReplaceManager.StorageHelper 提取規則
     const rules = window.ReplaceManager.StorageHelper.extractRulesFromDOM({
@@ -369,7 +369,7 @@ const AutoReplaceManager = {
       hasCheckbox: true
     });
     
-    console.log('所有規則:', rules);
+    LogUtils.log('所有規則:', rules);
     
     // 更新活動規則緩存
     this._activeRules = rules;
@@ -379,10 +379,10 @@ const AutoReplaceManager = {
     window.ReplaceManager.StorageHelper.saveRules(
       storageKey,
       rules,
-      () => console.log('自動替換規則已保存')
+      () => LogUtils.log('自動替換規則已保存')
     );
     
-    console.groupEnd();
+    LogUtils.log('保存自動替換規則完成');
   },
 
   /** 執行自動替換 */
@@ -458,7 +458,7 @@ const AutoReplaceManager = {
       this._cacheTime = Date.now();
       return currentYear;
     } catch (error) {
-      console.warn(`[AutoReplace][${new Date().toISOString()}] ❌ 獲取年份時出錯，使用系統年份:`, error);
+      LogUtils.warn('❌ 獲取年份時出錯，使用系統年份:', error);
       const fallbackYear = new Date().getFullYear();
       
       // 🆕 緩存備份年份
@@ -554,15 +554,15 @@ const AutoReplaceManager = {
                 totalChanges += matches ? matches.length : 0;
             }
         } catch (error) {
-            console.error(`[AutoReplace][${new Date().toISOString()}] 替換錯誤:`, error);
+            LogUtils.error('替換錯誤:', error);
         }
     }
 
     if (changed) {
         // 輸出詳細的替換資訊
-        console.log(`[AutoReplace][${new Date().toISOString()}] 自動替換：完成 ${totalChanges} 處替換`);
+        LogUtils.log(`自動替換：完成 ${totalChanges} 處替換`);
         replacementDetails.forEach(detail => {
-            console.log(`[AutoReplace][${new Date().toISOString()}] 將「${detail.from}」替換為「${detail.to}」`);
+            LogUtils.log(`將「${detail.from}」替換為「${detail.to}」`);
         });
     }
     return { text, changed };

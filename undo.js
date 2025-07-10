@@ -14,7 +14,7 @@ const UndoManager = {
     element ? 
     `input-${element.tagName.toLowerCase()}-${element.name || element.id || 
       Array.from(document.querySelectorAll(element.tagName)).indexOf(element)}` :
-    (console.error('getInputId: element is undefined'), 'unknown'),
+    (LogUtils.error('getInputId: element is undefined'), 'unknown'),
 
   /** 檢查是否為有效的輸入元素 */
   isValidInput: element => 
@@ -25,7 +25,7 @@ const UndoManager = {
   /** 添加新的歷史記錄 */
   addToHistory(value, element) {
     if (!element) {
-      console.error('addToHistory: 無效的元素');
+      LogUtils.error('addToHistory: 無效的元素');
       return;
     }
 
@@ -41,9 +41,9 @@ const UndoManager = {
         .slice(-this.MAX_HISTORY_SIZE);
       
       history.currentIndex = history.history.length - 1;
-      console.log(`添加新的歷史記錄 [${inputId}]，當前索引:`, history.currentIndex);
+      LogUtils.log(`添加新的歷史記錄 [${inputId}]，當前索引:`, history.currentIndex);
     } catch (error) {
-      console.error('添加歷史記錄時發生錯誤:', error);
+      LogUtils.error('添加歷史記錄時發生錯誤:', error);
     }
   },
 
@@ -61,7 +61,7 @@ const UndoManager = {
   /** 初始化輸入元素的歷史記錄功能 */
   initInputHistory(inputElement) {
     if (!inputElement) {
-      console.log('找不到輸入元素，跳過初始化歷史記錄');
+      LogUtils.log('找不到輸入元素，跳過初始化歷史記錄');
       return;
     }
 
@@ -73,7 +73,7 @@ const UndoManager = {
 
       const handleInput = event => {
         if (!event.target || !document.body.contains(event.target)) {
-          console.log('元素已不存在，跳過處理');
+          LogUtils.log('元素已不存在，跳過處理');
           return;
         }
 
@@ -87,7 +87,7 @@ const UndoManager = {
             }, 0);
           }
         } catch (error) {
-          console.log('處理輸入事件時發生錯誤:', error);
+          LogUtils.log('處理輸入事件時發生錯誤:', error);
         }
       };
 
@@ -117,19 +117,19 @@ const UndoManager = {
       
       clearTimeout(this._logTimeout);
       this._logTimeout = setTimeout(() => {
-        console.log(`已初始化輸入框歷史記錄，共 ${this._initializedInputs.size} 個元素`);
+        LogUtils.log(`已初始化輸入框歷史記錄，共 ${this._initializedInputs.size} 個元素`);
         this._initializedInputs.clear();
       }, 100);
 
     } catch (error) {
-      console.log('初始化歷史記錄時發生錯誤:', error);
+      LogUtils.log('初始化歷史記錄時發生錯誤:', error);
     }
   },
 
   /** 執行復原或重做操作 */
   executeHistoryOperation(isUndo = true) {
     const operation = isUndo ? '復原' : '重做';
-    console.log(`執行${operation}操作`);
+    LogUtils.log(`執行${operation}操作`);
 
     const activeElement = document.activeElement;
     if (!this.isValidInput(activeElement)) return;
@@ -148,7 +148,7 @@ const UndoManager = {
         this.isUndoRedoOperation = false;
       }, 0);
       
-      console.log(`${operation}到索引 [${inputId}]:`, history.currentIndex);
+      LogUtils.log(`${operation}到索引 [${inputId}]:`, history.currentIndex);
     }
   },
 

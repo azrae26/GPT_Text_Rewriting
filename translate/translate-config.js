@@ -107,4 +107,4 @@ window.TranslateConfigUtils = {
   }
 };
 
-console.log('[TranslateConfig] 翻譯配置模組已載入'); 
+  LogUtils.log('翻譯配置模組已載入'); 

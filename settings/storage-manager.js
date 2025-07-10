@@ -44,14 +44,14 @@ const StorageManager = {
       const storageApi = this.getChromeStorage(type);
       const dataSize = JSON.stringify(data).length;
       
-      console.log(`[StorageManager]${prefix} 嘗試儲存資料到 ${type} storage，大小: ${dataSize} bytes`);
+      LogUtils.log(`${prefix} 嘗試儲存資料到 ${type} storage，大小: ${dataSize} bytes`);
       
       storageApi.set(data, () => {
         if (chrome.runtime.lastError) {
-          console.error(`[StorageManager]${prefix} 儲存到 ${type} storage 失敗:`, chrome.runtime.lastError.message);
+          LogUtils.error(`${prefix} 儲存到 ${type} storage 失敗:`, chrome.runtime.lastError.message);
           reject(new Error(chrome.runtime.lastError.message));
         } else {
-          console.log(`[StorageManager]${prefix} 成功儲存資料到 ${type} storage，大小: ${dataSize} bytes`);
+          LogUtils.log(`${prefix} 成功儲存資料到 ${type} storage，大小: ${dataSize} bytes`);
           resolve();
         }
       });
@@ -70,7 +70,7 @@ const StorageManager = {
     const entries = Object.entries(data);
     const totalBatches = Math.ceil(entries.length / batchSize);
     
-    console.log(`[StorageManager] 開始批次儲存 ${entries.length} 個項目到 ${type} storage，分 ${totalBatches} 批次`);
+    LogUtils.log(`開始批次儲存 ${entries.length} 個項目到 ${type} storage，分 ${totalBatches} 批次`);
     
     for (let i = 0; i < totalBatches; i++) {
       const start = i * batchSize;
@@ -90,7 +90,7 @@ const StorageManager = {
       }
     }
     
-    console.log(`[StorageManager] 批次儲存完成`);
+    LogUtils.log(`批次儲存完成`);
   },
 
   /**
@@ -132,10 +132,10 @@ const StorageManager = {
       
       storageApi.remove(keys, () => {
         if (chrome.runtime.lastError) {
-          console.error(`[StorageManager] 刪除 ${type} storage 資料失敗:`, chrome.runtime.lastError.message);
+          LogUtils.error(`刪除 ${type} storage 資料失敗:`, chrome.runtime.lastError.message);
           reject(new Error(chrome.runtime.lastError.message));
         } else {
-          console.log(`[StorageManager] 成功刪除 ${type} storage 資料:`, keys);
+          LogUtils.log(`成功刪除 ${type} storage 資料:`, keys);
           resolve();
         }
       });
@@ -153,10 +153,10 @@ const StorageManager = {
       
       storageApi.clear(() => {
         if (chrome.runtime.lastError) {
-          console.error(`[StorageManager] 清空 ${type} storage 失敗:`, chrome.runtime.lastError.message);
+          LogUtils.error(`清空 ${type} storage 失敗:`, chrome.runtime.lastError.message);
           reject(new Error(chrome.runtime.lastError.message));
         } else {
-          console.log(`[StorageManager] 成功清空 ${type} storage`);
+          LogUtils.log(`成功清空 ${type} storage`);
           resolve();
         }
       });
@@ -236,7 +236,7 @@ const StorageManager = {
     const storageType = this.getStorageTypeForKey(key);
     const data = { [key]: value };
     
-    console.log(`[StorageManager] 儲存設定 ${key} 到 ${storageType} storage`);
+    LogUtils.log(`儲存設定 ${key} 到 ${storageType} storage`);
     await this.setChromeStorage(data, storageType);
   },
 
@@ -249,7 +249,7 @@ const StorageManager = {
     const storageType = this.getStorageTypeForKey(key);
     const data = await this.getStorageData([key], storageType);
     
-    console.log(`[StorageManager] 從 ${storageType} storage 載入設定 ${key}`);
+    LogUtils.log(`從 ${storageType} storage 載入設定 ${key}`);
     return data[key];
   },
 
@@ -262,9 +262,9 @@ const StorageManager = {
     const usage = await this.getStorageUsage(type);
     
     if (usage.percentage > 90) {
-      console.warn(`[StorageManager] ${type} storage 使用率過高: ${usage.percentage}%`);
+      LogUtils.warn(`${type} storage 使用率過高: ${usage.percentage}%`);
     } else if (usage.percentage > 75) {
-      console.log(`[StorageManager] ${type} storage 使用率: ${usage.percentage}%`);
+      LogUtils.log(`${type} storage 使用率: ${usage.percentage}%`);
     }
     
     return usage;

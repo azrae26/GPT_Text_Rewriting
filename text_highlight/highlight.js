@@ -522,7 +522,7 @@ const TextHighlight = {
               this.cache.textNaturalOffset = firstCharRect.top - divRect.top;
             }
           } catch (offsetError) {
-            console.warn('[PositionCalculator] 計算文字自然偏移失敗，使用0:', offsetError);
+            LogUtils.warn('計算文字自然偏移失敗，使用0:', offsetError);
             this.cache.textNaturalOffset = 0;
           }
         }
@@ -691,7 +691,7 @@ const TextHighlight = {
         const container = TextHighlight.DOMManager.elements.container;
         
         if (!textArea || !container) {
-          console.error('[EventHandler] 找不到必要元素');
+          LogUtils.error('找不到必要元素');
           return;
         }
         
@@ -739,14 +739,14 @@ const TextHighlight = {
         
         const tryUpdate = () => {
           if (retryCount >= maxRetries) {
-            console.log('[TextHighlight] 達到最大重試次數，停止更新');
+            LogUtils.log('達到最大重試次數，停止更新');
             return;
           }
           
           retryCount++;
           const textArea = TextHighlight.DOMManager.elements.textArea;
           if (!textArea || !textArea.offsetParent) {
-            console.log('[TextHighlight] 文本區域未就緒，等待下次更新');
+            LogUtils.log('文本區域未就緒，等待下次更新');
             return;
           }
 
@@ -827,7 +827,7 @@ const TextHighlight = {
     if (Object.keys(colors).length > 0) {
       this.wordColors = colors;
       chrome.storage.local.set({ highlightColors: colors }, () => {
-        console.log('顏色設置已保存');
+        LogUtils.log('顏色設置已保存');
       });
     }
 
@@ -840,7 +840,7 @@ const TextHighlight = {
 
   // 初始化時載入顏色設置
   initialize() {
-    console.log('初始化文字標示功能');
+    LogUtils.log('初始化文字標示功能');
     
     // 使用 Promise 確保初始化順序
     return new Promise((resolve) => {
@@ -851,7 +851,7 @@ const TextHighlight = {
       chrome.storage.local.get(['highlightColors'], (result) => {
         if (result.highlightColors) {
           this.wordColors = result.highlightColors;
-          console.log('已載入顏色設置:', this.wordColors);
+          LogUtils.log('已載入顏色設置:', this.wordColors);
         }
         
         // 確保 DOM 結構初始化
@@ -897,7 +897,7 @@ const TextHighlight = {
     );
 
     if (!hasValidHighlights && this.targetWords.length > 0) {
-      console.log('未檢測到有效高亮，強制更新');
+      LogUtils.log('未檢測到有效高亮，強制更新');
       this.forceUpdate();
     }
   },
@@ -1022,7 +1022,7 @@ const TextHighlight = {
   updateHighlights() {
     const { textArea, container } = this.DOMManager.elements;
     if (!textArea || !container) {
-      console.error('[TextHighlight] 更新高亮失敗：缺少必要元素');
+              LogUtils.error('更新高亮失敗：缺少必要元素');
       return;
     }
 
@@ -1119,7 +1119,7 @@ const TextHighlight = {
           });
         }
       } catch (error) {
-        console.error(`[TextHighlight] 處理文字 "${targetWord}" 時發生錯誤:`, error);
+        LogUtils.error(`處理文字 "${targetWord}" 時發生錯誤:`, error);
       }
     });
 

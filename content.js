@@ -19,7 +19,7 @@
  * - Chrome Extensions API
  */
 
-console.log('Content script starting to load');
+LogUtils.log('Content script starting to load');
 
 // 簡化的調試資訊
 const debugInfo = {
@@ -38,8 +38,8 @@ function shouldEnableFeatures() {
   const currentUrl = window.location.href;
   const pattern = /^https:\/\/data\.uanalyze\.twobitto\.com\/research-reports\/(?:\d+\/edit|create)(?:\?.*)?$/;
   const result = pattern.test(currentUrl);
-  console.log('當前URL:', currentUrl);
-  console.log('是否啟用功能:', result);
+  LogUtils.log('當前URL:', currentUrl);
+  LogUtils.log('是否啟用功能:', result);
   return result;
 }
 
@@ -47,7 +47,7 @@ function shouldEnableFeatures() {
  * 初始化擴充功能，包含初始化 UI 元素和設定事件監聽器。
  */
 function initializeExtension() {
-  console.log('開始初始化擴展');
+  LogUtils.log('開始初始化擴展');
 
   // 檢查是否需要重新整理
   function checkNeedsRefresh() {
@@ -188,7 +188,7 @@ function initializeExtension() {
           uiInitCompleteTime = Date.now(); // 🔧 記錄完成時間
           
         } catch (error) {
-          console.error('UI初始化失敗:', error);
+          LogUtils.error('UI初始化失敗:', error);
         } finally {
           isInitializing = false; // 重置正在初始化標記
         }
@@ -237,7 +237,7 @@ function initializeExtension() {
         // 確認高亮是否成功
         const highlights = document.querySelectorAll('.text-highlight');
         if (highlights.length === 0) {
-          console.log('未發現高亮元素，強制更新');
+          LogUtils.log('未發現高亮元素，強制更新');
           window.TextHighlight.forceUpdate();
         }
         
@@ -258,7 +258,7 @@ function initializeExtension() {
       initHighlight();
       
     } catch (error) {
-      console.error('初始化UI元素時發生錯誤:', error);
+      LogUtils.error('初始化UI元素時發生錯誤:', error);
     }
   }
 
@@ -298,12 +298,12 @@ function initializeExtension() {
     }
   }).observe(document, {subtree: true, childList: true});
 
-  console.log('Content script fully loaded and initialized');
+  LogUtils.log('Content script fully loaded and initialized');
 
   // 🆕 監聽標籤頁變為當前時重整UI
   document.addEventListener('visibilitychange', function() {
     if (!document.hidden && shouldEnableFeatures()) {
-      console.log('標籤頁變為當前，重整UI...');
+      LogUtils.log('標籤頁變為當前，重整UI...');
       
       // 重新載入設定並更新UI
       setTimeout(async () => {
@@ -329,10 +329,10 @@ function initializeExtension() {
               });
             }
             
-            console.log('✅ UI重整完成');
+            LogUtils.log('✅ UI重整完成');
           }
         } catch (error) {
-          console.error('UI重整失敗:', error);
+          LogUtils.error('UI重整失敗:', error);
         }
       }, 200); // 延遲200ms確保頁面完全激活
     }
@@ -340,7 +340,7 @@ function initializeExtension() {
 
   // 向背景腳本發送訊息，通知內容腳本已準備就緒
   chrome.runtime.sendMessage({action: "contentScriptReady"}, function(response) {
-    console.log('Content script ready message sent', response);
+    LogUtils.log('Content script ready message sent', response);
   });
 }
 
@@ -348,7 +348,7 @@ function initializeExtension() {
  * 監聽來自背景腳本的訊息，並根據訊息類型執行不同的操作。
  */
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  console.log('收到消息:', request);
+  LogUtils.log('收到消息:', request);
   switch (request.action) {
     case "rewrite":
       // 處理改寫請求
@@ -402,7 +402,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         
         // 處理股票清單更新
         if (request.settings.stockList !== undefined) {
-          console.log('檢測到股票清單更新，重新初始化股票功能');
+          LogUtils.log('檢測到股票清單更新，重新初始化股票功能');
           // 優先使用 StockMatcher 模組，回退到 UIManager
           const stockManager = window.StockMatcher || window.UIManager;
           if (stockManager && stockManager._loadStockListFromSettings) {
@@ -417,15 +417,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
                   window.UIManager.removeStockCodeFeature();
                   window.UIManager.initializeStockCodeFeature(true);
                 }
-                console.log('股票清單已通過 updateSettings 成功更新');
+                LogUtils.log('股票清單已通過 updateSettings 成功更新');
               })
               .catch(error => {
-                console.error('通過 updateSettings 更新股票清單失敗:', error);
+                LogUtils.error('通過 updateSettings 更新股票清單失敗:', error);
               });
           }
         }
         
-        console.log('更新的設置:', {
+        LogUtils.log('更新的設置:', {
           fullRewriteModel: window.GlobalSettings.fullRewriteModel,
           shortRewriteModel: window.GlobalSettings.shortRewriteModel,
           autoRewriteModel: window.GlobalSettings.autoRewriteModel,
@@ -436,7 +436,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           stockListUpdated: request.settings.stockList !== undefined
         });
       } else {
-        console.warn('updateSettings 收到無效的 settings 參數:', request.settings);
+        LogUtils.warn('updateSettings 收到無效的 settings 參數:', request.settings);
       }
       sendResponse({success: true});
       break;
@@ -503,7 +503,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
               sendResponse({success: true});
             })
             .catch(error => {
-              console.error('更新股票清單失敗:', error);
+              LogUtils.error('更新股票清單失敗:', error);
               sendResponse({success: false, error: error.message});
             });
           return true; // 表示我們會異步發送回應
@@ -554,19 +554,19 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
 // 確保在頁面加載完後初始化擴展
 if (document.readyState === 'loading') {
-  console.log('頁面仍在載入中，等待 DOMContentLoaded 事件');
+  LogUtils.log('頁面仍在載入中，等待 DOMContentLoaded 事件');
   
   document.addEventListener('DOMContentLoaded', () => {
     initializeExtension();
   });
 } else {
-  console.log('頁面已載入完成 (readyState: ${document.readyState})，立即初始化');
+  LogUtils.log('頁面已載入完成 (readyState: ${document.readyState})，立即初始化');
   initializeExtension();
 }
 
 // 添加全局錯誤處理
 window.addEventListener('error', function(event) {
-  console.error('捕獲到全局錯誤:', event.error);
+  LogUtils.error('捕獲到全局錯誤:', event.error);
 });
 
 function handleUndo() {
@@ -584,19 +584,19 @@ window.shouldEnableFeatures = shouldEnableFeatures;
 function reportPerformanceStats() {
   const actualLoadTime = uiInitCompleteTime ? uiInitCompleteTime - debugInfo.startTime : Date.now() - debugInfo.startTime;
   
-  console.log('插件載入性能統計:', {
+  LogUtils.log('插件載入性能統計:', {
     載入時間: `${actualLoadTime}ms`,
     重新整理次數: debugInfo.refreshCount
   });
   
   if (actualLoadTime > 5000) {
-    console.warn('載入性能可能有問題');
+    LogUtils.warn('載入性能可能有問題');
   } else {
-    console.log(`載入性能優秀！載入時間：${actualLoadTime}ms`);
+    LogUtils.log(`載入性能優秀！載入時間：${actualLoadTime}ms`);
   }
 }
 
 // 頁面載入完成後5秒報告性能統計
 setTimeout(reportPerformanceStats, 5000);
 
-console.log('Content script 完全載入完成');
+LogUtils.log('Content script 完全載入完成');

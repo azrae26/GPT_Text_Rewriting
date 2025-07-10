@@ -127,7 +127,7 @@ class TranslationService {
       const zhEnMappingTextarea = document.getElementById('zhEnMapping');
       
       if (zhEnMappingTextarea && zhEnMappingTextarea.value) {
-        console.log('[getRawZhEnMapping] 從設定頁面載入中英對照表');
+        LogUtils.log('從設定頁面載入中英對照表');
         this._zhEnMappingCache = zhEnMappingTextarea.value;
         return this._zhEnMappingCache;
       }
@@ -138,16 +138,16 @@ class TranslationService {
       });
       
       if (result.zhEnMapping) {
-        console.log('[getRawZhEnMapping] 從 storage 載入中英對照表');
+        LogUtils.log('從 storage 載入中英對照表');
         this._zhEnMappingCache = result.zhEnMapping;
         return this._zhEnMappingCache;
       }
 
-      console.log('[getRawZhEnMapping] 找不到中英對照表資料');
+      LogUtils.log('找不到中英對照表資料');
       this._zhEnMappingCache = '';
       return '';
     } catch (error) {
-      console.error('[getRawZhEnMapping] 獲取中英對照表時發生錯誤:', error);
+      LogUtils.error('獲取中英對照表時發生錯誤:', error);
       this._zhEnMappingCache = '';
       return '';
     }
@@ -159,14 +159,14 @@ class TranslationService {
    */
   async getTranslationContext() {
     const rawMappingText = await this.getRawZhEnMapping();
-    console.log('[getTranslationContext] 原始對照表長度:', rawMappingText.length);
+    LogUtils.log('原始對照表長度:', rawMappingText.length);
     
     if (!rawMappingText.trim()) {
-      console.log('[getTranslationContext] 對照表為空，返回空陣列');
+      LogUtils.log('對照表為空，返回空陣列');
       return [];
     }
 
-    console.log('[getTranslationContext] 成功載入中英對照表');
+    LogUtils.log('成功載入中英對照表');
     return [{
       role: "system",
       content: rawMappingText
@@ -183,7 +183,7 @@ class TranslationService {
     const previousBlocks = [];
     const maxBlocks = TranslateConfig.BATCH.MAX_PREVIOUS_BLOCKS;
     
-    console.log(`開始收集前文上下文，當前區塊索引: ${currentIndex}, 最大區塊數: ${maxBlocks}`);
+    LogUtils.log(`開始收集前文上下文，當前區塊索引: ${currentIndex}, 最大區塊數: ${maxBlocks}`);
     
     // 從當前區塊往前收集
     for (let i = currentIndex - 1; i >= 0 && i > currentIndex - maxBlocks; i--) {
@@ -192,7 +192,7 @@ class TranslationService {
       const optimizeResult = this.translationResults.optimize.get(i);
 
       if (!initialResult || !optimizeResult) {
-        console.log(`警告：找不到區塊 ${i} 的完整翻譯結果`);
+        LogUtils.warn(`找不到區塊 ${i} 的完整翻譯結果`);
         continue;
       }
 
@@ -203,11 +203,11 @@ class TranslationService {
     }
 
     if (previousBlocks.length === 0) {
-      console.log('沒有找到任何前文上下文');
+      LogUtils.log('沒有找到任何前文上下文');
       return [];
     }
 
-    console.log(`成功收集到 ${previousBlocks.length} 個區塊的上下文`);
+    LogUtils.log(`成功收集到 ${previousBlocks.length} 個區塊的上下文`);
     return [{
       role: "system",
       content: `請參考前文的翻譯：\n${previousBlocks.map(block => 
@@ -239,7 +239,7 @@ class TranslationService {
       // 如果沒有選擇模型，使用預設模型
       const finalModel = model || GlobalSettings.getDefaultModel();
       if (!finalModel) {
-        console.warn('沒有可用的反思模型，跳過反思階段');
+        LogUtils.warn('沒有可用的反思模型，跳過反思階段');
         return null;
       }
       
@@ -273,15 +273,15 @@ class TranslationService {
       // 強化的取消檢查：檢查當前狀態和開始時狀態
       if (controller.isCancelled() || 
           (startState !== 'idle' && controller.state === 'idle' && Date.now() - startTime > 1000)) {
-        console.log('[processReflection] 檢測到取消狀態或異常狀態重置，停止處理反思結果');
+        LogUtils.log('檢測到取消狀態或異常狀態重置，停止處理反思結果');
         return null;
       }
       
-      console.log(`段落 ${blockIndex + 1} 反思完成:`, reflectionResult?.substring(0, 100) + '...');
+      LogUtils.log(`段落 ${blockIndex + 1} 反思完成:`, reflectionResult?.substring(0, 100) + '...');
       
       return reflectionResult;
     } catch (error) {
-      console.error('反思階段處理失敗:', error);
+      LogUtils.error('反思階段處理失敗:', error);
       // 如果是取消錯誤，重新拋出
       if (error.message === '翻譯請求已取消') {
         throw error;
@@ -315,7 +315,7 @@ class TranslationService {
       // 如果沒有選擇模型，使用預設模型
       const finalModel = model || GlobalSettings.getDefaultModel();
       if (!finalModel) {
-        console.warn('沒有可用的優化模型，跳過優化階段');
+        LogUtils.warn('沒有可用的優化模型，跳過優化階段');
         return translatedText; // 返回原始翻譯文本
       }
       
@@ -384,7 +384,7 @@ class TranslationService {
       // 強化的取消檢查：檢查當前狀態和開始時狀態
       if (controller.isCancelled() || 
           (startState !== 'idle' && controller.state === 'idle' && Date.now() - startTime > 1000)) {
-        console.log('[processOptimization] 檢測到取消狀態或異常狀態重置，停止處理優化結果');
+        LogUtils.log('檢測到取消狀態或異常狀態重置，停止處理優化結果');
         return translatedText; // 返回原始翻譯文本
       }
       
@@ -393,7 +393,7 @@ class TranslationService {
       
       return optimizedResult;
     } catch (error) {
-      console.error('優化階段處理失敗:', error);
+      LogUtils.error('優化階段處理失敗:', error);
       // 如果是取消錯誤，重新拋出
       if (error.message === '翻譯請求已取消') {
         throw error;
@@ -439,7 +439,7 @@ class TranslationService {
         context  // 添加上下文
       );
 
-      console.log(`正在翻譯第 ${batchIndex + 1} 批次`);
+      LogUtils.log(`📝 正在翻譯第 ${batchIndex + 1} 批次`);
       const translatedText = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'translate', controller);
 
       return translatedText.trim();
@@ -447,7 +447,7 @@ class TranslationService {
       if (error.message === '翻譯請求已取消') {
         throw error;
       }
-      console.error(`批次 ${batchIndex + 1} 翻譯錯誤:`, error);
+      LogUtils.error(`批次 ${batchIndex + 1} 翻譯錯誤:`, error);
       throw error;
     }
   }
@@ -491,7 +491,7 @@ class TranslationService {
         // 創建新的請求控制器並添加到活動請求集合
         requestController = new AbortController();
         this._activeRequests.add(requestController);
-        console.log(`[sendRequestWithRetry] 添加請求到活動集合，當前數量: ${this._activeRequests.size}`);
+        LogUtils.log(`添加請求到活動集合，當前數量: ${this._activeRequests.size}`);
 
         // 建立一個帶有超時的 Promise
         const timeoutPromise = new Promise((_, reject) => {
@@ -518,7 +518,7 @@ class TranslationService {
 
         // 如果請求成功但已經超時，則忽略這個回應
         if (Date.now() - startTime > TranslateConfigUtils.getTimeout(requestType)) {
-          console.log(`收到回應但已超時 (${requestType})，忽略此回應`);
+          LogUtils.log(`收到回應但已超時 (${requestType})，忽略此回應`);
           attempt++;
           continue;
         }
@@ -527,7 +527,7 @@ class TranslationService {
       } catch (error) {
         // 如果是取消錯誤，直接拋出不重試
         if (error.message === '翻譯請求已取消' || error.name === 'AbortError') {
-          console.log('檢測到取消請求，停止重試');
+          LogUtils.log('檢測到取消請求，停止重試');
           throw error;
         }
 
@@ -535,7 +535,7 @@ class TranslationService {
         if (attempt < maxRetries - 1) {
           attempt++;
           const errorMessage = error.status ? `狀態碼 ${error.status}` : error.message;
-          console.log(`收到錯誤 (${errorMessage})，等待 ${TranslateConfig.API.RETRY.DELAY/1000} 秒後進行第 ${attempt} 次重試...`);
+          LogUtils.log(`收到錯誤 (${errorMessage})，等待 ${TranslateConfig.API.RETRY.DELAY/1000} 秒後進行第 ${attempt} 次重試...`);
           await new Promise(resolve => setTimeout(resolve, TranslateConfig.API.RETRY.DELAY));
           continue;
         }
@@ -544,7 +544,7 @@ class TranslationService {
         // 從活動請求集合中移除
         if (requestController) {
           this._activeRequests.delete(requestController);
-          console.log(`[sendRequestWithRetry] 從活動集合移除請求，剩餘數量: ${this._activeRequests.size}`);
+          LogUtils.log(`從活動集合移除請求，剩餘數量: ${this._activeRequests.size}`);
         }
       }
     }
@@ -559,7 +559,7 @@ class TranslationService {
     // 從 translationResults 中獲取初始翻譯結果
     const result = this.translationResults.initial.get(blockIndex);
     if (!result) {
-      console.log(`警告：找不到區塊 ${blockIndex} 的譯文`);
+      LogUtils.warn(`找不到區塊 ${blockIndex} 的譯文`);
       return '';
     }
     return result.translated;
@@ -588,4 +588,4 @@ class TranslationService {
 // 導出到全局
 window.TranslationService = TranslationService;
 
-console.log('[TranslationService] 翻譯服務模組已載入'); 
+LogUtils.log('翻譯服務模組已載入'); 

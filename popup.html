@@ -418,6 +418,9 @@
     </div>
   </div>
 
+  <!-- 首先載入 default.js，因為其他模組需要 LogUtils -->
+  <script src="default.js"></script>
+  
   <script src="settings/settings-key.js"></script>
   <script src="settings/settings-manager.js"></script>
   <script src="settings/model-manager.js"></script>
@@ -435,7 +438,6 @@
   <script src="text_replace/auto-replace-manager.js"></script>
   <script src="SettingsIO/settings-io.js"></script>
   <script src="settings.js"></script>
-  <script src="default.js"></script>
   <!-- 翻譯系統模組 - 按依賴順序載入 -->
 <script src="translate/translate-config.js"></script>
 <script src="translate/translate-controller.js"></script>

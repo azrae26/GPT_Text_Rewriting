@@ -213,7 +213,7 @@ class KeyClassifier {
     
     if (category === 'UNKNOWN') {
       // 未知鍵值的預設行為
-      console.warn(`[KeyClassifier] 未知鍵值: ${key}，將根據預設策略處理`);
+      LogUtils.warn(`未知鍵值: ${key}，將根據預設策略處理`);
       return purpose === 'export'; // 預設只允許匯出
     }
 

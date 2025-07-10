@@ -21,7 +21,7 @@ window.SettingsExporter = {
    */
   async getAllSettings(settingsInstance) {
     try {
-      console.log('[SettingsExporter] 開始獲取所有設定...');
+      LogUtils.log('📤 開始獲取所有設定...');
       
       // 讀取所有儲存資料
       const [syncData, localData] = await Promise.all([
@@ -29,7 +29,7 @@ window.SettingsExporter = {
         this._getChromeStorage(settingsInstance, 'local')
       ]);
 
-      console.log('[SettingsExporter] 原始資料大小:', {
+      LogUtils.log('原始資料大小:', {
         syncCount: Object.keys(syncData).length,
         localCount: Object.keys(localData).length
       });
@@ -55,13 +55,13 @@ window.SettingsExporter = {
         ? window.SettingsClassifier.filterValidSettings(finalData)
         : this._fallbackFilterValidSettings(finalData);
 
-      console.log('[SettingsExporter] 設定匯出完成:', {
+      LogUtils.log('設定匯出完成:', {
         最終設定數量: Object.keys(validSettings).length
       });
       
       return validSettings;
     } catch (error) {
-      console.error('[SettingsExporter] 讀取設定失敗:', error);
+      LogUtils.error('讀取設定失敗:', error);
       throw error;
     }
   },
@@ -79,24 +79,24 @@ window.SettingsExporter = {
 
     // 使用新的統一分類器來過濾匯出設定
     if (typeof KeyClassifier !== 'undefined') {
-      console.log('[SettingsExporter] 使用 KeyClassifier 過濾設定');
+      LogUtils.log('使用 KeyClassifier 過濾設定');
       
       // 從 localData 和 syncData 中移除不應該匯出的項目
       Object.keys(filteredLocalData).forEach(key => {
         if (KeyClassifier.shouldExclude(key, 'export')) {
-          console.log(`[SettingsExporter] 排除 local 設定: ${key}`);
+          LogUtils.log(`排除 local 設定: ${key}`);
           delete filteredLocalData[key];
         }
       });
       
       Object.keys(filteredSyncData).forEach(key => {
         if (KeyClassifier.shouldExclude(key, 'export')) {
-          console.log(`[SettingsExporter] 排除 sync 設定: ${key}`);
+          LogUtils.log(`排除 sync 設定: ${key}`);
           delete filteredSyncData[key];
         }
       });
     } else {
-      console.log('[SettingsExporter] 使用後備過濾邏輯');
+      LogUtils.log('使用後備過濾邏輯');
       
       // 舊版本的後備邏輯（向後兼容）
       const internalStateKeys = [
@@ -106,11 +106,11 @@ window.SettingsExporter = {
       
       internalStateKeys.forEach(key => {
         if (key in filteredLocalData) {
-          console.log(`[SettingsExporter] 移除 local 內部狀態: ${key}`);
+          LogUtils.log(`移除 local 內部狀態: ${key}`);
           delete filteredLocalData[key];
         }
         if (key in filteredSyncData) {
-          console.log(`[SettingsExporter] 移除 sync 內部狀態: ${key}`);
+          LogUtils.log(`移除 sync 內部狀態: ${key}`);
           delete filteredSyncData[key];
         }
       });
@@ -149,7 +149,7 @@ window.SettingsExporter = {
       importantSettings.customModels = syncData.customModels;
     }
 
-    console.log('[SettingsExporter] 提取重要設定:', Object.keys(importantSettings));
+    LogUtils.log('提取重要設定:', Object.keys(importantSettings));
     return importantSettings;
   },
 
@@ -169,7 +169,7 @@ window.SettingsExporter = {
       ...importantSettings
     };
 
-    console.log('[SettingsExporter] 資料合併完成:', {
+    LogUtils.log('資料合併完成:', {
       合併後數量: Object.keys(allData).length
     });
 
@@ -194,7 +194,7 @@ window.SettingsExporter = {
         
         // 如果值被覆蓋了，記錄日誌
         if (beforeValue !== undefined && beforeValue !== syncData[key]) {
-          console.log(`[SettingsExporter] 🔄 ${key} 優先使用 sync storage 值`);
+          LogUtils.log(`🔄 ${key} 優先使用 sync storage 值`);
         }
       }
     });
@@ -224,7 +224,7 @@ window.SettingsExporter = {
    * @returns {Object} - 過濾後的設定
    */
   _fallbackFilterValidSettings(result) {
-    console.log('[SettingsExporter] 使用後備過濾方法');
+    LogUtils.log('使用後備過濾方法');
     
     return Object.fromEntries(
       Object.entries(result).filter(([_, value]) => 
@@ -267,7 +267,7 @@ window.SettingsExporter = {
       warnings.push('匯出資料為空');
     }
 
-    console.log('[SettingsExporter] 匯出資料驗證:', { statistics, warnings });
+    LogUtils.log('匯出資料驗證:', { statistics, warnings });
 
     return {
       isValid: warnings.length === 0,
@@ -282,4 +282,4 @@ if (typeof window !== 'undefined') {
   window.SettingsExporter = window.SettingsExporter;
 }
 
-console.log('[SettingsExporter] 設定匯出管理器已載入'); 
+LogUtils.log('設定匯出管理器已載入'); 

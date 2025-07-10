@@ -39,7 +39,7 @@ window.JWTHelper = {
    * 顯示安全警告
    */
   showSecurityWarning() {
-    console.warn(`
+    LogUtils.warn(`
       ⚠️ 安全警告 ⚠️
       
       當前實現為演示版本，不適用於生產環境。
@@ -96,7 +96,7 @@ window.JWTHelper = {
 
       return `${signingInput}.${encodedSignature}`;
     } catch (error) {
-      console.error('JWT 簽名失敗:', error);
+      LogUtils.error('JWT 簽名失敗:', error);
       throw new Error('無法創建簽名的 JWT: ' + error.message);
     }
   },

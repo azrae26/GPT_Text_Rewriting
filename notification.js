@@ -31,11 +31,11 @@ const Notification = {
    * @returns {Promise} - 一個 Promise 物件，在通知顯示完成後 resolve。
    */
   async showNotification(message, isLoading = true) {
-    console.log('顯示通知:', message, '正在加載:', isLoading);
+    LogUtils.log('顯示通知:', message, '正在加載:', isLoading);
     
     // 檢查翻譯控制器狀態，如果已取消則不顯示新通知
     if (window.TranslateManager?.controller?.isCancelled() && isLoading) {
-      console.log('翻譯已取消，跳過通知顯示');
+      LogUtils.log('翻譯已取消，跳過通知顯示');
       return;
     }
     
@@ -53,17 +53,17 @@ const Notification = {
     let modelName = '未知模型';
     if (modelMatch) {
       const modelKey = modelMatch[1];
-      console.log('通知解析到的模型鍵值:', modelKey);
+      LogUtils.log('通知解析到的模型鍵值:', modelKey);
       // 使用 GlobalSettings 的新方法獲取正確的顯示名稱
       if (window.GlobalSettings && window.GlobalSettings.getModelDisplayName) {
         modelName = window.GlobalSettings.getModelDisplayName(modelKey);
-        console.log('獲取到的模型顯示名稱:', modelName);
+        LogUtils.log('獲取到的模型顯示名稱:', modelName);
       } else {
-        console.error('GlobalSettings 或 getModelDisplayName 方法不存在');
+        LogUtils.error('GlobalSettings 或 getModelDisplayName 方法不存在');
         modelName = modelKey; // 至少顯示原始的模型鍵值
       }
     } else if (isLoading) {
-      console.log('沒有匹配到模型訊息，使用預設值');
+      LogUtils.log('沒有匹配到模型訊息，使用預設值');
       modelName = '未知模型';
     } else {
       modelName = this.lastModelName;
@@ -140,7 +140,7 @@ const Notification = {
       this.notificationElement = document.createElement('div');
       this.notificationElement.classList.add('notification-element');
       document.body.appendChild(this.notificationElement);
-      console.log('通知元素已創建並添加到 DOM');
+      LogUtils.log('通知元素已創建並添加到 DOM');
       this.currentCount = 0;
       
       // 只在首次創建時初始化讀秒計時器
@@ -162,7 +162,7 @@ const Notification = {
         // 更新進度條
         const progressBar = this.notificationElement.querySelector('.progress-bar');
         if (progressBar) {
-          console.log('更新進度條 - 當前批次:', currentBatch, '總批次:', totalBatches);
+          LogUtils.log('更新進度條 - 當前批次:', currentBatch, '總批次:', totalBatches);
           // 設定 data-segments 屬性
           const totalBatchesNum = parseInt(totalBatches);
           const stepsPerBatch = isTranslation ? 3 : 7; // 翻譯有3個步驟，生成有7個步驟
@@ -232,7 +232,7 @@ const Notification = {
     }
 
     // 重建完整的通知內容
-    console.log('當前批次:', currentBatch, '總批次:', totalBatches);
+    LogUtils.log('當前批次:', currentBatch, '總批次:', totalBatches);
 
     this.notificationElement.innerHTML = `
       <div class="notification-title">
@@ -286,19 +286,19 @@ const Notification = {
         }
         resolve();
       } else {
-        console.log('設置完成狀態的通知');
+        LogUtils.log('設置完成狀態的通知');
         // 確保清除所有計時器
         this.clearAllTimers();
         
         // 設置通知自動消失
         this.notificationTimeout = setTimeout(() => {
-          console.log('開始淡出通知');
+          LogUtils.log('開始淡出通知');
           if (this.notificationElement) {
             this.notificationElement.style.transition = 'opacity 0.25s ease-out';
             this.notificationElement.style.opacity = '0';
             
             setTimeout(() => {
-              console.log('通知淡出完成，準備移除通知');
+              LogUtils.log('通知淡出完成，準備移除通知');
               this.removeNotification();
               resolve();
             }, 250);
@@ -326,7 +326,7 @@ const Notification = {
       if (element) {
         element.textContent = this.currentCount;
       }
-      console.log('讀秒:', this.currentCount);
+      LogUtils.log('讀秒:', this.currentCount);
     }, 1000);
   },
 
@@ -334,19 +334,19 @@ const Notification = {
    * 移除通知訊息。
    */
   removeNotification() {
-    console.log('嘗試移除通知');
+    LogUtils.log('嘗試移除通知');
     this.clearAllTimers(); // 確保在移除通知前清除所有計時器
     
     if (this.notificationElement) {
       if (this.notificationElement.parentNode) {
         this.notificationElement.parentNode.removeChild(this.notificationElement);
-        console.log('通知元素已從 DOM 中移除');
+        LogUtils.log('通知元素已從 DOM 中移除');
       } else {
-        console.log('通知元素不在 DOM 中');
+        LogUtils.log('通知元素不在 DOM 中');
       }
       this.notificationElement = null;
     } else {
-      console.log('沒有找到通知元素，無需移除');
+      LogUtils.log('沒有找到通知元素，無需移除');
     }
   },
 
@@ -354,17 +354,17 @@ const Notification = {
    * 清除所有計時器。
    */
   clearAllTimers() {
-    console.log('清除所有計時器');
+    LogUtils.log('清除所有計時器');
     if (this.countdownInterval) {
       clearInterval(this.countdownInterval);
       this.countdownInterval = null;
       this.currentCount = 0;
-      console.log('讀秒計時器已清除');
+      LogUtils.log('讀秒計時器已清除');
     }
     if (this.notificationTimeout) {
       clearTimeout(this.notificationTimeout);
       this.notificationTimeout = null;
-      console.log('通知超時已清除');
+      LogUtils.log('通知超時已清除');
     }
   },
 
@@ -373,7 +373,7 @@ const Notification = {
    * @param {string} message - 取消通知的訊息。
    */
   showSimpleCancelNotification(message) {
-    console.log('顯示簡單的取消通知:', message);
+    LogUtils.log('顯示簡單的取消通知:', message);
     
     // 如果沒有通知元素，創建一個
     if (!this.notificationElement) {

@@ -31,17 +31,17 @@ const AutoClickManager = {
   initialize() {
     // 檢查是否已經初始化
     if (this.isInitialized) {
-      console.log('AutoClickManager 已經初始化，跳過');
+      LogUtils.log('AutoClickManager 已經初始化，跳過');
       return;
     }
     
     // 檢查是否已經有其他實例
     if (window.AutoClickManager && window.AutoClickManager !== this) {
-      console.log('檢測到其他實例，跳過初始化');
+      LogUtils.log('檢測到其他實例，跳過初始化');
       return;
     }
     
-    console.log('開始檢查頁面...');
+    LogUtils.log('開始檢查頁面...');
     this.setupPageObserver();
     this.setupStockObserver();
     this.setupContentObserver();
@@ -51,7 +51,7 @@ const AutoClickManager = {
     const isInStockOverviewPage = this.isInStockOverviewPage();
     
     if (isInAssistantPage || isInStockOverviewPage) {
-      console.log('當前在目標頁面:', isInAssistantPage ? '小助理' : '個股概覽');
+      LogUtils.log('當前在目標頁面:', isInAssistantPage ? '小助理' : '個股概覽');
       this.isInTargetPage = true;
       
       // 觸發頁面狀態變化回調
@@ -76,7 +76,7 @@ const AutoClickManager = {
     // 保持初始化狀態
     document.addEventListener('visibilitychange', () => {
       if (!document.hidden && this.isInTargetPage) {
-        console.log('頁面變為可見，重新檢查狀態');
+        LogUtils.log('頁面變為可見，重新檢查狀態');
         this.checkButtonPeriodically();
       }
     });
@@ -109,7 +109,7 @@ const AutoClickManager = {
    * 監聽頁面標籤變化
    */
   setupPageObserver() {
-    console.log('設置頁面觀察器...');
+    LogUtils.log('設置頁面觀察器...');
     
     const observer = new MutationObserver((mutations) => {
       mutations.forEach((mutation) => {
@@ -120,7 +120,7 @@ const AutoClickManager = {
           const isInTarget = isInAssistantPage || isInStockOverviewPage;
           
           if (isInTarget && !this.isInTargetPage) {
-            console.log('進入目標頁面:', isInAssistantPage ? '小助理' : '個股概覽');
+            LogUtils.log('進入目標頁面:', isInAssistantPage ? '小助理' : '個股概覽');
             this.isInTargetPage = true;
             this.hasClicked = false;
             this.checkButtonPeriodically();
@@ -130,7 +130,7 @@ const AutoClickManager = {
               this.onPageStateChange(true);
             }
           } else if (!isInTarget && this.isInTargetPage) {
-            console.log('離開目標頁面');
+            LogUtils.log('離開目標頁面');
             this.isInTargetPage = false;
             this.hasClicked = false;
             
@@ -151,7 +151,7 @@ const AutoClickManager = {
       attributeFilter: ['class']
     });
     
-    console.log('頁面觀察器設置完成');
+    LogUtils.log('頁面觀察器設置完成');
   },
 
   /**
@@ -167,7 +167,7 @@ const AutoClickManager = {
           if (stockElement) {
             const currentStockCode = stockElement.textContent.trim();
             if (currentStockCode !== this.lastStockCode) {
-              console.log(`股票代碼變更: ${this.lastStockCode} -> ${currentStockCode}`);
+              LogUtils.log(`股票代碼變更: ${this.lastStockCode} -> ${currentStockCode}`);
               this.lastStockCode = currentStockCode;
               this.hasClicked = false;
               this.checkButtonPeriodically();
@@ -191,7 +191,7 @@ const AutoClickManager = {
    * 設置內容觀察器
    */
   setupContentObserver() {
-    console.log('設置內容觀察器...');
+    LogUtils.log('設置內容觀察器...');
     
     let debounceTimer = null;
     let lastContent = '';
@@ -223,7 +223,7 @@ const AutoClickManager = {
       // 設置新的計時器
       debounceTimer = setTimeout(async () => {
         if (isProcessing) {
-          console.log('正在處理中，跳過新的請求');
+          LogUtils.log('正在處理中，跳過新的請求');
           return;
         }
         
@@ -234,14 +234,14 @@ const AutoClickManager = {
         
         // 檢查內容是否為 "回答中..."
         if (currentContent === '回答中...') {
-          console.log('內容為 "回答中..."，跳過處理');
+          LogUtils.log('內容為 "回答中..."，跳過處理');
           contentStableCount = 0;
           return;
         }
         
         // 檢查內容是否為空或太短
         if (!currentContent || currentContent.length < 10) {
-          console.log('內容為空或太短，跳過處理');
+          LogUtils.log('內容為空或太短，跳過處理');
           contentStableCount = 0;
           return;
         }
@@ -252,13 +252,13 @@ const AutoClickManager = {
           
           if (newContent.length === lastContentLength) {
             contentStableCount++;
-            console.log(`內容長度未變化，穩定計數: ${contentStableCount}/${STABLE_THRESHOLD}`);
+            LogUtils.log(`內容長度未變化，穩定計數: ${contentStableCount}/${STABLE_THRESHOLD}`);
             
             if (contentStableCount >= STABLE_THRESHOLD && !isProcessing) {
               clearInterval(stableCheckTimer);
               
               if (newContent === lastContent) {
-                console.log('內容未變化，跳過處理');
+                LogUtils.log('內容未變化，跳過處理');
                 return;
               }
               
@@ -267,20 +267,20 @@ const AutoClickManager = {
               
               if (window.KeyPointsSummaryManager?.UI?.isExpanded) {
                 requestCount++;
-                console.log(`面板已展開，觸發第 ${requestCount} 次 API 請求`);
+                LogUtils.log(`面板已展開，觸發第 ${requestCount} 次 API 請求`);
                 
                 window.KeyPointsSummaryManager.APIManager.fetchAndUpdateSummary(this.lastStockCode)
                   .finally(() => {
-                    console.log(`第 ${requestCount} 次 API 請求完成`);
+                    LogUtils.log(`第 ${requestCount} 次 API 請求完成`);
                     setTimeout(() => {
                       isProcessing = false;
-                      console.log('重置處理中標記');
+                      LogUtils.log('重置處理中標記');
                     }, MIN_UPDATE_INTERVAL);
                   });
               }
             }
           } else {
-            console.log('內容長度變化，重置穩定計數');
+            LogUtils.log('內容長度變化，重置穩定計數');
             lastContentLength = newContent.length;
             contentStableCount = 0;
           }
@@ -296,7 +296,7 @@ const AutoClickManager = {
       characterData: true,
       attributes: true
     });
-    console.log('內容觀察器設置完成');
+    LogUtils.log('內容觀察器設置完成');
   },
 
   /**
@@ -304,7 +304,7 @@ const AutoClickManager = {
    */
   checkButtonPeriodically() {
     if (this.hasClicked || !this.isInTargetPage) {
-      console.log('已經點擊過按鈕或不在目標頁面，不再執行');
+      LogUtils.log('已經點擊過按鈕或不在目標頁面，不再執行');
       return;
     }
 
@@ -325,7 +325,7 @@ const AutoClickManager = {
         );
 
         if (targetButton && targetButton.offsetParent !== null && !targetButton.disabled) {
-          console.log('找到目標按鈕並點擊');
+          LogUtils.log('找到目標按鈕並點擊');
           targetButton.click();
           this.hasClicked = true;
           return true;

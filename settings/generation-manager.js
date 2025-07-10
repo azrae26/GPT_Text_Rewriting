@@ -20,7 +20,7 @@ window.GenerationManager = {
    */
   async saveGenerationSettingsGroup(name, settings) {
     try {
-      console.log('[GenerationManager] 開始儲存生成設定組合:', name);
+      LogUtils.log('開始儲存生成設定組合:', name);
       
       if (!name || typeof name !== 'string') {
         throw new Error('設定組合名稱無效');
@@ -30,7 +30,7 @@ window.GenerationManager = {
       const { generationSettingsGroups = {} } = await new Promise((resolve) => {
         chrome.storage.sync.get(['generationSettingsGroups'], (result) => {
           if (chrome.runtime.lastError) {
-            console.error('[GenerationManager] 讀取設定組合失敗:', chrome.runtime.lastError);
+            LogUtils.error('讀取設定組合失敗:', chrome.runtime.lastError);
             resolve({});
           } else {
             resolve(result);
@@ -63,7 +63,7 @@ window.GenerationManager = {
           currentGenerationSettings: name
         }, () => {
           if (chrome.runtime.lastError) {
-            console.error('[GenerationManager] 儲存模型設定失敗:', chrome.runtime.lastError);
+            LogUtils.error('儲存模型設定失敗:', chrome.runtime.lastError);
             reject(chrome.runtime.lastError);
           } else {
             resolve();
@@ -91,7 +91,7 @@ window.GenerationManager = {
           [`instructions_${name}`]: instructionSettings
         }, () => {
           if (chrome.runtime.lastError) {
-            console.error('[GenerationManager] 儲存指令設定失敗:', chrome.runtime.lastError);
+            LogUtils.error('儲存指令設定失敗:', chrome.runtime.lastError);
             reject(chrome.runtime.lastError);
           } else {
             resolve();
@@ -105,9 +105,9 @@ window.GenerationManager = {
         window.GlobalSettings.currentGenerationSettings = name;
       }
 
-      console.log('[GenerationManager] 生成設定組合儲存完成:', name);
+      LogUtils.log('生成設定組合儲存完成:', name);
     } catch (error) {
-      console.error('[GenerationManager] 儲存生成設定組合失敗:', error);
+      LogUtils.error('儲存生成設定組合失敗:', error);
       throw error;
     }
   },
@@ -119,7 +119,7 @@ window.GenerationManager = {
    */
   async loadGenerationSettingsGroup(name) {
     try {
-      console.log('[GenerationManager] 開始載入生成設定組合:', name);
+      LogUtils.log('開始載入生成設定組合:', name);
       
       if (!name || typeof name !== 'string') {
         throw new Error('設定組合名稱無效');
@@ -129,7 +129,7 @@ window.GenerationManager = {
       const { generationSettingsGroups = {} } = await new Promise((resolve) => {
         chrome.storage.sync.get(['generationSettingsGroups'], (result) => {
           if (chrome.runtime.lastError) {
-            console.error('[GenerationManager] 讀取模型設定失敗:', chrome.runtime.lastError);
+            LogUtils.error('讀取模型設定失敗:', chrome.runtime.lastError);
             resolve({});
           } else {
             resolve(result);
@@ -146,7 +146,7 @@ window.GenerationManager = {
       const { [`instructions_${name}`]: instructionSettings = {} } = await new Promise((resolve) => {
         chrome.storage.local.get([`instructions_${name}`], (result) => {
           if (chrome.runtime.lastError) {
-            console.error('[GenerationManager] 讀取指令設定失敗:', chrome.runtime.lastError);
+            LogUtils.error('讀取指令設定失敗:', chrome.runtime.lastError);
             resolve({});
           } else {
             resolve(result);
@@ -181,10 +181,10 @@ window.GenerationManager = {
         await window.GlobalSettings.saveSingleSetting('currentGenerationSettings', name);
       }
 
-      console.log('[GenerationManager] 生成設定組合載入完成:', name);
+      LogUtils.log('生成設定組合載入完成:', name);
       return loadedSettings;
     } catch (error) {
-      console.error('[GenerationManager] 載入生成設定組合失敗:', error);
+      LogUtils.error('載入生成設定組合失敗:', error);
       throw error;
     }
   },
@@ -196,7 +196,7 @@ window.GenerationManager = {
    */
   async deleteGenerationSettingsGroup(name) {
     try {
-      console.log('[GenerationManager] 開始刪除生成設定組合:', name);
+      LogUtils.log('開始刪除生成設定組合:', name);
       
       if (!name || typeof name !== 'string') {
         throw new Error('設定組合名稱無效');
@@ -206,7 +206,7 @@ window.GenerationManager = {
       await new Promise((resolve, reject) => {
         chrome.storage.local.remove([`instructions_${name}`], () => {
           if (chrome.runtime.lastError) {
-            console.error('[GenerationManager] 刪除指令設定失敗:', chrome.runtime.lastError);
+            LogUtils.error('刪除指令設定失敗:', chrome.runtime.lastError);
             reject(chrome.runtime.lastError);
           } else {
             resolve();
@@ -218,7 +218,7 @@ window.GenerationManager = {
       const { generationSettingsGroups = {} } = await new Promise((resolve) => {
         chrome.storage.sync.get(['generationSettingsGroups'], (result) => {
           if (chrome.runtime.lastError) {
-            console.error('[GenerationManager] 讀取設定組合失敗:', chrome.runtime.lastError);
+            LogUtils.error('讀取設定組合失敗:', chrome.runtime.lastError);
             resolve({});
           } else {
             resolve(result);
@@ -231,7 +231,7 @@ window.GenerationManager = {
       await new Promise((resolve, reject) => {
         chrome.storage.sync.set({ generationSettingsGroups }, () => {
           if (chrome.runtime.lastError) {
-            console.error('[GenerationManager] 更新設定組合列表失敗:', chrome.runtime.lastError);
+            LogUtils.error('更新設定組合列表失敗:', chrome.runtime.lastError);
             reject(chrome.runtime.lastError);
           } else {
             resolve();
@@ -250,9 +250,9 @@ window.GenerationManager = {
         }
       }
 
-      console.log('[GenerationManager] 生成設定組合刪除完成:', name);
+      LogUtils.log('生成設定組合刪除完成:', name);
     } catch (error) {
-      console.error('[GenerationManager] 刪除生成設定組合失敗:', error);
+      LogUtils.error('刪除生成設定組合失敗:', error);
       throw error;
     }
   },
@@ -263,7 +263,7 @@ window.GenerationManager = {
    */
   getCurrentGenerationSettings() {
     if (!window.GlobalSettings) {
-      console.warn('[GenerationManager] GlobalSettings 未初始化');
+      LogUtils.warn('GlobalSettings 未初始化');
       return {};
     }
 
@@ -295,7 +295,7 @@ window.GenerationManager = {
       const { generationSettingsGroups = {} } = await new Promise((resolve) => {
         chrome.storage.sync.get(['generationSettingsGroups'], (result) => {
           if (chrome.runtime.lastError) {
-            console.error('[GenerationManager] 讀取設定組合列表失敗:', chrome.runtime.lastError);
+            LogUtils.error('讀取設定組合列表失敗:', chrome.runtime.lastError);
             resolve({});
           } else {
             resolve(result);
@@ -305,7 +305,7 @@ window.GenerationManager = {
 
       return Object.keys(generationSettingsGroups).sort();
     } catch (error) {
-      console.error('[GenerationManager] 獲取設定組合名稱失敗:', error);
+      LogUtils.error('獲取設定組合名稱失敗:', error);
       return [];
     }
   },
@@ -324,7 +324,7 @@ window.GenerationManager = {
       const { generationSettingsGroups = {} } = await new Promise((resolve) => {
         chrome.storage.sync.get(['generationSettingsGroups'], (result) => {
           if (chrome.runtime.lastError) {
-            console.error('[GenerationManager] 檢查設定組合存在性失敗:', chrome.runtime.lastError);
+            LogUtils.error('檢查設定組合存在性失敗:', chrome.runtime.lastError);
             resolve({});
           } else {
             resolve(result);
@@ -334,7 +334,7 @@ window.GenerationManager = {
 
       return generationSettingsGroups.hasOwnProperty(name);
     } catch (error) {
-      console.error('[GenerationManager] 檢查生成設定組合存在性失敗:', error);
+      LogUtils.error('檢查生成設定組合存在性失敗:', error);
       return false;
     }
   },
@@ -347,14 +347,14 @@ window.GenerationManager = {
    */
   async renameGenerationSettingsGroup(oldName, newName) {
     try {
-      console.log('[GenerationManager] 開始重新命名生成設定組合:', oldName, '->', newName);
+      LogUtils.log('開始重新命名生成設定組合:', oldName, '->', newName);
       
       if (!oldName || !newName || typeof oldName !== 'string' || typeof newName !== 'string') {
         throw new Error('設定組合名稱無效');
       }
 
       if (oldName === newName) {
-        console.log('[GenerationManager] 新舊名稱相同，跳過重新命名');
+        LogUtils.log('新舊名稱相同，跳過重新命名');
         return;
       }
 
@@ -378,12 +378,12 @@ window.GenerationManager = {
         window.GlobalSettings.currentGenerationSettings = newName;
       }
 
-      console.log('[GenerationManager] 生成設定組合重新命名完成:', newName);
+      LogUtils.log('生成設定組合重新命名完成:', newName);
     } catch (error) {
-      console.error('[GenerationManager] 重新命名生成設定組合失敗:', error);
+      LogUtils.error('重新命名生成設定組合失敗:', error);
       throw error;
     }
   }
 };
 
-console.log('[GenerationManager] 生成設定管理器已初始化'); 
+LogUtils.log('生成設定管理器已初始化'); 

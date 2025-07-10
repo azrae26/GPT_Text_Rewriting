@@ -52,11 +52,11 @@ const CONFIG = {
 // 日誌工具
 class Logger {
     static log(message, data = null) {
-        console.log(message, data || '');
+        LogUtils.log(message, data || '');
     }
 
     static error(message, error = null) {
-        console.error(message, error || '');
+        LogUtils.error(message, error || '');
     }
 }
 

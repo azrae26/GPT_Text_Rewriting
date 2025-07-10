@@ -22,7 +22,7 @@ window.SettingsImporter = {
    */
   async applySettings(settings, settingsInstance) {
     try {
-      console.group('[SettingsImporter] 儲存匯入的設定');
+      LogUtils.log('⚙️ 開始儲存匯入的設定');
       
       if (!settings || Object.keys(settings).length === 0) {
         throw new Error('無效的設定資料');
@@ -32,9 +32,9 @@ window.SettingsImporter = {
       const migratedSettings = this._migrateApiKeyFormats(settings);
       
       // 清空所有儲存空間
-      console.log('[SettingsImporter] 清空所有儲存空間...');
+      LogUtils.log('清空所有儲存空間...');
       await this._clearAllStorage();
-      console.log('[SettingsImporter] 儲存空間已清空');
+      LogUtils.log('儲存空間已清空');
 
       // 分類設定
       const categorizedSettings = this._categorizeSettingsWithInstance(migratedSettings, settingsInstance);
@@ -50,11 +50,9 @@ window.SettingsImporter = {
       // 還原自定義模型
       await this._restoreCustomModels(migratedSettings, settingsInstance);
 
-      console.log('[SettingsImporter] 設定儲存完成');
-      console.groupEnd();
+      LogUtils.log('設定儲存完成');
     } catch (error) {
-      console.error('[SettingsImporter] 儲存設定時出錯:', error);
-      console.groupEnd();
+      LogUtils.error('儲存設定時出錯:', error);
       throw error;
     }
   },
@@ -68,7 +66,7 @@ window.SettingsImporter = {
    */
   async applySettingsNonBlocking(settings, settingsInstance, progressCallback) {
     try {
-      console.group('[SettingsImporter] 非阻塞式儲存匯入的設定');
+      LogUtils.log('⚙️ 開始非阻塞式儲存匯入的設定');
       
       if (!settings || Object.keys(settings).length === 0) {
         throw new Error('無效的設定資料');
@@ -76,7 +74,7 @@ window.SettingsImporter = {
 
       // 進度回調包裝器
       const updateProgress = (message) => {
-        console.log(`[SettingsImporter] ${message}`);
+        LogUtils.log(message);
         if (progressCallback) progressCallback(message);
       };
 
@@ -119,11 +117,9 @@ window.SettingsImporter = {
 
       updateProgress('設定匯入完成');
 
-      console.log('[SettingsImporter] 設定儲存完成');
-      console.groupEnd();
+      LogUtils.log('設定儲存完成');
     } catch (error) {
-      console.error('[SettingsImporter] 儲存設定時出錯:', error);
-      console.groupEnd();
+      LogUtils.error('儲存設定時出錯:', error);
       throw error;
     }
   },
@@ -141,14 +137,14 @@ window.SettingsImporter = {
       return migratedSettings;
     }
 
-    console.log('[SettingsImporter] 檢查並遷移舊版本的 API 金鑰格式...');
+    LogUtils.log('檢查並遷移舊版本的 API 金鑰格式...');
     
     // 如果存在舊的 gemini-2.0-flash-exp 金鑰，遷移到新的 gemini 格式
     if (migratedSettings.apiKeys['gemini-2.0-flash-exp'] && !migratedSettings.apiKeys['gemini']) {
-      console.log('[SettingsImporter] 發現舊版本 Gemini API 金鑰，正在遷移...');
+      LogUtils.log('發現舊版本 Gemini API 金鑰，正在遷移...');
       migratedSettings.apiKeys['gemini'] = migratedSettings.apiKeys['gemini-2.0-flash-exp'];
       delete migratedSettings.apiKeys['gemini-2.0-flash-exp'];
-      console.log('[SettingsImporter] Gemini API 金鑰遷移完成');
+      LogUtils.log('Gemini API 金鑰遷移完成');
     }
     
     // 清理其他可能的舊版本硬編碼金鑰
@@ -158,12 +154,12 @@ window.SettingsImporter = {
     );
     
     if (oldKeys.length > 0) {
-      console.log('[SettingsImporter] 清理舊版本硬編碼金鑰:', oldKeys);
+      LogUtils.log('清理舊版本硬編碼金鑰:', oldKeys);
       oldKeys.forEach(oldKey => {
         // 只有當沒有通用金鑰時，才將舊金鑰值遷移到通用金鑰
         if (oldKey.startsWith('gemini') && !migratedSettings.apiKeys['gemini'] && migratedSettings.apiKeys[oldKey]) {
           migratedSettings.apiKeys['gemini'] = migratedSettings.apiKeys[oldKey];
-          console.log(`[SettingsImporter] 將 ${oldKey} 的值遷移到 gemini`);
+          LogUtils.log(`將 ${oldKey} 的值遷移到 gemini`);
         }
         delete migratedSettings.apiKeys[oldKey];
       });
@@ -174,7 +170,7 @@ window.SettingsImporter = {
       const value = migratedSettings.apiKeys[key];
       if (!value || value === '' || value === 'undefined' || value === 'null' || 
           (typeof value === 'string' && (value === '已設置' || value === '未設置'))) {
-        console.log(`[SettingsImporter] 清理無效金鑰: ${key}`);
+        LogUtils.log(`清理無效金鑰: ${key}`);
         delete migratedSettings.apiKeys[key];
       }
     });
@@ -194,7 +190,7 @@ window.SettingsImporter = {
       return window.SettingsClassifier.categorizeSettings(settings, settingsInstance);
     } else {
       // 後備邏輯
-      console.warn('[SettingsImporter] SettingsClassifier 未載入，使用後備分類邏輯');
+      LogUtils.warn('SettingsClassifier 未載入，使用後備分類邏輯');
       return settingsInstance._categorizeSettings(settings);
     }
   },
@@ -207,10 +203,10 @@ window.SettingsImporter = {
   _logCategorizedSettings(categorizedSettings) {
     const { syncSettings, localSettings, replaceSettings } = categorizedSettings;
     
-    console.log('[SettingsImporter] 分類後的設定：');
-    console.log('- sync 設定:', Object.keys(syncSettings));
-    console.log('- local 設定:', Object.keys(localSettings));
-    console.log('- 替換規則:', Object.keys(replaceSettings));
+    LogUtils.log('分類後的設定：');
+    LogUtils.log('- sync 設定:', Object.keys(syncSettings));
+    LogUtils.log('- local 設定:', Object.keys(localSettings));
+    LogUtils.log('- 替換規則:', Object.keys(replaceSettings));
   },
 
   /**
@@ -220,7 +216,7 @@ window.SettingsImporter = {
    */
   _validateSyncSettingsSize(syncSettings) {
     const syncSettingsSize = new TextEncoder().encode(JSON.stringify(syncSettings)).length;
-    console.log('[SettingsImporter] sync settings 大小:', syncSettingsSize, 'bytes');
+    LogUtils.log('sync settings 大小:', syncSettingsSize, 'bytes');
     
     if (syncSettingsSize > 100000) {
       throw new Error('同步設定總大小超過限制 (100KB)');
@@ -243,17 +239,17 @@ window.SettingsImporter = {
    * @private
    */
   async _clearAllStorageNonBlocking() {
-    console.log('[SettingsImporter] 清空同步儲存空間...');
+    LogUtils.log('清空同步儲存空間...');
     await new Promise((resolve) => chrome.storage.sync.clear(resolve));
     
     await this._yieldControl(50);
     
-    console.log('[SettingsImporter] 清空本地儲存空間...');
+    LogUtils.log('清空本地儲存空間...');
     await new Promise((resolve) => chrome.storage.local.clear(resolve));
     
     await this._yieldControl(50);
     
-    console.log('[SettingsImporter] 儲存空間已清空');
+    LogUtils.log('儲存空間已清空');
   },
 
   /**
@@ -263,7 +259,7 @@ window.SettingsImporter = {
   async _saveAllSettings(categorizedSettings, settingsInstance) {
     const { syncSettings, localSettings, replaceSettings } = categorizedSettings;
     
-    console.log('[SettingsImporter] 開始儲存設定...');
+    LogUtils.log('開始儲存設定...');
     
     await Promise.all([
       Object.keys(syncSettings).length > 0 ? 
@@ -285,7 +281,7 @@ window.SettingsImporter = {
     updateProgress('正在儲存同步設定...');
     
     if (Object.keys(syncSettings).length > 0) {
-      console.log('[SettingsImporter] 開始儲存同步設定...');
+      LogUtils.log('開始儲存同步設定...');
       await settingsInstance._setChromeStorage(syncSettings, 'sync');
       await this._yieldControl(100);
     }
@@ -293,7 +289,7 @@ window.SettingsImporter = {
     updateProgress('正在儲存本地設定...');
 
     if (Object.keys(localSettings).length > 0) {
-      console.log('[SettingsImporter] 開始儲存本地設定...');
+      LogUtils.log('開始儲存本地設定...');
       await settingsInstance._setChromeStorageInBatches(localSettings, 'local', updateProgress);
       await this._yieldControl(100);
     }
@@ -301,7 +297,7 @@ window.SettingsImporter = {
     updateProgress('正在儲存替換規則...');
 
     if (Object.keys(replaceSettings).length > 0) {
-      console.log('[SettingsImporter] 開始儲存替換規則...');
+      LogUtils.log('開始儲存替換規則...');
       await settingsInstance._setChromeStorageInBatches(replaceSettings, 'local', updateProgress);
       await this._yieldControl(100);
     }
@@ -316,16 +312,16 @@ window.SettingsImporter = {
       return;
     }
 
-    console.log('[SettingsImporter] 還原自定義模型...');
+    LogUtils.log('還原自定義模型...');
     settingsInstance.customModels = settings.customModels;
     
     // 將自定義模型重新載入到 API.models 中
     Object.entries(settingsInstance.customModels).forEach(([key, model]) => {
       settingsInstance.API.models[key] = model.displayName;
-      console.log(`[SettingsImporter] 已還原自定義模型: ${key} -> ${model.displayName}`);
+      LogUtils.log(`已還原自定義模型: ${key} -> ${model.displayName}`);
     });
     
-    console.log(`[SettingsImporter] 共還原 ${Object.keys(settingsInstance.customModels).length} 個自定義模型`);
+    LogUtils.log(`共還原 ${Object.keys(settingsInstance.customModels).length} 個自定義模型`);
   },
 
   /**
@@ -379,7 +375,7 @@ window.SettingsImporter = {
 
     const isValid = errors.length === 0;
 
-    console.log('[SettingsImporter] 匯入設定驗證:', { isValid, errors, warnings });
+    LogUtils.log('匯入設定驗證:', { isValid, errors, warnings });
 
     return { isValid, errors, warnings };
   }
@@ -390,4 +386,4 @@ if (typeof window !== 'undefined') {
   window.SettingsImporter = window.SettingsImporter;
 }
 
-console.log('[SettingsImporter] 設定匯入管理器已載入'); 
+LogUtils.log('設定匯入管理器已載入'); 

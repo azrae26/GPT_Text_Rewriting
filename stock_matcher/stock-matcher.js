@@ -55,12 +55,12 @@ window.StockMatcher = {
       const settings = await window.GlobalSettings.loadSettings();
       const stockListText = settings.stockList || '';
       window.stockListFromSettings = this._parseStockList(stockListText);
-      window.console.log(`[StockMatcher][${getCurrentTime()}] 載入股票清單`, {
+      LogUtils.log('載入股票清單', {
         原始文字長度: stockListText.length,
         解析出的股票數量: window.stockListFromSettings.length
       });
     } catch (error) {
-      window.console.error(`[StockMatcher][${getCurrentTime()}] ❌ 載入股票清單失敗:`, error);
+      LogUtils.error('❌ 載入股票清單失敗:', error);
       window.stockListFromSettings = [];
     }
   },
@@ -101,23 +101,23 @@ window.StockMatcher = {
 
   /** 獲取或創建按鈕容器 */
   _getOrCreateContainer() {
-    window.console.log(`[StockMatcher][${getCurrentTime()}] 開始獲取或創建按鈕容器`);
+    LogUtils.log('開始獲取或創建按鈕容器');
     let container = document.getElementById('stock-code-container');
     
     if (!container) {
-      window.console.log(`[StockMatcher][${getCurrentTime()}] 找不到現有容器，創建新容器`);
+      LogUtils.log('找不到現有容器，創建新容器');
       container = document.createElement('div');
       container.id = 'stock-code-container';
       
       const input = document.querySelector('input[aria-autocomplete="list"][class*="MuiAutocomplete-input"]');
       if (input && input.parentElement) {
-        window.console.log(`[StockMatcher][${getCurrentTime()}] 找到輸入框父元素，插入容器`);
+        LogUtils.log('找到輸入框父元素，插入容器');
         input.parentElement.appendChild(container);
       } else {
-        window.console.log(`[StockMatcher][${getCurrentTime()}] ❌ 找不到輸入框或其父元素`);
+        LogUtils.log('❌ 找不到輸入框或其父元素');
       }
     } else {
-      window.console.log(`[StockMatcher][${getCurrentTime()}] 找到現有容器`);
+      LogUtils.log('找到現有容器');
     }
     
     return container;
@@ -128,7 +128,7 @@ window.StockMatcher = {
     const first100Chars = text.substring(0, 100);
     
     if (!window.stockListFromSettings) {
-        window.console.warn(`[StockMatcher][${getCurrentTime()}] ⚠️ 股票代碼提取 - 未找到股票列表`);
+        LogUtils.warn('⚠️ 股票代碼提取 - 未找到股票列表');
         return { codes: [], matchedStocks: new Map(), stockCounts: new Map() };
     }
 
@@ -202,7 +202,7 @@ window.StockMatcher = {
         if (count > 0) {
             matchedStocks.set(stock.code, stock.name);
             stockCounts.set(stock.code, count);
-            window.console.log(`[StockMatcher][${getCurrentTime()}] 股票出現次數 - ${stock.name}(${stock.code}): ${count}次`, {
+            LogUtils.log(`股票出現次數 - ${stock.name}(${stock.code}): ${count}次`, {
                 代號: codeCount,
                 中文名: nameCount + fullNameCount
             });
@@ -218,7 +218,7 @@ window.StockMatcher = {
         }));
 
     if (sortedResults.length > 0) {
-        window.console.log(`[StockMatcher][${getCurrentTime()}] 排序結果 - ${sortedResults.map(r => `${r.名稱}(${r.代碼}): ${r.出現次數}次`).join(', ')}`);
+        LogUtils.log(`排序結果 - ${sortedResults.map(r => `${r.名稱}(${r.代碼}): ${r.出現次數}次`).join(', ')}`);
     }
 
     return { 
@@ -237,7 +237,7 @@ window.StockMatcher = {
       const instruction = settings.codeCheckInstruction;
       
       if (!model || !instruction) {
-        window.console.warn(`[StockMatcher][${getCurrentTime()}] ⚠️ 代號檢查 - 未設定模型或指令`);
+        LogUtils.warn('⚠️ 代號檢查 - 未設定模型或指令');
         return null;
       }
 
@@ -247,7 +247,7 @@ window.StockMatcher = {
       // 調用AI API
       const response = await this._callAIAPI(model, prompt, settings.apiKeys);
       
-      window.console.log(`[StockMatcher][${getCurrentTime()}] 代號檢查 - AI 回應分析:`, {
+      LogUtils.log('代號檢查 - AI 回應分析:', {
         回應內容: response,
         回應長度: response?.length || 0,
         包含不匹配: response?.includes('不匹配') || false,
@@ -257,7 +257,7 @@ window.StockMatcher = {
       });
       
       if (response && (response.includes('不匹配') || response.includes('有錯') || response.includes('不符') || response.includes('不同'))) {
-        window.console.log(`[StockMatcher][${getCurrentTime()}] 🚨 代號檢查 - 檢測到問題，返回警告`);
+        LogUtils.log('🚨 代號檢查 - 檢測到問題，返回警告');
         return {
           isValid: false,
           message: '代號可能有錯',
@@ -265,21 +265,21 @@ window.StockMatcher = {
         };
       }
       
-      window.console.log(`[StockMatcher][${getCurrentTime()}] ✅ 代號檢查 - 檢查通過`);
+      LogUtils.log('✅ 代號檢查 - 檢查通過');
       return {
         isValid: true,
         message: '代號檢查通過',
         detail: response
       };
     } catch (error) {
-      window.console.error(`[StockMatcher][${getCurrentTime()}] ❌ 代號檢查 - AI檢查失敗:`, error);
+      LogUtils.error('代號檢查 - AI檢查失敗:', error);
       return null;
     }
   },
 
   /** 調用AI API */
   async _callAIAPI(model, prompt, apiKeys) {
-          window.console.log(`[StockMatcher][${getCurrentTime()}] 調用AI API - 開始 API 請求`, {
+    LogUtils.log('調用AI API - 開始 API 請求', {
       模型: model,
       提示詞長度: prompt.length
     });
@@ -287,13 +287,13 @@ window.StockMatcher = {
     // 使用 GlobalSettings 的金鑰名稱獲取方法
     const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(model);
     if (!apiKeyName) {
-      window.console.error(`[StockMatcher][${getCurrentTime()}] ❌ 調用AI API - 模型不支援:`, model);
+      LogUtils.error('調用AI API - 模型不支援:', model);
       throw new Error(`模型 ${model} 不支援或無法找到對應的 API 金鑰類型`);
     }
     
     const apiKey = apiKeys[apiKeyName];
     if (!apiKey) {
-      window.console.error(`[StockMatcher][${getCurrentTime()}] ❌ 調用AI API - API 金鑰未設定:`, {
+      LogUtils.error('調用AI API - API 金鑰未設定:', {
         金鑰名稱: apiKeyName,
         模型: model,
         可用金鑰: Object.keys(apiKeys)
@@ -301,7 +301,7 @@ window.StockMatcher = {
       throw new Error(`未設定 ${apiKeyName} 的 API 金鑰（模型: ${model}）`);
     }
 
-    window.console.log(`[StockMatcher][${getCurrentTime()}] ✅ 調用AI API - API 金鑰驗證通過:`, {
+    LogUtils.log('✅ 調用AI API - API 金鑰驗證通過:', {
       金鑰名稱: apiKeyName,
       金鑰長度: apiKey.length
     });
@@ -317,7 +317,7 @@ window.StockMatcher = {
       body = JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }]
       });
-      window.console.log(`[StockMatcher][${getCurrentTime()}] 調用AI API - 準備 Gemini API 請求:`, {
+      LogUtils.log('調用AI API - 準備 Gemini API 請求:', {
         模型端點: model === 'gemini' ? 'gemini-pro' : model,
         請求體大小: body.length
       });
@@ -333,27 +333,27 @@ window.StockMatcher = {
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.1
       });
-      window.console.log(`[StockMatcher][${getCurrentTime()}] 調用AI API - 準備 OpenAI API 請求:`, {
+      LogUtils.log('調用AI API - 準備 OpenAI API 請求:', {
         模型: model,
         請求體大小: body.length
       });
     }
 
-    window.console.log(`[StockMatcher][${getCurrentTime()}] 調用AI API - 發送 HTTP 請求中...`);
+    LogUtils.log('調用AI API - 發送 HTTP 請求中...');
     const response = await fetch(url, {
       method: 'POST',
       headers: headers,
       body: body
     });
 
-    window.console.log(`[StockMatcher][${getCurrentTime()}] 調用AI API - 收到 HTTP 響應:`, {
+    LogUtils.log('調用AI API - 收到 HTTP 響應:', {
       狀態碼: response.status,
       狀態文字: response.statusText,
       是否成功: response.ok
     });
 
     if (!response.ok) {
-      window.console.error(`[StockMatcher][${getCurrentTime()}] ❌ 調用AI API - API 請求失敗:`, {
+      LogUtils.error('調用AI API - API 請求失敗:', {
         狀態碼: response.status,
         響應頭: Object.fromEntries(response.headers.entries())
       });
@@ -361,24 +361,24 @@ window.StockMatcher = {
     }
 
     const data = await response.json();
-    window.console.log(`[StockMatcher][${getCurrentTime()}] 調用AI API - 解析 JSON 響應成功`);
+    LogUtils.log('調用AI API - 解析 JSON 響應成功');
     
     let result;
     if (model.startsWith('gemini') || model === 'gemini') {
       result = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-      window.console.log(`[StockMatcher][${getCurrentTime()}] 調用AI API - Gemini 響應解析:`, {
+      LogUtils.log('調用AI API - Gemini 響應解析:', {
         候選數量: data.candidates?.length || 0,
         回答長度: result.length
       });
     } else {
       result = data.choices?.[0]?.message?.content || '';
-      window.console.log(`[StockMatcher][${getCurrentTime()}] 調用AI API - OpenAI 響應解析:`, {
+      LogUtils.log('調用AI API - OpenAI 響應解析:', {
         選擇數量: data.choices?.length || 0,
         回答長度: result.length
       });
     }
     
-    window.console.log(`[StockMatcher][${getCurrentTime()}] ✅ 調用AI API - API 請求完成，回答:`, result.substring(0, 100) + (result.length > 100 ? '...' : ''));
+    LogUtils.log('✅ 調用AI API - API 請求完成，回答:', result.substring(0, 100) + (result.length > 100 ? '...' : ''));
     return result;
   },
 
@@ -387,34 +387,34 @@ window.StockMatcher = {
     // 清除之前的計時器
     if (this._aiCheckDebounceTimer) {
       clearTimeout(this._aiCheckDebounceTimer);
-      window.console.log(`[StockMatcher][${getCurrentTime()}] 防抖 - 清除之前的AI檢查計時器`);
+      LogUtils.log('防抖 - 清除之前的AI檢查計時器');
     }
     
     // 設置新的計時器
     this._aiCheckDebounceTimer = setTimeout(async () => {
       try {
-        window.console.log(`[StockMatcher][${getCurrentTime()}] 防抖 - 開始延遲執行的代號檢查:`, { stockCode, stockName });
+        LogUtils.log('防抖 - 開始延遲執行的代號檢查:', { stockCode, stockName });
         const checkResult = await this._checkStockCodeWithAI(stockCode, stockName, textContent);
-        window.console.log(`[StockMatcher][${getCurrentTime()}] 防抖 - 代號檢查完整結果:`, checkResult);
+        LogUtils.log('防抖 - 代號檢查完整結果:', checkResult);
         
         if (checkResult && !checkResult.isValid) {
-          window.console.log(`[StockMatcher][${getCurrentTime()}] 🚨 防抖 - 檢查結果為無效，準備顯示警告`);
+          LogUtils.log('🚨 防抖 - 檢查結果為無效，準備顯示警告');
           this._toggleWarningBox(true, checkResult.message);
-          window.console.log(`[StockMatcher][${getCurrentTime()}] 代號檢查`, checkResult.message, '詳細:', checkResult.detail);
+          LogUtils.log('代號檢查', checkResult.message, '詳細:', checkResult.detail);
         } else if (checkResult && checkResult.isValid) {
-          window.console.log(`[StockMatcher][${getCurrentTime()}] ✅ 防抖 - 檢查結果為有效，隱藏警告`);
+          LogUtils.log('✅ 防抖 - 檢查結果為有效，隱藏警告');
           this._toggleWarningBox(false);
         } else {
-          window.console.log(`[StockMatcher][${getCurrentTime()}] 防抖 - 檢查結果為 null，可能是設定問題`);
+          LogUtils.log('防抖 - 檢查結果為 null，可能是設定問題');
         }
               } catch (error) {
-        window.console.error(`[StockMatcher][${getCurrentTime()}] ❌ 防抖 - 代號檢查執行失敗:`, error);
+        LogUtils.error('防抖 - 代號檢查執行失敗:', error);
       } finally {
         this._aiCheckDebounceTimer = null;
       }
     }, AI_CHECK_DEBOUNCE_DELAY);
     
-    window.console.log(`[StockMatcher][${getCurrentTime()}] 防抖 - 設置AI檢查計時器，將在 ${AI_CHECK_DEBOUNCE_DELAY}ms 後執行`);
+    LogUtils.log(`防抖 - 設置AI檢查計時器，將在 ${AI_CHECK_DEBOUNCE_DELAY}ms 後執行`);
   },
 
   /** 顯示或隱藏警告提示框 */
@@ -449,14 +449,14 @@ window.StockMatcher = {
         this._warningBox.appendChild(icon);
         this._warningBox.appendChild(text);
         
-        window.console.log(`[StockMatcher][${getCurrentTime()}] 🚨 警告框 - 創建並顯示警告提示框:`, message);
+        LogUtils.log('🚨 警告框 - 創建並顯示警告提示框:', message);
       } else {
         const textElement = document.getElementById('warning-text');
         if (textElement) {
           textElement.textContent = message;
-          window.console.log(`[StockMatcher][${getCurrentTime()}] 🚨 警告框 - 更新警告提示框內容:`, message);
+          LogUtils.log('🚨 警告框 - 更新警告提示框內容:', message);
         } else {
-          window.console.error(`[StockMatcher][${getCurrentTime()}] ❌ 警告框 - 找不到 warning-text 元素，重新創建警告框`);
+          LogUtils.error('警告框 - 找不到 warning-text 元素，重新創建警告框');
           // 重新創建警告框
           this._warningBox = null;
           this._toggleWarningBox(true, message);
@@ -469,12 +469,12 @@ window.StockMatcher = {
         // 如果警告框不在 DOM 中，就插入它
         if (!this._warningBox.parentElement) {
           this._container.parentElement.insertBefore(this._warningBox, this._container);
-          window.console.log(`[StockMatcher][${getCurrentTime()}] 警告框 - 警告提示框已插入到頁面`);
+          LogUtils.log('警告框 - 警告提示框已插入到頁面');
         } else {
-          window.console.log(`[StockMatcher][${getCurrentTime()}] 警告框 - 警告提示框已存在於頁面中`);
+          LogUtils.log('警告框 - 警告提示框已存在於頁面中');
         }
               } else {
-        window.console.error(`[StockMatcher][${getCurrentTime()}] ❌ 警告框 - 無法插入警告框，容器或父元素不存在:`, {
+        LogUtils.error('警告框 - 無法插入警告框，容器或父元素不存在:', {
           容器存在: !!this._container,
           父元素存在: !!this._container?.parentElement
         });
@@ -482,7 +482,7 @@ window.StockMatcher = {
     } else {
               if (this._warningBox && this._warningBox.parentElement) {
         this._warningBox.parentElement.removeChild(this._warningBox);
-        window.console.log(`[StockMatcher][${getCurrentTime()}] 警告框 - 移除警告提示框`);
+        LogUtils.log('警告框 - 移除警告提示框');
       }
     }
   },
@@ -490,9 +490,9 @@ window.StockMatcher = {
   /** 更新股票代碼按鈕 */
   _updateStockButtons(codes, matchedStocks, elements, shouldTriggerAICheck = true) {
     elements.container.innerHTML = '';
-    window.console.log(`[StockMatcher][${getCurrentTime()}] 開始更新股票代碼按鈕，找到的代碼:`, codes);
-    window.console.log(`[StockMatcher][${getCurrentTime()}] 當前輸入框的值:`, elements.input.value);
-    window.console.log(`[StockMatcher][${getCurrentTime()}] 是否觸發AI檢查:`, shouldTriggerAICheck);
+    LogUtils.log('開始更新股票代碼按鈕，找到的代碼:', codes);
+    LogUtils.log('當前輸入框的值:', elements.input.value);
+    LogUtils.log('是否觸發AI檢查:', shouldTriggerAICheck);
     
     // 先隱藏警告提示框
     this._toggleWarningBox(false);
@@ -510,7 +510,7 @@ window.StockMatcher = {
         if (isMatched) button.classList.add('matched');
         
         button.onclick = () => {
-            window.console.log(`[StockMatcher][${getCurrentTime()}] 點擊股票按鈕: ${code}`);
+            LogUtils.log(`點擊股票按鈕: ${code}`);
             elements.input.value = code;
             elements.input.dispatchEvent(new Event('input', { bubbles: true }));
             
@@ -549,7 +549,7 @@ window.StockMatcher = {
                 self._toggleWarningBox(false);
                 
                 // 使用防抖方法執行AI檢查
-                window.console.log(`[StockMatcher][${getCurrentTime()}] 按鈕點擊 - 準備開始防抖代號檢查:`, { code, stockName });
+                LogUtils.log('按鈕點擊 - 準備開始防抖代號檢查:', { code, stockName });
                 self._debouncedAICheck(code, stockName, textContent);
             }
         };
@@ -575,21 +575,21 @@ window.StockMatcher = {
       const textContent = elements.textarea.value;
       
       // 使用防抖方法執行AI檢查，避免頻繁API調用
-      window.console.log(`[StockMatcher][${getCurrentTime()}] 股票按鈕更新 - 準備開始防抖代號檢查:`, { stockCode, stockName });
+      LogUtils.log('股票按鈕更新 - 準備開始防抖代號檢查:', { stockCode, stockName });
       self._debouncedAICheck(stockCode, stockName, textContent);
     } else if (!shouldTriggerAICheck && elements.input.value && matchedStocks.has(elements.input.value)) {
-      window.console.log(`[StockMatcher][${getCurrentTime()}] 股票按鈕更新 - 跳過AI檢查（設定更新觸發）:`, { stockCode: elements.input.value });
+      LogUtils.log('股票按鈕更新 - 跳過AI檢查（設定更新觸發）:', { stockCode: elements.input.value });
     }
   },
 
   /** 初始化股票代碼功能 - 公開接口 */
   initializeStockCodeFeature(isFromSettingsUpdate = false) {
-    window.console.log(`[StockMatcher][${getCurrentTime()}] 🚀 開始初始化股票代碼功能`, {
+    LogUtils.important('🚀 開始初始化股票代碼功能', {
       來自設定更新: isFromSettingsUpdate
     });
     
     if (!window.shouldEnableFeatures()) {
-      window.console.log(`[StockMatcher][${getCurrentTime()}] ⚠️ 不符合啟用功能條件，移除股票代碼功能`);
+      LogUtils.warn('⚠️ 不符合啟用功能條件，移除股票代碼功能');
       this.removeStockCodeFeature();
       return;
     }
@@ -600,14 +600,14 @@ window.StockMatcher = {
       container: this._getOrCreateContainer()
     };
 
-    window.console.log(`[StockMatcher][${getCurrentTime()}] 找到的元素:`, {
+    LogUtils.log('找到的元素:', {
       hasTextarea: !!elements.textarea,
       hasInput: !!elements.input,
       hasContainer: !!elements.container
     });
 
     if (!elements.textarea || !elements.input) {
-      window.console.log(`[StockMatcher][${getCurrentTime()}] ❌ 找不到必要的文本區域或輸入框`);
+      LogUtils.error('❌ 找不到必要的文本區域或輸入框');
       return;
     }
 
@@ -639,7 +639,7 @@ window.StockMatcher = {
         const { codes, matchedStocks, stockCounts } = this._getStockCodes(textValue, inputValue);
         
         // 記錄找到的股票代碼數量
-        window.console.log(`[StockMatcher][${getCurrentTime()}] 找到的股票代碼`, { 
+        LogUtils.log('找到的股票代碼', { 
             總數量: codes.length,
             代碼列表: codes,
             來源: source,
@@ -649,7 +649,7 @@ window.StockMatcher = {
         
         // 自動填入最常出現的股票代碼（僅在文本區域觸發時）
         if (source === 'textarea' && codes.length > 0 && !inputValue) {
-            window.console.log(`[StockMatcher][${getCurrentTime()}] 符合自動填入條件`, {
+            LogUtils.log('符合自動填入條件', {
                 來源是否為文本區域: source === 'textarea',
                 是否有找到代碼: codes.length > 0,
                 輸入框是否為空: !inputValue
@@ -657,7 +657,7 @@ window.StockMatcher = {
             
             if (codes[0]) { // codes 已經是按出現次數排序的了
                 const mostFrequentCode = codes[0];
-                window.console.log(`[StockMatcher][${getCurrentTime()}] 選擇最常出現的股票代碼`, {
+                LogUtils.log('選擇最常出現的股票代碼', {
                     代碼: mostFrequentCode,
                     出現次數: stockCounts.get(mostFrequentCode),
                     所有代碼出現次數: Object.fromEntries(stockCounts),
@@ -692,7 +692,7 @@ window.StockMatcher = {
     this._elements = elements;
     this._container = elements.container; // 確保 this._container 被正確設置
     
-    window.console.log(`[StockMatcher][${getCurrentTime()}] 初始化 - 股票代碼功能初始化完成:`, {
+    LogUtils.important('初始化 - 股票代碼功能初始化完成:', {
       容器已設置: !!this._container,
       容器ID: this._container?.id,
       父元素存在: !!this._container?.parentElement
@@ -705,7 +705,7 @@ window.StockMatcher = {
     if (this._aiCheckDebounceTimer) {
       clearTimeout(this._aiCheckDebounceTimer);
       this._aiCheckDebounceTimer = null;
-      window.console.log(`[StockMatcher][${getCurrentTime()}] 移除功能 - 清理AI檢查防抖計時器`);
+      LogUtils.log('移除功能 - 清理AI檢查防抖計時器');
     }
     
     const container = document.getElementById('stock-code-container');

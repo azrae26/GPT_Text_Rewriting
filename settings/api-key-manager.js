@@ -65,9 +65,9 @@ const ApiKeyManager = {
       // 儲存到 storage
       await window.GlobalSettings.saveSingleSetting('apiKeys', window.GlobalSettings.apiKeys);
       
-      console.log(`[ApiKeyManager] 成功設定 ${apiType} API 金鑰`);
+      LogUtils.log(`成功設定 ${apiType} API 金鑰`);
     } catch (error) {
-      console.error('[ApiKeyManager] 設定 API 金鑰失敗:', error);
+      LogUtils.error('設定 API 金鑰失敗:', error);
       throw error;
     }
   },
@@ -114,14 +114,14 @@ const ApiKeyManager = {
           });
           
           if (!hasMatchingCustomModel) {
-            console.log(`[ApiKeyManager] 發現舊版本硬編碼金鑰: ${key}，準備移除`);
+            LogUtils.log(`發現舊版本硬編碼金鑰: ${key}，準備移除`);
             keysToRemove.push(key);
           }
         }
       });
       
       if (keysToRemove.length > 0) {
-        console.log('[ApiKeyManager] 移除無效的 API 金鑰:', keysToRemove);
+        LogUtils.log('移除無效的 API 金鑰:', keysToRemove);
         keysToRemove.forEach(key => delete window.GlobalSettings.apiKeys[key]);
         
         // 立即保存更新後的金鑰列表
@@ -130,7 +130,7 @@ const ApiKeyManager = {
       
       return keysToRemove.length;
     } catch (error) {
-      console.error('[ApiKeyManager] 清理無效 API 金鑰失敗:', error);
+      LogUtils.error('清理無效 API 金鑰失敗:', error);
       return 0;
     }
   },

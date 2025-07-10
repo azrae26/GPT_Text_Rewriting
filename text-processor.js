@@ -63,7 +63,7 @@ const TextProcessor = {
       
       return `${year}年${month}月${day}日`;
     } catch (error) {
-      console.warn('獲取日期時發生錯誤:', error);
+      LogUtils.warn('獲取日期時發生錯誤:', error);
       return '';
     }
   },
@@ -152,7 +152,7 @@ const TextProcessor = {
       ]
     };
 
-    console.log('API 請求配置:', {
+    LogUtils.log('API 請求配置:', {
       endpoint,
       requestBody: {
         model,
@@ -175,17 +175,17 @@ const TextProcessor = {
    * @param {string} requestType - 請求類型：'translate' | 'reflect' | 'optimize' | 'generate' | 'reflect1' | 'generationOptimize_1'
    */
   async _sendRequest(endpoint, body, apiKey, isGemini, isTranslation = false, requestType = 'translate') {
-    console.log('[_sendRequest] 開始處理請求');
+    LogUtils.log('開始處理請求');
     
     // 根據請求類型輸出不同格式的日誌
     if (requestType === 'reflect' || requestType === 'reflect1') {
-      console.log('反思階段請求體:', JSON.stringify(body, null, 2));
+      LogUtils.log('反思階段請求體:', JSON.stringify(body, null, 2));
     } else if (requestType === 'optimize' || requestType === 'generationOptimize_1') {
-      console.log('優化階段請求體:', JSON.stringify(body, null, 2));
+      LogUtils.log('優化階段請求體:', JSON.stringify(body, null, 2));
     } else if (requestType === 'generate') {
-      console.log('生成階段請求體:', JSON.stringify(body, null, 2));
+      LogUtils.log('生成階段請求體:', JSON.stringify(body, null, 2));
     } else {
-      console.log('[_sendRequest] 請求體:', JSON.stringify(body).substring(0, 2500) + (JSON.stringify(body).length > 2500 ? '...' : '')); 
+      LogUtils.log('請求體:', JSON.stringify(body).substring(0, 2500) + (JSON.stringify(body).length > 2500 ? '...' : '')); 
     }
 
     const controller = new AbortController();
@@ -194,15 +194,15 @@ const TextProcessor = {
     // 註冊到活動請求集合
     if ((isTranslation && window.TranslateManager?.activeRequests) || 
         (requestType === 'generate' && window.GenerationManager?.activeRequests)) {
-      console.log('[_sendRequest] 將請求添加到活動請求集合');
+      LogUtils.log('將請求添加到活動請求集合');
       const manager = isTranslation ? window.TranslateManager : window.GenerationManager;
       manager.activeRequests.add(controller);
-      console.log('[_sendRequest] 當前活動請求數:', manager.activeRequests.size);
+      LogUtils.log('當前活動請求數:', manager.activeRequests.size);
 
       // 監聽取消狀態
       const checkCancel = () => {
         if (manager?.shouldCancel) {
-          console.log('[_sendRequest] 檢測到取消狀態，中止請求');
+          LogUtils.log('檢測到取消狀態，中止請求');
           controller.abort();
           return true;
         }
@@ -219,7 +219,7 @@ const TextProcessor = {
     }
 
     try {
-      console.log('[_sendRequest] 開始發送 fetch 請求');
+      LogUtils.log('開始發送 fetch 請求');
       const response = await fetch(
         isGemini ? `${endpoint}?key=${apiKey}` : endpoint,
         {
@@ -234,19 +234,19 @@ const TextProcessor = {
       );
 
       // 檢查API響應
-      console.log('[_sendRequest] 收到 API 響應');
+      LogUtils.log('收到 API 響應');
       if (!response.ok) {
         const errorData = await response.json();
-        console.error('[_sendRequest] API 錯誤響應:', errorData);
+        LogUtils.error('API 錯誤響應:', errorData);
         throw new Error(`HTTP error! status: ${response.status}, message: ${JSON.stringify(errorData)}`);
       }
 
       const data = await response.json();
-      console.log('[_sendRequest] 成功解析 API 響應:', data);
+      LogUtils.log('成功解析 API 響應:', data);
 
       // 處理 Gemini API 的安全限制回應
       if (isGemini && data.candidates && data.candidates[0].finishReason === "SAFETY") {
-        console.log('[_sendRequest] 檢測到 Gemini API 安全限制');
+        LogUtils.log('檢測到 Gemini API 安全限制');
         throw new Error('內容被 Gemini API 的安全限制阻擋，請嘗試修改文本或使用其他模型');
       }
 
@@ -254,27 +254,27 @@ const TextProcessor = {
       let result;
       if (isGemini) {
         if (!data.candidates?.[0]?.content?.parts?.[0]?.text) {
-          console.error('[_sendRequest] Gemini API 回應格式無效');
+          LogUtils.error('Gemini API 回應格式無效');
           throw new Error('Gemini API 回應格式無效');
         }
         result = data.candidates[0].content.parts[0].text;
       } else {
         if (!data.choices?.[0]?.message?.content) {
-          console.error('[_sendRequest] OpenAI API 回應格式無效');
+          LogUtils.error('OpenAI API 回應格式無效');
           throw new Error('OpenAI API 回應格式無效');
         }
         result = data.choices[0].message.content;
       }
 
-      console.log('[_sendRequest] 請求成功完成');
+      LogUtils.log('請求成功完成');
       return result;
 
     } catch (error) {
       if (error.name === 'AbortError' || error.message === '翻譯請求已取消' || error.message === '生成請求已取消') {
-        console.log('[_sendRequest] 請求已被取消');
+        LogUtils.log('請求已被取消');
         throw new Error(isTranslation ? '翻譯請求已取消' : '生成請求已取消');
       }
-      console.error('[_sendRequest] 請求失敗:', error);
+      LogUtils.error('請求失敗:', error);
       throw error;
     } finally {
       // 清除定期檢查
@@ -286,9 +286,9 @@ const TextProcessor = {
       if ((isTranslation && window.TranslateManager?.activeRequests) || 
           (requestType === 'generate' && window.GenerationManager?.activeRequests)) {
         const manager = isTranslation ? window.TranslateManager : window.GenerationManager;
-        console.log('[_sendRequest] 從活動請求集合中移除請求');
+        LogUtils.log('從活動請求集合中移除請求');
         manager.activeRequests.delete(controller);
-        console.log('[_sendRequest] 剩餘活動請求數:', manager.activeRequests.size);
+        LogUtils.log('剩餘活動請求數:', manager.activeRequests.size);
       }
     }
   },
@@ -317,9 +317,9 @@ const TextProcessor = {
    */
   async rewriteText(textToRewrite, isAutoRewrite = false, context = []) {
     try {
-      console.log('開始 rewriteText 函數');
+      LogUtils.log('開始 rewriteText 函數');
       const settings = await window.GlobalSettings.loadSettings();
-      console.log('載入的設置:', settings);
+      LogUtils.log('載入的設置:', settings);
 
       const textArea = document.querySelector('textarea[name="content"]');
       if (!textArea) throw new Error('找不到文本區域');
@@ -333,33 +333,33 @@ const TextProcessor = {
       const isPartialRewrite = isAutoRewrite || (textArea.selectionStart !== textArea.selectionEnd);
       const useShortInstruction = isAutoRewrite || (isPartialRewrite && textArea.selectionEnd - textArea.selectionStart <= 15);
 
-      console.log('改寫類型:', isPartialRewrite ? '部分改寫' : '全文改寫');
-      console.log('使用短指令:', useShortInstruction);
-      console.log('選中文本長度:', textArea.selectionEnd - textArea.selectionStart);
+      LogUtils.log('改寫類型:', isPartialRewrite ? '部分改寫' : '全文改寫');
+      LogUtils.log('使用短指令:', useShortInstruction);
+      LogUtils.log('選中文本長度:', textArea.selectionEnd - textArea.selectionStart);
 
       // 檢查改寫指令
       const instruction = useShortInstruction ? settings.shortInstruction : settings.instruction;
       if (!instruction.trim()) throw new Error(useShortInstruction ? '短文本改寫指令不能為空' : '改寫指令不能為空');
 
       // 添加詳細的模型選擇調試日誌
-      console.log('模型選擇調試:');
-      console.log('- isAutoRewrite:', isAutoRewrite);
-      console.log('- isPartialRewrite:', isPartialRewrite);
-      console.log('- useShortInstruction:', useShortInstruction);
-      console.log('- settings.autoRewriteModel:', settings.autoRewriteModel);
-      console.log('- settings.shortRewriteModel:', settings.shortRewriteModel);
-      console.log('- settings.fullRewriteModel:', settings.fullRewriteModel);
-      console.log('- settings.model:', settings.model);
+      LogUtils.log('模型選擇調試:');
+      LogUtils.log('- isAutoRewrite:', isAutoRewrite);
+      LogUtils.log('- isPartialRewrite:', isPartialRewrite);
+      LogUtils.log('- useShortInstruction:', useShortInstruction);
+      LogUtils.log('- settings.autoRewriteModel:', settings.autoRewriteModel);
+      LogUtils.log('- settings.shortRewriteModel:', settings.shortRewriteModel);
+      LogUtils.log('- settings.fullRewriteModel:', settings.fullRewriteModel);
+      LogUtils.log('- settings.model:', settings.model);
 
       const model = isAutoRewrite ? settings.autoRewriteModel :
                    isPartialRewrite && useShortInstruction ? settings.shortRewriteModel :
                    settings.fullRewriteModel || settings.model;
       
-      console.log('- 選擇的原始模型:', model);
+      LogUtils.log('- 選擇的原始模型:', model);
 
       // 如果沒有選擇模型，使用預設模型
       const finalModel = model || window.GlobalSettings.getDefaultModel();
-      console.log('- 最終模型:', finalModel);
+      LogUtils.log('- 最終模型:', finalModel);
       
       if (!finalModel) {
         throw new Error('沒有可用的模型，請先添加自定義模型');
@@ -368,25 +368,25 @@ const TextProcessor = {
       // 檢查API金鑰
       const isGemini = finalModel.startsWith('gemini');
       const apiType = window.GlobalSettings.getModelApiType(finalModel);
-      console.log('API 類型:', apiType);
+      LogUtils.log('API 類型:', apiType);
       
       // 統一使用 getApiKeyNameForModel 方法獲取金鑰名稱
       const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(finalModel);
-      console.log('API 金鑰名稱:', apiKeyName);
+      LogUtils.log('API 金鑰名稱:', apiKeyName);
       
       if (!apiKeyName) {
         throw new Error(`無法為模型 ${finalModel} 找到對應的 API 金鑰類型`);
       }
       
       const apiKey = settings.apiKeys[apiKeyName];
-      console.log('找到的 API 金鑰:', apiKey ? `${apiKey.substring(0, 5)}...` : 'undefined');
+      LogUtils.log('找到的 API 金鑰:', apiKey ? `${apiKey.substring(0, 5)}...` : 'undefined');
       
       if (!apiKey || !apiKey.trim()) {
         throw new Error(`未找到 ${apiType === 'gemini' ? 'Gemini' : apiType === 'openai' ? 'OpenAI' : apiType} 的 API 金鑰，請先設置對應的 API 金鑰`);
       }
 
-      console.log('選擇的模型:', finalModel);
-      console.log('使用的 API 金鑰:', apiKey.substring(0, 5) + '...');
+      LogUtils.log('選擇的模型:', finalModel);
+      LogUtils.log('使用的 API 金鑰:', apiKey.substring(0, 5) + '...');
 
       // 顯示通知
       await window.Notification.showNotification(`
@@ -404,14 +404,14 @@ const TextProcessor = {
       );
       const rewrittenText = await this._sendRequest(endpoint, body, apiKey, isGemini, false);
 
-      console.log('改寫前文本:', originalTextToRewrite);
-      console.log('改寫後的文本:', rewrittenText);
+      LogUtils.log('改寫前文本:', originalTextToRewrite);
+      LogUtils.log('改寫後的文本:', rewrittenText);
 
       // 添加到歷史紀錄
       window.UndoManager.addToHistory(textArea.value, textArea);
 
       if (isAutoRewrite) {
-        console.log('自動改寫完成');
+        LogUtils.log('自動改寫完成');
         return rewrittenText.trim();
       }
 
@@ -423,20 +423,20 @@ const TextProcessor = {
 
       const newText = textArea.value.substring(0, index) + rewrittenText.trim() + textArea.value.substring(index + originalTextToRewrite.length);
 
-      console.log('更新前的文本區域值:', textArea.value);
+      LogUtils.log('更新前的文本區域值:', textArea.value);
       textArea.value = newText;
-      console.log('更新後的文本區值:', textArea.value);
+      LogUtils.log('更新後的文本區值:', textArea.value);
       textArea.dispatchEvent(new Event('input', { bubbles: true }));
-      console.log('已觸發輸入事件');
+      LogUtils.log('已觸發輸入事件');
 
       // 移除通知
       window.Notification.removeNotification();
       await window.Notification.showNotification('改寫已完成', false);
-      console.log('改寫完成');
+      LogUtils.log('改寫完成');
 
     } catch (error) {
       window.Notification.removeNotification();
-      console.error('rewriteText 函數出錯:', error);
+      LogUtils.error('rewriteText 函數出錯:', error);
       alert(`改寫過程中發生錯誤: ${error.message}\n請檢查您的設置並重試。`);
       window.Notification.showNotification(`改寫過程中發生錯誤: ${error.message}`, false);
     }
@@ -460,18 +460,18 @@ const TextProcessor = {
       
       const isGemini = finalModel.startsWith('gemini');
       const apiType = window.GlobalSettings.getModelApiType(finalModel);
-      console.log('API 類型:', apiType);
+      LogUtils.log('API 類型:', apiType);
       
       // 統一使用 getApiKeyNameForModel 方法獲取金鑰名稱
       const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(finalModel);
-      console.log('API 金鑰名稱:', apiKeyName);
+      LogUtils.log('API 金鑰名稱:', apiKeyName);
       
       if (!apiKeyName) {
         throw new Error(`無法為模型 ${finalModel} 找到對應的 API 金鑰類型`);
       }
       
       const apiKey = settings.apiKeys[apiKeyName];
-      console.log('找到的 API 金鑰:', apiKey ? `${apiKey.substring(0, 5)}...` : 'undefined');
+      LogUtils.log('找到的 API 金鑰:', apiKey ? `${apiKey.substring(0, 5)}...` : 'undefined');
       
       if (!apiKey || !apiKey.trim()) {
         throw new Error(`未找到 ${apiType === 'gemini' ? 'Gemini' : 'OpenAI'} 的 API 金鑰，請先設置對應的 API 金鑰`);
@@ -503,7 +503,7 @@ const TextProcessor = {
 
     } catch (error) {
       window.Notification.removeNotification();
-      console.error('generateSummary 函數出錯:', error);
+      LogUtils.error('generateSummary 函數出錯:', error);
       alert(`生成關鍵要點總結時發生錯誤: ${error.message}\n請檢查您的設置並重試。`);
       throw error;
     }

@@ -23,7 +23,7 @@
  */
 
 document.addEventListener('DOMContentLoaded', async function() {
-  console.log('DOM 載入完成，開始初始化...');
+  LogUtils.log('DOM 載入完成，開始初始化...');
   
   // 輔助函數：獲取當前時間字符串
   function getCurrentTimeString() {
@@ -33,23 +33,23 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 監聽來自 background 的訊息
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.action === 'settingsUpdated') {
-      console.log(`[popup.js][${getCurrentTimeString()}] 收到設定更新通知:`, message.data);
+      LogUtils.log('收到設定更新通知:', message.data);
       
       // 當雲端同步或強制下載更新設定時，重新載入 popup 的設定
       if (message.data.reason === 'cloudSync' || message.data.reason === 'forceDownload') {
-        console.log(`[popup.js][${getCurrentTimeString()}] ${message.data.reason === 'cloudSync' ? '雲端同步' : '強制下載'}已更新設定，正在重新載入...`);
+        LogUtils.log(`${message.data.reason === 'cloudSync' ? '雲端同步' : '強制下載'}已更新設定，正在重新載入...`);
         
         // 延遲一下再重新載入，確保儲存完成
         setTimeout(async () => {
           try {
             // 重新載入設定
             const updatedSettings = await GlobalSettings.loadSettings();
-            console.log(`[popup.js][${getCurrentTimeString()}] 重新載入的設定:`, updatedSettings);
+            LogUtils.log('重新載入的設定:', updatedSettings);
             
             // 重新應用到 UI（這裡可以添加更多特定的 UI 更新邏輯）
             location.reload(); // 簡單重新載入 popup
           } catch (error) {
-            console.error(`[popup.js][${getCurrentTimeString()}] 重新載入設定失敗:`, error);
+            LogUtils.error('重新載入設定失敗:', error);
           }
         }, 500);
       }
@@ -126,9 +126,9 @@ document.addEventListener('DOMContentLoaded', async function() {
   if (typeof SettingsIO !== 'undefined') {
     settingsIO = new SettingsIO();
     window.settingsIO = settingsIO; // 暴露到全局，供 settings-manager.js 使用
-    console.log(`[popup.js][${getCurrentTimeString()}] SettingsIO 實例已初始化並暴露到 window`);
+    LogUtils.log('SettingsIO 實例已初始化並暴露到 window');
   } else {
-    console.warn(`[popup.js][${getCurrentTimeString()}] SettingsIO 類別未載入`);
+    LogUtils.warn('SettingsIO 類別未載入');
   }
   
   // 檢查是否為首次使用，如果是則應用預設設定
@@ -198,7 +198,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       const syncInterval = await settingsIO.getSyncInterval();
       syncIntervalInput.value = syncInterval;
     } catch (error) {
-      console.warn('載入同步間隔失敗:', error);
+      LogUtils.warn('載入同步間隔失敗:', error);
       syncIntervalInput.value = 2; // 預設值
     }
   }
@@ -221,7 +221,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   // 載入已保存的主分頁和子分頁狀態
   chrome.storage.sync.get(['lastMainTab', 'lastSubTab'], function(data) {
-    console.log('載入儲存的設置:', data);
+    LogUtils.log('載入儲存的設置:', data);
     
     // 恢復主分頁狀態
     if (data.lastMainTab) {
@@ -309,7 +309,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       const currentSettings = await GlobalSettings.loadSettings();
       throttledUpdateContentScript(currentSettings);
     } catch (error) {
-      console.warn('獲取設定時發生錯誤:', error);
+      LogUtils.warn('獲取設定時發生錯誤:', error);
     }
   }
 
@@ -320,9 +320,9 @@ document.addEventListener('DOMContentLoaded', async function() {
       patterns: autoRewritePatternsInput.value
     }, function(response) {
       if (response && response.success) {
-        console.log('自動改寫匹配模式已更新');
+        LogUtils.log('自動改寫匹配模式已更新');
       } else {
-        console.error('更新自動改寫匹配模式失敗');
+        LogUtils.error('更新自動改寫匹配模式失敗');
       }
     });
   }
@@ -395,7 +395,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 生成相關指令輸入事件
     Object.entries(eventHandlerConfig.generationInstructions).forEach(([key, config]) => {
       if (!config.element) {
-        console.warn(`找不到元素: ${key}`);
+        LogUtils.warn(`找不到元素: ${key}`);
         return;
       }
       
@@ -409,7 +409,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             currentSettings[key] = this.value;
             await window.GlobalSettings.saveGenerationSettingsGroup(selectedName, currentSettings);
           } catch (error) {
-            console.error(`更新設定組合失敗:`, error);
+            LogUtils.error(`更新設定組合失敗:`, error);
           }
         }
         
@@ -421,7 +421,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 一般指令輸入事件
     Object.entries(eventHandlerConfig.instructions).forEach(([key, config]) => {
       if (!config.element) {
-        console.warn(`找不到元素: ${key}`);
+        LogUtils.warn(`找不到元素: ${key}`);
         return;
       }
       
@@ -435,7 +435,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 生成相關模型選擇事件
     Object.entries(eventHandlerConfig.generationModels).forEach(([key, config]) => {
       if (!config.element) {
-        console.warn(`找不到元素: ${key}`);
+        LogUtils.warn(`找不到元素: ${key}`);
         return;
       }
       
@@ -449,7 +449,7 @@ document.addEventListener('DOMContentLoaded', async function() {
             currentSettings[key] = this.value;
             await window.GlobalSettings.saveGenerationSettingsGroup(selectedName, currentSettings);
           } catch (error) {
-            console.error(`更新設定組合失敗:`, error);
+            LogUtils.error(`更新設定組合失敗:`, error);
           }
         }
         
@@ -460,7 +460,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 一般模型選擇事件
     Object.entries(eventHandlerConfig.models).forEach(([key, config]) => {
       if (!config.element) {
-        console.warn(`找不到元素: ${key}`);
+        LogUtils.warn(`找不到元素: ${key}`);
         return;
       }
       
@@ -473,7 +473,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 特殊設置事件
     Object.entries(eventHandlerConfig.settings).forEach(([key, config]) => {
       if (!config.element) {
-        console.warn(`找不到元素: ${key}`);
+        LogUtils.warn(`找不到元素: ${key}`);
         return;
       }
       
@@ -487,11 +487,11 @@ document.addEventListener('DOMContentLoaded', async function() {
             currentSettings[key] = this.checked;
             await window.GlobalSettings.saveGenerationSettingsGroup(selectedName, currentSettings);
           } catch (error) {
-            console.error(`更新設定組合失敗:`, error);
+            LogUtils.error(`更新設定組合失敗:`, error);
           }
         }
         
-        if (config.logMessage) console.log(config.logMessage, this.checked);
+        if (config.logMessage) LogUtils.log(config.logMessage, this.checked);
         triggerContentScriptUpdate();
       });
     });
@@ -521,9 +521,9 @@ document.addEventListener('DOMContentLoaded', async function() {
       removeStar: removeStarCheckbox.checked
     }, function(response) {
       if (response && response.success) {
-        console.log('改寫請求已發送');
+        LogUtils.log('改寫請求已發送');
       } else {
-        console.error('發送改寫請求失敗');
+        LogUtils.error('發送改寫請求失敗');
       }
     });
   });
@@ -564,7 +564,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       if (targetContent) {
         targetContent.classList.add('active');
       } else {
-        console.warn('未找到目標內容區塊:', contentId);
+        LogUtils.warn('未找到目標內容區塊:', contentId);
       }
       
       chrome.storage.sync.set({ lastSubTab: tabName });
@@ -588,7 +588,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       if (targetContent) {
         targetContent.classList.add('active');
       } else {
-        console.warn('未找到目標主內容區塊:', `${tabName}-tab`);
+        LogUtils.warn('未找到目標主內容區塊:', `${tabName}-tab`);
       }
       
       chrome.storage.sync.set({ lastMainTab: tabName });
@@ -603,9 +603,9 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     // 初始化股票管理器
     StockManager.init(stockListInput, triggerContentScriptUpdate);
-    console.log('股票功能管理器已初始化');
+    LogUtils.log('股票功能管理器已初始化');
   } else {
-    console.warn('StockManager 未載入，股票功能可能無法正常運作');
+    LogUtils.warn('StockManager 未載入，股票功能可能無法正常運作');
   }
 
   // 添加節流函數
@@ -625,7 +625,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     try {
       const tabs = await chrome.tabs.query({active: true, currentWindow: true});
       if (!tabs || !tabs[0]) {
-        console.log('未找到活動的標籤頁');
+        LogUtils.log('未找到活動的標籤頁');
         return;
       }
 
@@ -637,13 +637,13 @@ document.addEventListener('DOMContentLoaded', async function() {
         });
       } catch (error) {
         if (error.message.includes('Receiving end does not exist')) {
-          console.log('content script 未載入，設置將在下次載入時應用');
+          LogUtils.log('content script 未載入，設置將在下次載入時應用');
         } else {
-          console.warn('更新 content script 時發生錯誤:', error);
+          LogUtils.warn('更新 content script 時發生錯誤:', error);
         }
       }
     } catch (error) {
-      console.warn('updateContentScript 發生錯誤:', error);
+      LogUtils.warn('updateContentScript 發生錯誤:', error);
     }
   }
 
@@ -654,13 +654,13 @@ document.addEventListener('DOMContentLoaded', async function() {
   function sendMessageToTab(message, callback) {
     chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
       if (!tabs[0]) {
-        console.log('未找到活動的標籤頁');
+        LogUtils.log('未找到活動的標籤頁');
         return;
       }
       
       chrome.tabs.sendMessage(tabs[0].id, message, function(response) {
         if (chrome.runtime.lastError) {
-          console.log('content script 未載入或無法連接');
+          LogUtils.log('content script 未載入或無法連接');
           // 如果有回調函數，則調用它並傳遞錯誤信息
           if (callback) callback({ error: 'content script 未載入' });
           return;
@@ -771,9 +771,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         colors: wordColors
       }, function(response) {
         if (response && response.error) {
-          console.log('高亮設置已保存，將在頁面重新載入時應用');
+          LogUtils.log('高亮設置已保存，將在頁面重新載入時應用');
         } else {
-          console.log('高亮設置已更新');
+          LogUtils.log('高亮設置已更新');
           sendMessageToTab({
             action: "forceUpdateHighlights"
           });
@@ -932,7 +932,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         generationOptimize_3_InstructionInput.value = window.GlobalSettings.generationOptimize_3_Instruction;
         backgroundKnowledgeInput.value = window.GlobalSettings.backgroundKnowledge;
       } catch (error) {
-        console.error('載入設定組合失敗:', error);
+        LogUtils.error('載入設定組合失敗:', error);
         alert('載入設定組合失敗: ' + error.message);
       }
     }
@@ -951,7 +951,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         await window.GlobalSettings.saveGenerationSettingsGroup(name, currentSettings);
         updateGenerationSettingsSelect();
       } catch (error) {
-        console.error('新增設定組合失敗:', error);
+        LogUtils.error('新增設定組合失敗:', error);
         alert('新增設定組合失敗: ' + error.message);
       }
     }
@@ -991,7 +991,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         // 更新下拉選單
         updateGenerationSettingsSelect();
       } catch (error) {
-        console.error('重命名設定組合失敗:', error);
+        LogUtils.error('重命名設定組合失敗:', error);
         alert('重命名設定組合失敗: ' + error.message);
       }
     }
@@ -1009,7 +1009,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         await window.GlobalSettings.deleteGenerationSettingsGroup(selectedName);
         updateGenerationSettingsSelect();
       } catch (error) {
-        console.error('刪除設定組合失敗:', error);
+        LogUtils.error('刪除設定組合失敗:', error);
         alert('刪除設定組合失敗: ' + error.message);
       }
     }
@@ -1047,7 +1047,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         
         updateGenerationSettingsSelect();
       } catch (error) {
-        console.error('複製設定組合失敗:', error);
+        LogUtils.error('複製設定組合失敗:', error);
         alert('複製設定組合失敗: ' + error.message);
       }
     }
@@ -1148,7 +1148,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     async addCustomModel() {
       try {
         if (!customModelNameInput || !customModelDisplayInput || !customModelTypeSelect) {
-          console.error('找不到必要的表單元素');
+          LogUtils.error('找不到必要的表單元素');
           alert('找不到必要的表單元素，請重新載入頁面');
           return;
         }
@@ -1183,7 +1183,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         alert('模型新增成功！');
       } catch (error) {
-        console.error('新增模型錯誤:', error);
+        LogUtils.error('新增模型錯誤:', error);
         alert('新增模型失敗：' + error.message);
       }
     },
@@ -1207,7 +1207,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
           alert('模型刪除成功！');
         } catch (error) {
-          console.error(`刪除模型失敗:`, error);
+          LogUtils.error(`刪除模型失敗:`, error);
           alert('刪除模型失敗：' + error.message);
         }
       }
@@ -1215,7 +1215,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     updateCustomModelsList() {
       if (!customModelsContainer) {
-        console.error('找不到 customModelsContainer 元素');
+        LogUtils.error('找不到 customModelsContainer 元素');
         return;
       }
 
@@ -1327,7 +1327,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 初始化自動替換組（在popup環境中）
   const autoReplaceContainer = document.querySelector('#auto-replace-tab .auto-replace-container');
   if (autoReplaceContainer && window.AutoReplaceManager) {
-    console.log('[popup.js] 開始初始化自動替換組...');
+    LogUtils.log('開始初始化自動替換組...');
     
     // 創建一個模擬的textarea用於popup環境
     const mockTextArea = document.createElement('textarea');
@@ -1336,12 +1336,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     try {
       // 直接使用已載入的 AutoReplaceManager
       AutoReplaceManager.initializeAutoReplaceGroups(autoReplaceContainer, mockTextArea);
-      console.log('[popup.js] ✅ 自動替換組初始化完成');
+      LogUtils.log('✅ 自動替換組初始化完成');
     } catch (error) {
-      console.error('[popup.js] ❌ 自動替換組初始化失敗:', error);
+      LogUtils.error('❌ 自動替換組初始化失敗:', error);
     }
   } else {
-    console.warn('[popup.js] ⚠️ 找不到自動替換容器或AutoReplaceManager未載入');
+    LogUtils.warn('⚠️ 找不到自動替換容器或AutoReplaceManager未載入');
   }
 
   // 同步功能
@@ -1463,7 +1463,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       
       await updateSyncStatus();
     } catch (error) {
-      console.error('同步功能初始化失敗:', error);
+      LogUtils.error('同步功能初始化失敗:', error);
     }
   }
 
@@ -1472,7 +1472,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 認證按鈕
     if (authButton) {
       authButton.addEventListener('click', async () => {
-        console.log(`[popup.js][${getCurrentTimeString()}] 開始認證`);
+        LogUtils.log('開始認證');
         try {
           authButton.disabled = true;
           authButton.textContent = '認證中...';
@@ -1480,13 +1480,13 @@ document.addEventListener('DOMContentLoaded', async function() {
           // Google OAuth需要在popup環境中進行交互式認證
           const result = await authOperations.authenticateWithGoogle(true);
           if (result.success) {
-            console.log(`[popup.js][${getCurrentTimeString()}] 認證成功`);
+            LogUtils.log('認證成功');
             await updateSyncStatus();
           } else {
             throw new Error(result.error || '認證失敗');
           }
         } catch (error) {
-          console.error(`[popup.js][${getCurrentTimeString()}] 認證失敗:`, error);
+          LogUtils.error('認證失敗:', error);
           showSyncError('認證失敗: ' + error.message);
         } finally {
           authButton.disabled = false;
@@ -1498,16 +1498,16 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 登出按鈕
     if (signoutButton) {
       signoutButton.addEventListener('click', async () => {
-        console.log(`[popup.js][${getCurrentTimeString()}] 開始登出`);
+        LogUtils.log('開始登出');
         try {
           const result = await syncOperations.signOut();
           if (!result.success) {
             throw new Error(result.error);
           }
           await updateSyncStatus();
-          console.log(`[popup.js][${getCurrentTimeString()}] 登出成功`);
+          LogUtils.log('登出成功');
         } catch (error) {
-          console.error(`[popup.js][${getCurrentTimeString()}] 登出失敗:`, error);
+          LogUtils.error('登出失敗:', error);
           showSyncError('登出失敗: ' + error.message);
         }
       });
@@ -1516,20 +1516,20 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 手動同步按鈕
     if (manualSyncButton) {
       manualSyncButton.addEventListener('click', async () => {
-        console.log(`[popup.js][${getCurrentTimeString()}] 開始手動同步`);
+        LogUtils.log('開始手動同步');
         try {
           manualSyncButton.disabled = true;
           manualSyncButton.textContent = '同步中...';
           
           const result = await syncOperations.manualSync();
           if (result.success) {
-            console.log(`[popup.js][${getCurrentTimeString()}] 手動同步成功`);
+            LogUtils.log('手動同步成功');
             clearSyncError();
           } else {
             throw new Error(result.error || '同步失敗');
           }
         } catch (error) {
-          console.error(`[popup.js][${getCurrentTimeString()}] 手動同步失敗:`, error);
+          LogUtils.error('手動同步失敗:', error);
           showSyncError('同步失敗: ' + error.message);
         } finally {
           manualSyncButton.disabled = false;
@@ -1542,7 +1542,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     // 自動同步開關
     if (autoSyncToggle) {
       autoSyncToggle.addEventListener('click', async () => {
-        console.log(`[popup.js][${getCurrentTimeString()}] 切換自動同步`);
+        LogUtils.log('切換自動同步');
         try {
           const enabled = autoSyncToggle.classList.contains('active');
           const newState = !enabled;
@@ -1558,10 +1558,10 @@ document.addEventListener('DOMContentLoaded', async function() {
             autoSyncToggle.classList.remove('active');
           }
           
-          console.log(`[popup.js][${getCurrentTimeString()}] 自動同步已`, newState ? '啟用' : '停用');
+          LogUtils.log('自動同步已' + (newState ? '啟用' : '停用'));
           await updateSyncStatus();
         } catch (error) {
-          console.error(`[popup.js][${getCurrentTimeString()}] 切換自動同步失敗:`, error);
+          LogUtils.error('切換自動同步失敗:', error);
           showSyncError('切換自動同步失敗: ' + error.message);
         }
       });
@@ -1579,10 +1579,10 @@ document.addEventListener('DOMContentLoaded', async function() {
           }
           
           await settingsIO.setSyncInterval(intervalMinutes);
-          console.log(`[popup.js][${getCurrentTimeString()}] 同步間隔已更新為 ${intervalMinutes} 分鐘`);
+          LogUtils.log(`同步間隔已更新為 ${intervalMinutes} 分鐘`);
           
         } catch (error) {
-          console.error(`[popup.js][${getCurrentTimeString()}] 更新同步間隔失敗:`, error);
+          LogUtils.error(`更新同步間隔失敗:`, error);
           showSyncError('更新同步間隔失敗: ' + error.message);
           
           // 重新載入正確的值
@@ -1602,7 +1602,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 更新同步狀態顯示
   async function updateSyncStatus() {
     if (!syncStatus) {
-      console.log(`[popup.js][${getCurrentTimeString()}] updateSyncStatus: syncStatus元素未找到`);
+      LogUtils.log('updateSyncStatus: syncStatus元素未找到');
       return;
     }
 
@@ -1613,7 +1613,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       }
       // 正確解析狀態數據結構（修正：狀態現在直接在 result 中）
       const syncStatusData = result;
-      console.log(`[popup.js][${getCurrentTimeString()}] updateSyncStatus: enabled=${syncStatusData.enabled}, status=${syncStatusData.status}`, {
+      LogUtils.log(`updateSyncStatus: enabled=${syncStatusData.enabled}, status=${syncStatusData.status}`, {
         fullResult: result,
         syncStatusData: syncStatusData
       });
@@ -1655,7 +1655,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
       // 更新自動同步開關（使用 autoSyncActive 屬性）
       if (autoSyncToggle) {
-        console.log(`[popup.js][${getCurrentTimeString()}] 更新自動同步開關狀態: ${syncStatusData.autoSyncActive}`);
+        LogUtils.log(`更新自動同步開關狀態: ${syncStatusData.autoSyncActive}`);
         if (syncStatusData.autoSyncActive) {
           autoSyncToggle.classList.add('active');
         } else {
@@ -1671,7 +1671,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       }
 
     } catch (error) {
-      console.error(`[popup.js][${getCurrentTimeString()}] 更新同步狀態失敗:`, error);
+      LogUtils.error('更新同步狀態失敗:', error);
     }
   }
 
@@ -1728,7 +1728,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
       });
     } catch (error) {
-      console.error('初始化 CustomModelManager 時發生錯誤:', error);
+      LogUtils.error('初始化 CustomModelManager 時發生錯誤:', error);
     }
     
     // 初始化股票爬蟲控制器
@@ -1737,7 +1737,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         StockCrawlerController.init();
       }
     } catch (error) {
-      console.error('初始化 StockCrawlerController 時發生錯誤:', error);
+      LogUtils.error('初始化 StockCrawlerController 時發生錯誤:', error);
     }
   }, 0);
 

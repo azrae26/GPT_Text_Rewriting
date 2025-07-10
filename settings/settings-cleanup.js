@@ -58,15 +58,15 @@ window.SettingsCleanup = {
    */
   async cleanupZombieSettings() {
     try {
-      console.log('[SettingsCleanup] 開始清理殭屍項目...');
+      LogUtils.log('🧹 開始清理殭屍項目...');
       
       // 從 sync storage 清理
       await new Promise((resolve) => {
         chrome.storage.sync.remove(this.ZOMBIE_KEYS, () => {
           if (chrome.runtime.lastError) {
-            console.warn('[SettingsCleanup] Sync storage 清理警告:', chrome.runtime.lastError);
+            LogUtils.warn('Sync storage 清理警告:', chrome.runtime.lastError);
           } else {
-            console.log('[SettingsCleanup] 已從 sync storage 清理殭屍項目');
+            LogUtils.log('已從 sync storage 清理殭屍項目');
           }
           resolve();
         });
@@ -76,18 +76,18 @@ window.SettingsCleanup = {
       await new Promise((resolve) => {
         chrome.storage.local.remove(this.ZOMBIE_KEYS, () => {
           if (chrome.runtime.lastError) {
-            console.warn('[SettingsCleanup] Local storage 清理警告:', chrome.runtime.lastError);
+            LogUtils.warn('Local storage 清理警告:', chrome.runtime.lastError);
           } else {
-            console.log('[SettingsCleanup] 已從 local storage 清理殭屍項目');
+            LogUtils.log('已從 local storage 清理殭屍項目');
           }
           resolve();
         });
       });
       
-      console.log(`[SettingsCleanup] 殭屍項目清理完成，共清理 ${this.ZOMBIE_KEYS.length} 個項目`);
+      LogUtils.important(`殭屍項目清理完成，共清理 ${this.ZOMBIE_KEYS.length} 個項目`);
       return true;
     } catch (error) {
-      console.error('[SettingsCleanup] 清理殭屍項目失敗:', error);
+      LogUtils.error('清理殭屍項目失敗:', error);
       return false;
     }
   },
@@ -118,7 +118,7 @@ window.SettingsCleanup = {
     keysArray.forEach(key => {
       if (!this.ZOMBIE_KEYS.includes(key)) {
         this.ZOMBIE_KEYS.push(key);
-        console.log(`[SettingsCleanup] 已添加新的殭屍項目: ${key}`);
+        LogUtils.log(`已添加新的殭屍項目: ${key}`);
       }
     });
   }
@@ -129,4 +129,4 @@ if (typeof window !== 'undefined') {
   window.SettingsCleanup = window.SettingsCleanup;
 }
 
-console.log('[SettingsCleanup] 設定清理管理器已載入'); 
+LogUtils.log('設定清理管理器已載入'); 

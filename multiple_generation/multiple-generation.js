@@ -126,7 +126,7 @@ window.GenerationConfig = {
      * 初始化生成功能
      */
     initialize() {
-      console.log('GenerationManager 初始化...');
+      LogUtils.log('GenerationManager 初始化...');
       const buttonContainer = document.getElementById('gpt-button-container');
       if (!buttonContainer || document.getElementById('gpt-generate-button')) return;
     
@@ -157,7 +157,7 @@ window.GenerationConfig = {
           content: `請參考以下背景知識：\n${settings.backgroundKnowledge}`
         }];
       } catch (error) {
-        console.error('獲取背景知識時發生錯誤:', error);
+        LogUtils.error('獲取背景知識時發生錯誤:', error);
         return [];
       }
     },
@@ -168,7 +168,7 @@ window.GenerationConfig = {
     async handleGenerateClick(button) {
       try {
         if (this.isGenerating) {
-          console.log('取消生成');
+          LogUtils.log('取消生成');
           this.shouldCancel = true;
           button.disabled = true;
           button.classList.remove('canceling');
@@ -193,7 +193,7 @@ window.GenerationConfig = {
 
         await this.startGeneration(button);
       } catch (error) {
-        console.error('生成錯誤:', error);
+        LogUtils.error('生成錯誤:', error);
         alert('生成錯誤: ' + error.message);
         this.resetGeneration();
       }
@@ -205,7 +205,7 @@ window.GenerationConfig = {
     async parseBackgroundKnowledge() {
       try {
         if (!this.backgroundKnowledgeTextarea) {
-          console.log('取消生成');
+          LogUtils.log('取消生成');
           this.shouldCancel = true;
           button.disabled = true;
           button.classList.remove('canceling');
@@ -230,7 +230,7 @@ window.GenerationConfig = {
   
         await this.startGeneration(button);
       } catch (error) {
-        console.error('生成錯誤:', error);
+        LogUtils.error('生成錯誤:', error);
         alert('生成錯誤: ' + error.message);
         this.resetGeneration();
       }
@@ -240,8 +240,8 @@ window.GenerationConfig = {
      * 重置生成狀態
      */
     resetGeneration() {
-      console.log('[resetGeneration] 開始重置生成狀態');
-      console.log('[resetGeneration] 重置前狀態:', {
+      LogUtils.log('開始重置生成狀態');
+      LogUtils.log('重置前狀態:', {
         isGenerating: this.isGenerating,
         shouldCancel: this.shouldCancel,
         currentBatchIndex: this.currentBatchIndex,
@@ -275,7 +275,7 @@ window.GenerationConfig = {
       this.selectionEnd = null;
   
       if (this.timeoutId) { 
-        console.log('[resetGeneration] 清除計時器');
+        LogUtils.log('清除計時器');
         clearTimeout(this.timeoutId);
         this.timeoutId = null;
       }
@@ -283,14 +283,14 @@ window.GenerationConfig = {
       // 重置按鈕文本
       const button = document.getElementById('gpt-generate-button'); 
       if (button) { 
-        console.log('[resetGeneration] 重置按鈕狀態');
+        LogUtils.log('重置按鈕狀態');
         button.textContent = '生成'; 
         button.classList.remove('canceling'); 
         button.disabled = false;
       }
   
       this.activeRequests.clear();
-      console.log('[resetGeneration] 重置完成，當前狀態:', {
+      LogUtils.log('重置完成，當前狀態:', {
         isGenerating: this.isGenerating,
         shouldCancel: this.shouldCancel,
         currentBatchIndex: this.currentBatchIndex,
@@ -398,7 +398,7 @@ window.GenerationConfig = {
       // 獲取生成上下文
       const context = await this.getGenerationContext();
 
-      console.log(`總共分割成 ${this.totalBatches} 個批次，間隔時間：${this.batchInterval/1000}秒`);
+      LogUtils.log(`總共分割成 ${this.totalBatches} 個批次，間隔時間：${this.batchInterval/1000}秒`);
       await window.Notification.showNotification(`
         模型: ${window.GlobalSettings.getModelDisplayName(finalModel)}<br>
         API KEY: ${apiKey.substring(0, 5)}...<br>
@@ -431,7 +431,7 @@ window.GenerationConfig = {
       const previousBlocks = [];
       const maxBlocks = GenerationConfig.BATCH.MAX_PREVIOUS_BLOCKS;
       
-      console.log(`開始收集前文上下文，當前區塊索引: ${currentIndex}, 最大區塊數: ${maxBlocks}`);
+      LogUtils.log(`開始收集前文上下文，當前區塊索引: ${currentIndex}, 最大區塊數: ${maxBlocks}`);
       
       // 從當前區塊往前收集
       for (let i = currentIndex - 1; i >= 0 && i > currentIndex - maxBlocks; i--) {
@@ -440,7 +440,7 @@ window.GenerationConfig = {
         const optimizeResult = this.generationResults.optimize.get(i);
   
         if (!initialResult || !optimizeResult) {
-          console.log(`警告：找不到區塊 ${i} 的完整生成結果`);
+          LogUtils.log(`警告：找不到區塊 ${i} 的完整生成結果`);
           continue;
         }
   
@@ -451,11 +451,11 @@ window.GenerationConfig = {
       }
   
       if (previousBlocks.length === 0) {
-        console.log('沒有找到任何前文上下文');
+        LogUtils.log('沒有找到任何前文上下文');
         return [];
       }
   
-      console.log(`成功收集到 ${previousBlocks.length} 個區塊的上下文`);
+      LogUtils.log(`成功收集到 ${previousBlocks.length} 個區塊的上下文`);
       return [{
         role: "system",
         content: `請參考前文的生成：\n${previousBlocks.map(block => 
@@ -475,7 +475,7 @@ window.GenerationConfig = {
      */
     async processStage(generatedText, sourceText, reflectionResult, blockIndex, stage, step) {
       try {
-        console.log(`=== 開始處理 ${stage} 階段 ${step} ===`);
+        LogUtils.log(`=== 開始處理 ${stage} 階段 ${step} ===`);
         const settings = await window.GlobalSettings.loadSettings();
         const isReflectStage = stage === 'reflect';
          
@@ -488,12 +488,12 @@ window.GenerationConfig = {
            step === 2 ? settings.generationOptimize_2_Model : 
            settings.generationOptimize_3_Model) || settings.model;
 
-        console.log(`選擇的模型: ${model}`);
+        LogUtils.log(`選擇的模型: ${model}`);
 
         // 如果沒有選擇模型，使用預設模型
         const finalModel = model || window.GlobalSettings.getDefaultModel();
         if (!finalModel) {
-          console.warn(`沒有可用的${stage}模型，跳過${stage}階段`);
+          LogUtils.warn(`沒有可用的${stage}模型，跳過${stage}階段`);
           // 如果是反思階段，返回 null 表示不需要進行後續優化
           // 如果是優化階段，返回上一階段的結果
           if (isReflectStage) {
@@ -512,7 +512,7 @@ window.GenerationConfig = {
           }
         }
 
-        console.log(`最終選擇的模型: ${finalModel}`);
+        LogUtils.log(`最終選擇的模型: ${finalModel}`);
 
         // 獲取對應的指令
         const instruction = isReflectStage ? 
@@ -523,35 +523,35 @@ window.GenerationConfig = {
            step === 2 ? settings.generationOptimize_2_Instruction : 
            settings.generationOptimize_3_Instruction);
 
-        console.log(`獲取到的指令: ${instruction ? '有指令' : '無指令'}`);
+        LogUtils.log(`獲取到的指令: ${instruction ? '有指令' : '無指令'}`);
 
         // 檢查指令是否為空
         if (!instruction || !instruction.trim()) {
-          console.log(`[重要] ${stage} 階段 ${step} 的指令為空，即將停止處理`);
+          LogUtils.log(`${stage} 階段 ${step} 的指令為空，即將停止處理`);
           // 如果是反思階段，返回 null 表示不需要進行後續優化
           // 如果是優化階段，返回上一階段的結果
           if (isReflectStage) {
-            console.log(`[重要] ${stage} 階段 ${step} 返回 null`);
+            LogUtils.log(`${stage} 階段 ${step} 返回 null`);
             return { shouldStop: true, result: null };
           } else {
             let result;
             // 根據步驟返回對應的上一階段結果
             if (step === 1) {
               result = this.generationResults.initial.get(blockIndex)?.generated;
-              console.log(`[重要] ${stage} 階段 ${step} 返回初始生成結果`);
+              LogUtils.log(`${stage} 階段 ${step} 返回初始生成結果`);
             } else if (step === 2) {
               result = this.generationResults.optimize.get(blockIndex);
-              console.log(`[重要] ${stage} 階段 ${step} 返回優化一結果`);
+              LogUtils.log(`${stage} 階段 ${step} 返回優化一結果`);
             } else {
               result = this.generationResults.optimize2.get(blockIndex);
-              console.log(`[重要] ${stage} 階段 ${step} 返回優化二結果`);
+              LogUtils.log(`${stage} 階段 ${step} 返回優化二結果`);
             }
-            console.log(`返回結果是否存在: ${result ? '是' : '否'}`);
+            LogUtils.log(`返回結果是否存在: ${result ? '是' : '否'}`);
             return { shouldStop: true, result };
           }
         }
 
-        console.log(`開始準備 API 請求配置`);
+        LogUtils.log(`開始準備 API 請求配置`);
 
         const isGemini = finalModel.startsWith('gemini');
         
@@ -673,7 +673,7 @@ window.GenerationConfig = {
           replaceParams[reflectionKey] = reflectionResult;
         }
 
-        console.log(`${stage} ${step} 階段替換參數：`, replaceParams);
+        LogUtils.log(`${stage} ${step} 階段替換參數：`, replaceParams);
 
         // 獲取背景知識上下文
         const context = await this.getGenerationContext();
@@ -704,9 +704,9 @@ window.GenerationConfig = {
           // 根據階段保存結果到 local storage
           const storageKey = `generation_${stage}_${step}_${blockIndex}`;
           await chrome.storage.local.set({ [storageKey]: result });
-          console.log(`成功保存結果到 local storage: ${storageKey}`);
+          LogUtils.log(`成功保存結果到 local storage: ${storageKey}`);
         } catch (error) {
-          console.error('保存結果到 local storage 失敗:', error);
+          LogUtils.error('保存結果到 local storage 失敗:', error);
           // 儲存失敗不影響後續處理，僅記錄錯誤
         }
         
@@ -734,7 +734,7 @@ window.GenerationConfig = {
         
         return { shouldStop: false, result: result };
       } catch (error) {
-        console.error(`${stage}階段處理失敗:`, error);
+        LogUtils.error(`${stage}階段處理失敗:`, error);
         return { shouldStop: false, result: null };
       }
     },
@@ -757,7 +757,7 @@ window.GenerationConfig = {
      * 處理下一個批次
      */
     async processNextBatch() {
-      console.log('processNextBatch called. currentBatchIndex:', this.currentBatchIndex, ', totalBatches:', this.totalBatches);
+      LogUtils.log('processNextBatch called. currentBatchIndex:', this.currentBatchIndex, ', totalBatches:', this.totalBatches);
       
       // 如果已經處理完所有批次，直接返回
       if (this.currentBatchIndex >= this.generationQueue.length) {
@@ -789,7 +789,7 @@ window.GenerationConfig = {
           context  // 添加上下文
         );
   
-        console.log(`正在生成第 ${batchIndex + 1}/${this.totalBatches} 批次`);
+        LogUtils.log(`正在生成第 ${batchIndex + 1}/${this.totalBatches} 批次`);
         const generatedText = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true);
   
         if (this.pendingGenerations.has(batchIndex)) {
@@ -798,7 +798,7 @@ window.GenerationConfig = {
           this.completedGenerations.add(batchIndex);
           
           if (this.isAllBatchesCompleted()) {
-            console.log('所有生成批次已完成，開始分區塊反思和優化流程');
+            LogUtils.log('所有生成批次已完成，開始分區塊反思和優化流程');
             clearTimeout(this.timeoutId);
   
             try {
@@ -810,7 +810,7 @@ window.GenerationConfig = {
               // 最後顯示完成通知
               await window.Notification.showNotification('生成優化完成', false);
             } catch (error) {
-              console.error('反思優化處理失敗:', error);
+              LogUtils.error('反思優化處理失敗:', error);
               
               // 即使出錯也要重置按鈕狀態
               this.resetGeneration();
@@ -832,7 +832,7 @@ window.GenerationConfig = {
         if (error.message === '生成請求已取消') {
           return;
         }
-        console.error(`批次 ${batchIndex + 1} 生成錯誤:`, error);
+        LogUtils.error(`批次 ${batchIndex + 1} 生成錯誤:`, error);
         this.pendingGenerations.delete(batchIndex);
       }
     },
@@ -844,7 +844,7 @@ window.GenerationConfig = {
       // 從 generationResults 中獲取初始生成結果
       const result = this.generationResults.initial.get(blockIndex);
       if (!result) {
-        console.log(`警告：找不到區塊 ${blockIndex} 的生成文本`);
+        LogUtils.log(`警告：找不到區塊 ${blockIndex} 的生成文本`);
         return '';
       }
       return result.generated;
@@ -876,11 +876,11 @@ window.GenerationConfig = {
       // 增加完成步驟計數
       this.completedStepsCount++;
       
-      console.log(`\n=== 批次 ${batchIndex + 1}/${this.totalBatches} 生成更新 ===`);
-      console.log('原始文本：\n' + (originalText.length > 500 ? originalText.substring(0, 500) + '...' : originalText));
-      console.log('生成結果：\n' + (finalGeneratedText.length > 500 ? finalGeneratedText.substring(0, 500) + '...' : finalGeneratedText));
-      console.log(`原始長度：${originalText.length}，生成後長度：${finalGeneratedText.length}`);
-      console.log('=====================================\n');
+      LogUtils.log(`\n=== 批次 ${batchIndex + 1}/${this.totalBatches} 生成更新 ===`);
+      LogUtils.log('原始文本：\n' + (originalText.length > 500 ? originalText.substring(0, 500) + '...' : originalText));
+      LogUtils.log('生成結果：\n' + (finalGeneratedText.length > 500 ? finalGeneratedText.substring(0, 500) + '...' : finalGeneratedText));
+      LogUtils.log(`原始長度：${originalText.length}，生成後長度：${finalGeneratedText.length}`);
+      LogUtils.log('=====================================\n');
   
       textArea.value = textArea.value.replace(originalText, finalGeneratedText);
       textArea.dispatchEvent(new Event('input', { bubbles: true }));
@@ -890,9 +890,9 @@ window.GenerationConfig = {
      * 設置 checkbox 元素並載入狀態 (移除監聽器)
      */
     setCheckboxes(removeHashCheckbox, removeStarCheckbox) {
-      console.log('設置 checkboxes...');
-      console.log('removeHashCheckbox:', removeHashCheckbox ? '已提供' : '未提供');
-      console.log('removeStarCheckbox:', removeStarCheckbox ? '已提供' : '未提供');
+      LogUtils.log('設置 checkboxes...');
+      LogUtils.log('removeHashCheckbox:', removeHashCheckbox ? '已提供' : '未提供');
+      LogUtils.log('removeStarCheckbox:', removeStarCheckbox ? '已提供' : '未提供');
   
       this.removeHashCheckbox = removeHashCheckbox;
       this.removeStarCheckbox = removeStarCheckbox;
@@ -970,7 +970,7 @@ window.GenerationConfig = {
   
           // 如果請求成功但已經超時，則忽略這個回應
           if (Date.now() - startTime > timeoutDuration) {
-            console.log(`收到回應但已超時 (${requestType})，忽略此回應`);
+            LogUtils.log(`收到回應但已超時 (${requestType})，忽略此回應`);
             continue;
           }
 
@@ -984,7 +984,7 @@ window.GenerationConfig = {
         } catch (error) {
           // 如果是取消錯誤，直接拋出不重試
           if (error.message === '生成請求已取消' || error.name === 'AbortError') {
-            console.log('檢測到取消請求，停止重試');
+            LogUtils.log('檢測到取消請求，停止重試');
             if (retryTimeoutId) {
               clearTimeout(retryTimeoutId);
               retryTimeoutId = null;
@@ -997,7 +997,7 @@ window.GenerationConfig = {
             const waitTimeMatch = error.message.match(/try again in (\d+\.?\d*)s/);
             if (waitTimeMatch) {
               const waitTime = Math.ceil(parseFloat(waitTimeMatch[1]) * 1000);
-              console.log(`檢測到 rate limit，等待 ${waitTime/1000} 秒後重試...`);
+              LogUtils.log(`檢測到 rate limit，等待 ${waitTime/1000} 秒後重試...`);
               await new Promise(resolve => {
                 retryTimeoutId = setTimeout(resolve, waitTime + 1000);
               }); // 多等1秒以確保安全
@@ -1009,7 +1009,7 @@ window.GenerationConfig = {
           if (retryCount < MAX_RETRIES - 1) {
             retryCount++;
             const errorMessage = error.status ? `狀態碼 ${error.status}` : error.message;
-            console.log(`收到錯誤 (${errorMessage})，等待 ${DELAY/1000} 秒後進行第 ${retryCount} 次重試...`);
+            LogUtils.log(`收到錯誤 (${errorMessage})，等待 ${DELAY/1000} 秒後進行第 ${retryCount} 次重試...`);
             await new Promise(resolve => {
               retryTimeoutId = setTimeout(resolve, DELAY);
             });
@@ -1059,7 +1059,7 @@ window.GenerationConfig = {
 
         return await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'generate');
       } catch (error) {
-        console.error('生成處理失敗:', error);
+        LogUtils.error('生成處理失敗:', error);
         throw error;
       }
     },
@@ -1083,7 +1083,7 @@ window.GenerationConfig = {
      */
     updateFinalText(finalText) {
       if (this.shouldCancel) {
-        console.log('流程已取消，停止文本更新');
+        LogUtils.log('流程已取消，停止文本更新');
         return;
       }
   
@@ -1105,20 +1105,20 @@ window.GenerationConfig = {
      * 處理所有區塊的反思和優化
      */
     async processAllBlocks() {
-      console.log('=== 開始處理所有區塊 ===');
+      LogUtils.log('=== 開始處理所有區塊 ===');
       const resultsMap = new Map();
       
       try {
         // 按順序處理每個區塊
         for (let i = 0; i < this.generationQueue.length; i++) {
-          console.log(`\n=== 處理第 ${i + 1} 個區塊 ===`);
+          LogUtils.log(`\n=== 處理第 ${i + 1} 個區塊 ===`);
           const sourceText = this.generationQueue[i];
           
           // 從 generationResults 中獲取初始生成結果
           const initialResult = this.generationResults.initial.get(i);
           
           if (!initialResult) {
-            console.warn(`找不到第 ${i + 1} 個區塊的生成結果`);
+            LogUtils.warn(`找不到第 ${i + 1} 個區塊的生成結果`);
             continue;
           }
 
@@ -1140,7 +1140,7 @@ window.GenerationConfig = {
             // 依序處理每個步驟
             for (const { type, step, input, prevResult } of steps) {
               const stageName = `${type}${step}`;
-              console.log(`\n--- 開始${type === 'reflect' ? '反思' : '優化'}${step} ---`);
+              LogUtils.log(`\n--- 開始${type === 'reflect' ? '反思' : '優化'}${step} ---`);
               
               // 從 generationResults 中獲取上一步結果
               let prevStageResult = null;
@@ -1160,13 +1160,13 @@ window.GenerationConfig = {
 
               // 如果需要停止
               if (shouldStop) {
-                console.log(`[重要] ${stageName}返回停止信號，停止所有後續處理`);
+                LogUtils.important(`${stageName}返回停止信號，停止所有後續處理`);
                 // 優化階段使用對應的反思結果，反思階段使用上一步結果
                 if (type === 'optimize') {
-                  console.log(`保存${prevResult}結果到結果集`);
+                  LogUtils.log(`保存${prevResult}結果到結果集`);
                   resultsMap.set(i, prevStageResult || lastResult);
                 } else {
-                  console.log(`保存上一步結果到結果集`);
+                  LogUtils.log(`保存上一步結果到結果集`);
                   resultsMap.set(i, lastResult);
                 }
                 return await this.finishProcessing(resultsMap);
@@ -1178,20 +1178,20 @@ window.GenerationConfig = {
               }
             }
             
-            console.log('\n--- 保存最終結果 ---');
+            LogUtils.log('\n--- 保存最終結果 ---');
             resultsMap.set(i, lastResult);
             
           } catch (error) {
-            console.error(`處理第 ${i + 1} 個區塊時發生錯誤:`, error);
+            LogUtils.error(`處理第 ${i + 1} 個區塊時發生錯誤:`, error);
             // 使用初始生成結果作為備用
-            console.log('使用初始生成結果作為備用');
+            LogUtils.log('使用初始生成結果作為備用');
             resultsMap.set(i, generatedText);
-            console.log('[重要] 發生錯誤，停止後續處理');
+            LogUtils.important('發生錯誤，停止後續處理');
             break;
           }
         }
       } catch (error) {
-        console.error('處理區塊時發生錯誤:', error);
+        LogUtils.error('處理區塊時發生錯誤:', error);
         // 如果整體處理失敗，使用所有可用的初始生成結果
         for (let i = 0; i < this.generationQueue.length; i++) {
           const initialResult = this.generationResults.initial.get(i);
@@ -1213,15 +1213,15 @@ window.GenerationConfig = {
         .join('\n');
         
       // 使用統一入口更新最終文本
-      console.log('[重要] 更新最終文本到輸入框');
+      LogUtils.important('更新最終文本到輸入框');
       await this.updateText(finalText, 'final');
       return finalText;
     },
   
     // 取消生成
     cancelGeneration() {
-      console.log('[cancelGeneration] 開始取消生成流程');
-      console.log('[cancelGeneration] 當前狀態:', {
+      LogUtils.log('開始取消生成流程');
+      LogUtils.log('當前狀態:', {
         isGenerating: this.isGenerating,
         shouldCancel: this.shouldCancel,
         activeRequests: this.activeRequests?.size || 0,
@@ -1233,30 +1233,30 @@ window.GenerationConfig = {
   
       // 取消所有進行中的請求
       if (this.activeRequests) {
-        console.log(`[cancelGeneration] 準備取消 ${this.activeRequests.size} 個進行中的請求`);
+        LogUtils.log(`準備取消 ${this.activeRequests.size} 個進行中的請求`);
         this.activeRequests.forEach((controller, index) => {
           try {
-            console.log(`[cancelGeneration] 取消第 ${index + 1} 個請求`);
+            LogUtils.log(`取消第 ${index + 1} 個請求`);
             controller.abort();
           } catch (error) {
-            console.error('[cancelGeneration] 取消請求時發生錯誤:', error);
+            LogUtils.error('取消請求時發生錯誤:', error);
           }
         });
         this.activeRequests.clear();
-        console.log('[cancelGeneration] 已清空活動請求集合');
+        LogUtils.log('已清空活動請求集合');
       }
   
       // 清除所有計時器
       if (this.timeoutId) {
-        console.log('[cancelGeneration] 清除計時器');
+        LogUtils.log('清除計時器');
         clearTimeout(this.timeoutId);
         this.timeoutId = null;
       }
   
       // 重置所有生成相關的狀態
-      console.log('[cancelGeneration] 開始重置生成狀態');
+      LogUtils.log('開始重置生成狀態');
       this.resetGeneration();
-      console.log('[cancelGeneration] 生成取消流程完成');
+      LogUtils.log('生成取消流程完成');
     },
   
     // 更新文本的統一入口
@@ -1266,9 +1266,9 @@ window.GenerationConfig = {
       try {
         // 儲存到 local storage
         await chrome.storage.local.set({ [storageKey]: text });
-        console.log(`成功保存文本到 local storage: ${storageKey}`);
+        LogUtils.log(`成功保存文本到 local storage: ${storageKey}`);
       } catch (error) {
-        console.error('保存文本到 local storage 失敗:', error);
+        LogUtils.error('保存文本到 local storage 失敗:', error);
         // 儲存失敗不影響後續處理，僅記錄錯誤
       }
       

@@ -157,7 +157,7 @@ const GlobalSettings = {
         .filter(line => line && !line.startsWith('//'))
         .map(pattern => new RegExp(pattern.replace(/^\/|\/$/g, ''), 'g'));
     } catch (error) {
-      console.warn('轉換匹配模式時出錯:', error);
+      LogUtils.warn('轉換匹配模式時出錯:', error);
       return [];
     }
   },
@@ -224,7 +224,7 @@ const GlobalSettings = {
         })
       ]);
     } catch (error) {
-      console.warn('保存設置時出錯:', error);
+      LogUtils.warn('保存設置時出錯:', error);
     }
   },
 
@@ -236,33 +236,31 @@ const GlobalSettings = {
    */
   async saveSingleSetting(key, value) {
     try {
-      console.group('儲存設定:', key);
-      console.log('設定值大小:', new TextEncoder().encode(JSON.stringify(value)).length, 'bytes');
+      LogUtils.log('儲存設定:', key);
+      LogUtils.log('設定值大小:', new TextEncoder().encode(JSON.stringify(value)).length, 'bytes');
       
       const isLocal = this.isLocalStorageKey(key);
-      console.log('是否使用 local storage:', isLocal);
+      LogUtils.log('是否使用 local storage:', isLocal);
 
       const storageType = isLocal ? chrome.storage.local : chrome.storage.sync;
-      console.log(`使用 ${isLocal ? 'local' : 'sync'} storage 儲存`);
+      LogUtils.log(`使用 ${isLocal ? 'local' : 'sync'} storage 儲存`);
 
       await new Promise((resolve, reject) => {
         storageType.set({ [key]: value }, () => {
           if (chrome.runtime.lastError) {
-            console.error(`儲存到 ${isLocal ? 'local' : 'sync'} storage 失敗:`, chrome.runtime.lastError);
+            LogUtils.error(`儲存到 ${isLocal ? 'local' : 'sync'} storage 失敗:`, chrome.runtime.lastError);
             reject(new Error(`儲存到 ${isLocal ? 'local' : 'sync'} storage 失敗: ${chrome.runtime.lastError.message}`));
           } else {
-            console.log(`成功儲存到 ${isLocal ? 'local' : 'sync'} storage`);
+            LogUtils.log(`成功儲存到 ${isLocal ? 'local' : 'sync'} storage`);
             resolve();
           }
         });
       });
       
       this[key] = value;
-      console.log('設定值已更新到實例');
-      console.groupEnd();
+      LogUtils.log('設定值已更新到實例');
     } catch (error) {
-      console.error(`儲存設定 ${key} 失敗:`, error);
-      console.groupEnd();
+      LogUtils.error(`儲存設定 ${key} 失敗:`, error);
       throw error;
     }
   },
@@ -292,7 +290,7 @@ const GlobalSettings = {
         this.saveSingleSetting(modelType, value).then(resolve);
       });
     } catch (error) {
-      console.warn('儲存模型選擇時出錯:', error);
+      LogUtils.warn('儲存模型選擇時出錯:', error);
     }
   },
 

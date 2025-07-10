@@ -2,16 +2,19 @@
  * 替換管理整合模組
  * 
  * 依賴模組：
- * 1. text_replace/manual-replace-manager.js
+ * 1. default.js
+ *    - LogUtils：統一日誌輸出功能
+ * 
+ * 2. text_replace/manual-replace-manager.js
  *    - ManualReplaceManager.PreviewHighlight.initialize：初始化預覽功能
  *    - ManualReplaceManager.PreviewHighlight.updatePreview：更新預覽顯示
  *    - ManualReplaceManager.checkAndForceUpdateHighlights：檢查並強制更新高亮
  *    - ManualReplaceManager.startHighlightCheck：開始定期檢查高亮
  * 
- * 2. text_replace/auto-replace-manager.js
+ * 3. text_replace/auto-replace-manager.js
  *    - AutoReplaceManager.handleAutoReplace：處理自動替換
  * 
- * 3. Chrome Storage API
+ * 4. Chrome Storage API
  *    - chrome.storage.sync：用於存儲和讀取位置設定
  *    - chrome.storage.local：用於存儲和讀取替換規則
  * 
@@ -33,7 +36,7 @@ const ReplaceManager = {
     try {
       // 先檢查是否應該啟用功能
       if (!window.shouldEnableFeatures()) {
-        console.log('不在目標頁面，移除UI');
+        LogUtils.log('不在目標頁面，移除UI');
         this.removeReplaceUI();
         return;
       }
@@ -43,7 +46,7 @@ const ReplaceManager = {
 
       const textArea = document.querySelector('textarea[name="content"]');
       if (!textArea) {
-        console.error('找不到文本區域元素');
+        LogUtils.error('找不到文本區域元素');
         return;
       }
 
@@ -68,9 +71,9 @@ const ReplaceManager = {
         this._initializeManualGroups(mainContainer, otherContainer, textArea),
         this._initializeAutoGroups(otherContainer, textArea)
       ]).then(() => {
-        console.log('所有替換組初始化完成');
+        LogUtils.important('✅ 所有替換組初始化完成');
       }).catch(error => {
-        console.error('初始化替換組時出錯:', error);
+        LogUtils.error('初始化替換組時出錯:', error);
       });
 
       // 在創建其他組容器後，添加大型輸入框事件處理
@@ -85,14 +88,14 @@ const ReplaceManager = {
       // 簡化的拖動功能
       this._initializeDragFeature(otherContainer);
 
-      console.log('替換介面初始化完成');
+      LogUtils.important('🎛️ 替換介面初始化完成');
       
       // 設置 MutationObserver 監控文本區域，處理動態變化
       this._setupTextAreaObserver(textArea);
       
       return { mainContainer, otherContainer };
     } catch (error) {
-      console.error('初始化替換介面時出錯:', error);
+      LogUtils.error('初始化替換介面時出錯:', error);
       // 嘗試清理已創建的元素
       this.removeReplaceUI();
       return null;
@@ -104,7 +107,7 @@ const ReplaceManager = {
     try {
       chrome.storage.sync.get([this.CONFIG.STORAGE_KEY], (result) => {
         if (chrome.runtime.lastError) {
-          console.warn('載入位置設定時出錯:', chrome.runtime.lastError);
+          LogUtils.warn('載入位置設定時出錯:', chrome.runtime.lastError);
           container.style.cssText = 'right: 20px; top: 20px;';
           return;
         }
@@ -115,7 +118,7 @@ const ReplaceManager = {
           : 'right: 20px; top: 20px;';
       });
     } catch (error) {
-      console.error('載入容器位置時出錯:', error);
+      LogUtils.error('載入容器位置時出錯:', error);
       container.style.cssText = 'right: 20px; top: 20px;';
     }
   },
@@ -132,7 +135,7 @@ const ReplaceManager = {
         window.ManualReplaceManager.initializeManualGroups(mainContainer, otherContainer, textArea);
         resolve();
       } catch (error) {
-        console.error('初始化手動替換組時出錯:', error);
+        LogUtils.error('初始化手動替換組時出錯:', error);
         reject(error);
       }
     });
@@ -150,7 +153,7 @@ const ReplaceManager = {
         window.AutoReplaceManager.initializeAutoReplaceGroups(otherContainer, textArea);
         resolve();
       } catch (error) {
-        console.error('初始化自動替換組時出錯:', error);
+        LogUtils.error('初始化自動替換組時出錯:', error);
         reject(error);
       }
     });
@@ -162,7 +165,7 @@ const ReplaceManager = {
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
         if (mutation.type === 'childList' && Array.from(mutation.removedNodes).includes(textArea)) {
-          console.log('文本區域被移除，重新初始化替換介面');
+          LogUtils.log('文本區域被移除，重新初始化替換介面');
           // 延遲執行以確保新的文本區域已經添加到頁面
           setTimeout(() => this.initializeReplaceUI(), 500);
           observer.disconnect();
@@ -483,7 +486,7 @@ const ReplaceManager = {
 
   /** 移除替換介面 */
   removeReplaceUI() {
-    console.log('移除替換介面');
+    LogUtils.log('移除替換介面');
     const elements = [
       document.getElementById('text-replace-main'),
       document.getElementById('text-replace-container'),
@@ -493,7 +496,7 @@ const ReplaceManager = {
     elements.forEach(element => {
       if (element) {
         element.remove();
-        console.log(`已移除元素: ${element.id || element.className}`);
+        LogUtils.log(`已移除元素: ${element.id || element.className}`);
       }
     });
 
@@ -595,7 +598,7 @@ const ReplaceManager = {
           this._sendMessageToContentScript(group, isManual);
         }
       } catch (error) {
-        console.error('處理輸入事件時出錯:', error);
+        LogUtils.error('處理輸入事件時出錯:', error);
       }
     }, 300);
 
@@ -652,7 +655,7 @@ const ReplaceManager = {
     try {
       chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
         if (!tabs[0]) {
-          console.log('找不到活動標籤頁');
+          LogUtils.log('找不到活動標籤頁');
           return;
         }
         
@@ -678,7 +681,7 @@ const ReplaceManager = {
             rules: rules
           }, function(response) {
             if (chrome.runtime.lastError) {
-              console.debug('Content script 正在載入中...');
+              LogUtils.log('Content script 正在載入中...');
             } else {
               // 發送觸發替換的消息
               chrome.tabs.sendMessage(tabs[0].id, {
@@ -687,11 +690,11 @@ const ReplaceManager = {
             }
           });
         } catch (error) {
-          console.error('發送消息時出錯:', error);
+          LogUtils.error('發送消息時出錯:', error);
         }
       });
     } catch (error) {
-      console.error('準備發送消息時出錯:', error);
+      LogUtils.error('準備發送消息時出錯:', error);
     }
   },
 
@@ -708,7 +711,7 @@ const ReplaceManager = {
     } = options;
 
     if (isManual) {
-      console.log('初始化手動替換組，使用存儲鍵名:', storageKey);
+      LogUtils.log('初始化手動替換組，使用存儲鍵名:', storageKey);
       
       // 初始化預覽
       window.ManualReplaceManager.PreviewHighlight.initialize(textArea);
@@ -724,11 +727,11 @@ const ReplaceManager = {
 
       // 使用統一的存儲邏輯讀取規則
       this.StorageHelper.loadRules(storageKey, [{ from: '', to: '' }], (rules) => {
-        console.log('讀取到的規則:', rules);
+        LogUtils.log('讀取到的規則:', rules);
         
         // 新增：過濾掉空組（只有當 from 或 to 有內容時才保留）
         const filteredRules = rules.filter(rule => rule.from?.trim() || rule.to?.trim());
-        console.log('過濾後的規則:', filteredRules);
+        LogUtils.log('過濾後的規則:', filteredRules);
         
         // 如果過濾後沒有規則，添加一個空規則作為預設
         const finalRules = filteredRules.length > 0 ? filteredRules : [{ from: '', to: '' }];
@@ -768,14 +771,14 @@ const ReplaceManager = {
         window.ManualReplaceManager.startHighlightCheck();
       });
     } else {
-      console.log('初始化自動替換組，使用存儲鍵名:', storageKey);
+      LogUtils.log('初始化自動替換組，使用存儲鍵名:', storageKey);
       
       // 使用統一的存儲邏輯讀取規則
       this.StorageHelper.loadRules(storageKey, [{}], (rules) => {
-        console.log('讀取到的規則:', rules);
+        LogUtils.log('讀取到的規則:', rules);
         
         const filteredRules = rules.filter(rule => rule.from?.trim() || rule.to?.trim());
-        console.log('過濾後的規則:', filteredRules);
+        LogUtils.log('過濾後的規則:', filteredRules);
         
         const finalRules = filteredRules.length > 0 ? filteredRules : [{}];
         
@@ -817,7 +820,7 @@ const ReplaceManager = {
       const storageKey = key.startsWith('replace_') ? key : `replace_${key}`;
       chrome.storage.local.set({ [storageKey]: rules }, () => {
         if (chrome.runtime.lastError) {
-          console.error(`保存規則失敗: ${storageKey}`, chrome.runtime.lastError);
+          LogUtils.error(`保存規則失敗: ${storageKey}`, chrome.runtime.lastError);
         } else if (callback) {
           callback();
         }
@@ -924,7 +927,7 @@ const ReplaceManager = {
           // 如果未指定容器，嘗試從組元素獲取父元素
           targetContainer = group.parentElement;
           if (!targetContainer) {
-            console.error('無法找到有效的容器元素');
+            LogUtils.error('無法找到有效的容器元素');
             return; // 中止操作
           }
         }
@@ -1002,7 +1005,7 @@ const ReplaceManager = {
                         lockHorizontal, startX, startY, startRect, placeholderId, groupSelector) {
       // 檢查必要參數
       if (!group || !placeholder || !container || !startRect) {
-        console.error('_handleSortMouseMove: 缺少必要參數', { 
+        LogUtils.error('_handleSortMouseMove: 缺少必要參數', { 
           group, placeholder, container, startRect 
         });
         return { isInTopScrollZone: false, isInBottomScrollZone: false };
@@ -1024,7 +1027,7 @@ const ReplaceManager = {
       try {
         containerRect = container.getBoundingClientRect();
       } catch (error) {
-        console.error('獲取容器位置信息失敗:', error);
+        LogUtils.error('獲取容器位置信息失敗:', error);
         return { isInTopScrollZone: false, isInBottomScrollZone: false };
       }
       
@@ -1038,7 +1041,7 @@ const ReplaceManager = {
       // 用佔位符跟拖移元素相對位置來判斷方向
       if (placeholderRect.top < groupRect.top) {
         // 佔位符在拖移元素上方，往下移
-        console.log('拖移方向：往下');
+        LogUtils.log('拖移方向：往下');
         
         const nextElement = placeholder.nextElementSibling;
         if (nextElement && nextElement !== group && nextElement.id !== placeholderId) {
@@ -1049,7 +1052,7 @@ const ReplaceManager = {
           if (e.clientY > nextElementTop) {
             nextSibling = nextElement.nextElementSibling; // 插入到下個元素之後
             shouldMove = true;
-            console.log('觸發往下移動：滑鼠超過下個元素頂部');
+            LogUtils.log('觸發往下移動：滑鼠超過下個元素頂部');
           }
         } else if (nextElement === group) {
           // 如果下個元素是拖移元素本身，檢查再下一個元素
@@ -1061,7 +1064,7 @@ const ReplaceManager = {
             if (e.clientY > nextNextElementTop) {
               nextSibling = nextNextElement.nextElementSibling; // 插入到下下個元素之後
               shouldMove = true;
-              console.log('觸發往下移動：滑鼠超過下下個元素頂部');
+              LogUtils.log('觸發往下移動：滑鼠超過下下個元素頂部');
             }
           } else if (!nextNextElement) {
             // 已經是最後一個元素，檢查是否要移到最後
@@ -1069,13 +1072,13 @@ const ReplaceManager = {
             if (e.clientY > groupBottom) {
               nextSibling = null; // 移到最後
               shouldMove = true;
-              console.log('觸發移到最後：滑鼠超過拖移元素底部');
+              LogUtils.log('觸發移到最後：滑鼠超過拖移元素底部');
             }
           }
         }
       } else {
         // 佔位符在拖移元素下方，往上移
-        console.log('拖移方向：往上');
+        LogUtils.log('拖移方向：往上');
         
         // 找到佔位符的前一個元素
         const allSiblings = Array.from(container.querySelectorAll(groupSelector) || []);
@@ -1091,7 +1094,7 @@ const ReplaceManager = {
             if (e.clientY < prevElementBottom) {
               nextSibling = prevElement; // 插入到上個元素之前
               shouldMove = true;
-              console.log(`觸發往上移動：滑鼠Y${e.clientY}低於上個元素底部Y${prevElementBottom}`);
+              LogUtils.log(`觸發往上移動：滑鼠Y${e.clientY}低於上個元素底部Y${prevElementBottom}`);
           }
           } else if (prevElement === group) {
             // 如果上個元素是拖移元素本身，檢查再上一個元素
@@ -1104,7 +1107,7 @@ const ReplaceManager = {
                 if (e.clientY < prevPrevElementBottom) {
                   nextSibling = prevPrevElement; // 插入到上上個元素之前
                   shouldMove = true;
-                  console.log('觸發往上移動：滑鼠低於上上個元素底部');
+                  LogUtils.log('觸發往上移動：滑鼠低於上上個元素底部');
           }
         }
             } else {
@@ -1113,7 +1116,7 @@ const ReplaceManager = {
               if (e.clientY < groupTop) {
                 nextSibling = allSiblings[0]; // 移到最前
                 shouldMove = true;
-                console.log('觸發移到最前：滑鼠高於拖移元素頂部');
+                LogUtils.log('觸發移到最前：滑鼠高於拖移元素頂部');
               }
             }
           }
@@ -1128,9 +1131,9 @@ const ReplaceManager = {
         if (needsMove) {
           try {
             container.insertBefore(placeholder, nextSibling);
-            console.log('佔位符已移動到新位置');
+            LogUtils.log('佔位符已移動到新位置');
           } catch (error) {
-            console.error('移動佔位符失敗:', error);
+            LogUtils.error('移動佔位符失敗:', error);
           }
         }
       }
@@ -1150,7 +1153,7 @@ const ReplaceManager = {
     _handleSortMouseUp(group, placeholder, container, onComplete, scrollInterval, moveHandler, upHandler) {
       // 檢查必要參數
       if (!group) {
-        console.error('_handleSortMouseUp: 缺少必要參數 group');
+        LogUtils.error('_handleSortMouseUp: 缺少必要參數 group');
         return;
       }
       
@@ -1159,7 +1162,7 @@ const ReplaceManager = {
         try {
           clearInterval(scrollInterval);
         } catch (error) {
-          console.error('清除滾動定時器失敗:', error);
+          LogUtils.error('清除滾動定時器失敗:', error);
         }
       }
       
@@ -1184,12 +1187,12 @@ const ReplaceManager = {
             onComplete(container);
           }
         } catch (error) {
-          console.error('移動元素到新位置失敗:', error);
+          LogUtils.error('移動元素到新位置失敗:', error);
         }
       } else {
         // 如果無法找到佔位符或容器，嘗試恢復正常顯示
         if (group.parentElement) {
-          console.log('無法找到佔位符或容器，嘗試恢復正常顯示');
+          LogUtils.log('無法找到佔位符或容器，嘗試恢復正常顯示');
         }
       }
       
@@ -1209,11 +1212,11 @@ const ReplaceManager = {
    */
   async _checkManualReplaceConsistency() {
     try {
-      console.log('[ReplaceManager] 🔍 開始檢查手動替換規則UI一致性...');
+      LogUtils.log('🔍 開始檢查手動替換規則UI一致性...');
       
       // 🆕 防重複調用機制：如果正在檢查中，跳過此次調用
       if (this._consistencyCheckInProgress) {
-        console.log('[ReplaceManager] ⏸️ 一致性檢查已在進行中，跳過此次調用');
+        LogUtils.log('⏸️ 一致性檢查已在進行中，跳過此次調用');
         return;
       }
       
@@ -1221,7 +1224,7 @@ const ReplaceManager = {
       
       // 檢查是否有 ManualReplaceManager 實例
       if (!window.ManualReplaceManager) {
-        console.log('[ReplaceManager] ⚠️ ManualReplaceManager 未找到，跳過一致性檢查');
+        LogUtils.log('⚠️ ManualReplaceManager 未找到，跳過一致性檢查');
         return;
       }
       
@@ -1238,11 +1241,11 @@ const ReplaceManager = {
       const isConsistent = this._compareRules(currentStorageRules, currentUIRules);
       
       if (isConsistent) {
-        console.log('[ReplaceManager] ✅ UI內容與存儲內容一致，無需更新');
+        LogUtils.log('✅ UI內容與存儲內容一致，無需更新');
       } else {
-        console.log('[ReplaceManager] ⚠️ 檢測到UI內容與存儲內容不一致，觸發刷新');
-        console.log('[ReplaceManager] 📊 存儲規則數量:', currentStorageRules.length);
-        console.log('[ReplaceManager] 📊 UI規則數量:', currentUIRules.length);
+        LogUtils.log('⚠️ 檢測到UI內容與存儲內容不一致，觸發刷新');
+        LogUtils.log('📊 存儲規則數量:', currentStorageRules.length);
+        LogUtils.log('📊 UI規則數量:', currentUIRules.length);
         
         // 觸發UI刷新
         setTimeout(() => {
@@ -1251,7 +1254,7 @@ const ReplaceManager = {
       }
       
     } catch (error) {
-      console.error('[ReplaceManager] ❌ UI一致性檢查失敗:', error);
+      LogUtils.error('❌ UI一致性檢查失敗:', error);
     } finally {
       // 🆕 重置檢查標記，允許後續檢查
       setTimeout(() => {
@@ -1308,10 +1311,10 @@ const ReplaceManager = {
         }
       });
       
-      console.log('[ReplaceManager] 📊 從UI提取到', rules.length, '條規則');
+      LogUtils.log('📊 從UI提取到', rules.length, '條規則');
       
     } catch (error) {
-      console.error('[ReplaceManager] ❌ 提取UI規則失敗:', error);
+      LogUtils.error('❌ 提取UI規則失敗:', error);
     }
     
     return rules;
@@ -1331,7 +1334,7 @@ const ReplaceManager = {
     
     // 數量不同
     if (validStorageRules.length !== validUIRules.length) {
-      console.log('[ReplaceManager] 🔍 規則數量不同:', {
+      LogUtils.log('🔍 規則數量不同:', {
         storage: validStorageRules.length,
         ui: validUIRules.length
       });
@@ -1344,7 +1347,7 @@ const ReplaceManager = {
       const uiRule = validUIRules[i];
       
       if (storageRule.from !== uiRule.from || storageRule.to !== uiRule.to) {
-        console.log('[ReplaceManager] 🔍 規則內容不同 at index', i, ':', {
+        LogUtils.log('🔍 規則內容不同 at index', i, ':', {
           storage: storageRule,
           ui: uiRule
         });
@@ -1365,11 +1368,11 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
     if (request.action === 'settingsUpdated') {
       const { reason, changedKeys } = request.data || {};
       
-      console.log('[ReplaceManager] 🔔 收到設定更新消息:', { reason, changedKeys });
+      LogUtils.log('🔔 收到設定更新消息:', { reason, changedKeys });
       
       // 檢查是否需要刷新手動替換組
       if (changedKeys && window.ManualReplaceManager && window.ManualReplaceManager.shouldRefresh(changedKeys)) {
-        console.log('[ReplaceManager] 🔄 檢測到手動替換規則變化，開始刷新UI');
+        LogUtils.log('🔄 檢測到手動替換規則變化，開始刷新UI');
         
         // 延遲一點執行，確保設定已經完全保存
         setTimeout(() => {
@@ -1387,13 +1390,13 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
     else if (request.action === 'checkUIConsistency') {
       const { reason, description } = request.data || {};
       
-      console.log('[ReplaceManager] 🔍 收到UI一致性檢查消息:', { reason, description });
+      LogUtils.log('🔍 收到UI一致性檢查消息:', { reason, description });
       
       // 檢查手動替換規則的UI一致性
       if (window.ReplaceManager) {
         window.ReplaceManager._checkManualReplaceConsistency();
       } else {
-        console.log('[ReplaceManager] ⚠️ ReplaceManager 實例未找到，跳過UI一致性檢查');
+        LogUtils.log('⚠️ ReplaceManager 實例未找到，跳過UI一致性檢查');
       }
       
       // 向背景腳本回應已處理
@@ -1405,5 +1408,5 @@ if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.onMessage)
     return false; // 不保持消息通道開啟
   });
   
-  console.log('[ReplaceManager] 📡 設定更新和UI一致性檢查監聽器已設置');
+  LogUtils.log('📡 設定更新和UI一致性檢查監聽器已設置');
 } 

@@ -19,14 +19,7 @@
  */
 
 const ManualReplaceManager = {
-  // 動態時間格式化函數
-  _getTimeStamp() {
-    const now = new Date();
-    const hours = now.getHours().toString().padStart(2, '0');
-    const minutes = now.getMinutes().toString().padStart(2, '0');
-    const seconds = now.getSeconds().toString().padStart(2, '0');
-    return `${hours}:${minutes}:${seconds}`;
-  },
+
 
   CONFIG: {
     MIN_WIDTH: 80,
@@ -378,11 +371,11 @@ const ManualReplaceManager = {
           return;
         }
         
-        console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 🎯 文本選取事件: 選取長度=${selectedText.length}, 內容="${selectedText}"`);
+        LogUtils.important(`🎯 文本選取事件: 選取長度=${selectedText.length}, 內容="${selectedText}"`);
         lastSelectedText = selectedText;
 
         if (selectedText) {
-          console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ✅ 設定主組文字: "${selectedText}"`);
+          LogUtils.important(`✅ 設定主組文字: "${selectedText}"`);
           fromInput.value = selectedText;
           toInput.value = '';
           
@@ -399,7 +392,7 @@ const ManualReplaceManager = {
           this._updatePreviews();
           
         } else if (!selectedText && fromInput.value) {
-          console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 🧹 清空主組內容`);
+          LogUtils.log(`🧹 清空主組內容`);
           // 當沒有選取文字且 fromInput 有值時清空
           fromInput.value = '';
           toInput.value = '';
@@ -417,7 +410,7 @@ const ManualReplaceManager = {
           updateButton();
         }
       } catch (error) {
-        console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 處理文本選取時出錯:`, error);
+        LogUtils.error(`❌ 處理文本選取時出錯:`, error);
       }
     };
 
@@ -458,7 +451,7 @@ const ManualReplaceManager = {
         this._updatePreviews();
       }
     } catch (error) {
-      console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 替換錯誤:`, error);
+      LogUtils.error(`❌ 替換錯誤:`, error);
     }
   },
 
@@ -487,8 +480,10 @@ const ManualReplaceManager = {
     container: null,
     groupHighlights: new Map(), // 存儲每個組的高亮元素 Map<groupIndex, Map<key, element>>
     cachedGroupPositions: new Map(), // 🆕 獨立位置緩存 Map<groupIndex, positions[]>
+    isCacheInitialized: false, // 🆕 緩存是否已初始化標記
     observer: null, // IntersectionObserver 實例
     _updateTimer: null, // 防抖計時器
+    _isUpdating: false, // 🆕 防止重複調用標記
 
     initialize(textArea) {
       if (!textArea) return;
@@ -538,7 +533,7 @@ const ManualReplaceManager = {
 
       const updateAfterResize = () => {
         if (!textArea || !this.container) {
-          console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 找不到必要元素`);
+          LogUtils.error(`❌ 找不到必要元素`);
           return;
         }
         
@@ -585,166 +580,207 @@ const ManualReplaceManager = {
     },
 
     _updateVirtualScrolling(textArea) {
-      // 🔍 統一緩存同步驗證 - 在處理所有組之前統一檢查
-      const currentText = textArea.value;
-      
-      // 🔥 強制性 DOM 同步 - 確保位置計算的 DOM 內容完全一致
-      if (TextHighlight.PositionCalculator && TextHighlight.PositionCalculator.cache) {
-        const cachedText = TextHighlight.PositionCalculator.cache.lastText || '';
-        
-        // 🆕 只在內容真正不同時才清理緩存，避免無用的清理
-        if (cachedText !== currentText) {
-          console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 🔄 文本內容變化，智能清理緩存`);
-          // 智能清理緩存，避免重複操作
-          ManualReplaceManager._smartCleanCaches();
-        }
-        
-        // 多重強制同步策略
-        if (TextHighlight.PositionCalculator.cache.div) {
-          const div = TextHighlight.PositionCalculator.cache.div;
-          
-          // 1. 完全重置 div
-          div.textContent = '';
-          div.innerHTML = '';
-          
-          // 2. 強制瀏覽器重排
-          div.offsetHeight;
-          div.scrollTop;
-          
-          // 3. 分步設置內容，確保同步
-          div.textContent = currentText;
-          
-          // 4. 再次強制重排並驗證
-          div.offsetHeight;
-          const verifyText = div.textContent || '';
-          
-          // 5. 如果同步失敗，重新創建 div
-          if (verifyText.length !== currentText.length || verifyText !== currentText) {
-            console.warn(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ DOM 同步失敗，重新創建計算容器`);
-            
-            // 移除舊的 div
-            if (div.parentNode) {
-              div.parentNode.removeChild(div);
-            }
-            
-            // 重新創建 div 並設置樣式
-            const newDiv = document.createElement('div');
-            const styles = TextHighlight.PositionCalculator.getTextAreaStyles(textArea);
-            newDiv.style.cssText = `
-              position: absolute;
-              visibility: hidden;
-              pointer-events: none;
-              white-space: pre-wrap;
-              word-wrap: break-word;
-              overflow-wrap: break-word;
-              font: ${styles.font};
-              line-height: ${styles.lineHeight}px;
-              width: ${textArea.offsetWidth}px;
-              height: auto;
-              border: none;
-              margin: 0;
-              padding: ${styles.padding};
-              left: -9999px;
-              top: -9999px;
-            `;
-            
-            // 添加到 DOM 並設置內容
-            document.body.appendChild(newDiv);
-            newDiv.textContent = currentText;
-            
-            // 強制重排並更新緩存
-            newDiv.offsetHeight;
-            TextHighlight.PositionCalculator.cache.div = newDiv;
-          }
-        }
-        
-        // 強制更新緩存狀態
-        TextHighlight.PositionCalculator.cache.lastText = currentText;
-        TextHighlight.PositionCalculator.cache.positions.clear();
-      }
-
-      const scrollTop = textArea.scrollTop;
-      const scrollBottom = scrollTop + textArea.clientHeight;
-      const bufferSize = 200;
-      
-      // 使用 SharedVirtualScroll 的多組更新方法
-      const groupedPositions = new Map();
-      
-      // 清理所有組，再重新添加有內容的組
-      const activeGroups = new Set();
-      
-      // 🎯 優先處理主組（索引 0）- 確保用戶選取的文字立即顯示
-      if (ManualReplaceManager._rules.mainGroup?.from?.trim()) {
-        console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 處理主組: "${ManualReplaceManager._rules.mainGroup.from}"`);
-        const positions = this._getGroupPositions(textArea, ManualReplaceManager._rules.mainGroup.from, 0);
-        if (positions && positions.length > 0) {
-          groupedPositions.set(0, positions);
-          activeGroups.add(0);
-          console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 主組成功獲取 ${positions.length} 個位置`);
-        } else {
-          console.warn(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 主組位置獲取失敗: "${ManualReplaceManager._rules.mainGroup.from}"`);
-        }
+      // 🆕 防止重複調用
+      if (this._isUpdating) {
+        LogUtils.log(`正在更新中，跳過重複調用`);
+        return;
       }
       
-      // 然後處理額外組
-      ManualReplaceManager._rules.extraGroups.forEach((rule, index) => {
-        if (rule.from?.trim()) {
-          const positions = this._getGroupPositions(textArea, rule.from, index + 1);
-          if (positions && positions.length > 0) {
-            groupedPositions.set(index + 1, positions);
-            activeGroups.add(index + 1);
-          }
-        }
-      });
+      this._isUpdating = true;
       
-      // 清理非活躍組的高亮
-      this.groupHighlights.forEach((groupHighlightMap, groupIndex) => {
-        if (!activeGroups.has(groupIndex)) {
-          console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 清理非活躍組 ${groupIndex} 的高亮`);
-          this.clearGroupHighlights(groupIndex);
-        }
-      });
-      
-      // 🆕 保存位置數據到獨立緩存
-      console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 保存 ${groupedPositions.size} 個組的位置數據到緩存`);
-      this.cachedGroupPositions.clear();
-      groupedPositions.forEach((positions, groupIndex) => {
-        this.cachedGroupPositions.set(groupIndex, positions);
-      });
-
-      // 使用 SharedVirtualScroll 更新可見性
       try {
-        TextHighlight.SharedVirtualScroll.updateMultiGroupVirtualView({
-          groupedPositions,
-          groupHighlights: this.groupHighlights,
-          visibleTop: scrollTop - bufferSize,
-          visibleBottom: scrollBottom + bufferSize,
-          scrollTop,
-          createHighlight: (pos) => {
-            const element = TextHighlight.Renderer.createPreviewHighlight(
-              pos.position,
-              pos.position.width,
-              pos.lineHeight,
-              pos.color
-            );
-            // 🔗 存儲位置數據供滾動時重用
-            element.positionData = pos;
-            return element;
-          },
-          container: this.container,
-          highlightClass: 'replace-preview-highlight'
+        // 🔍 統一緩存同步驗證 - 在處理所有組之前統一檢查
+        const currentText = textArea.value;
+        
+        // 🆕 早期文本有效性檢查 - 避免對無效文本進行無意義處理
+        if (!currentText || typeof currentText !== 'string' || currentText.length === 0) {
+          LogUtils.log(`文本內容為空或無效，跳過處理`);
+          
+          // 清理現有高亮
+          this.clearAllHighlights();
+          
+          // 標記緩存已初始化（空狀態也是有效狀態）
+          this.isCacheInitialized = true;
+          
+          return;
+        }
+        
+        // 🔥 強制性 DOM 同步 - 確保位置計算的 DOM 內容完全一致
+        if (TextHighlight.PositionCalculator && TextHighlight.PositionCalculator.cache) {
+          const cachedText = TextHighlight.PositionCalculator.cache.lastText || '';
+          
+          // 🆕 只在內容真正不同時才清理緩存，避免無用的清理
+          if (cachedText !== currentText) {
+            LogUtils.log(`🔄 文本內容變化，智能清理緩存`);
+            // 智能清理緩存，避免重複操作
+            ManualReplaceManager._smartCleanCaches();
+          }
+          
+          // 多重強制同步策略
+          if (TextHighlight.PositionCalculator.cache.div) {
+            const div = TextHighlight.PositionCalculator.cache.div;
+            
+            // 1. 完全重置 div
+            div.textContent = '';
+            div.innerHTML = '';
+            
+            // 2. 強制瀏覽器重排
+            div.offsetHeight;
+            div.scrollTop;
+            
+            // 3. 分步設置內容，確保同步
+            div.textContent = currentText;
+            
+            // 4. 再次強制重排並驗證
+            div.offsetHeight;
+            const verifyText = div.textContent || '';
+            
+            // 5. 如果同步失敗，重新創建 div
+            if (verifyText.length !== currentText.length || verifyText !== currentText) {
+              LogUtils.warn(`❌ DOM 同步失敗，重新創建計算容器`);
+              
+              // 移除舊的 div
+              if (div.parentNode) {
+                div.parentNode.removeChild(div);
+              }
+              
+              // 重新創建 div 並設置樣式
+              const newDiv = document.createElement('div');
+              const styles = TextHighlight.PositionCalculator.getTextAreaStyles(textArea);
+              newDiv.style.cssText = `
+                position: absolute;
+                visibility: hidden;
+                pointer-events: none;
+                white-space: pre-wrap;
+                word-wrap: break-word;
+                overflow-wrap: break-word;
+                font: ${styles.font};
+                line-height: ${styles.lineHeight}px;
+                width: ${textArea.offsetWidth}px;
+                height: auto;
+                border: none;
+                margin: 0;
+                padding: ${styles.padding};
+                left: -9999px;
+                top: -9999px;
+              `;
+              
+              // 添加到 DOM 並設置內容
+              document.body.appendChild(newDiv);
+              newDiv.textContent = currentText;
+              
+              // 強制重排並更新緩存
+              newDiv.offsetHeight;
+              TextHighlight.PositionCalculator.cache.div = newDiv;
+            }
+          }
+          
+          // 強制更新緩存狀態
+          TextHighlight.PositionCalculator.cache.lastText = currentText;
+          TextHighlight.PositionCalculator.cache.positions.clear();
+        }
+
+        const scrollTop = textArea.scrollTop;
+        const scrollBottom = scrollTop + textArea.clientHeight;
+        const bufferSize = 200;
+        
+        // 使用 SharedVirtualScroll 的多組更新方法
+        const groupedPositions = new Map();
+        
+        // 清理所有組，再重新添加有內容的組
+        const activeGroups = new Set();
+        
+        // 🎯 優先處理主組（索引 0）- 確保用戶選取的文字立即顯示
+        if (ManualReplaceManager._rules.mainGroup?.from?.trim()) {
+          LogUtils.log(`處理主組: "${ManualReplaceManager._rules.mainGroup.from}"`);
+          const positions = this._getGroupPositions(textArea, ManualReplaceManager._rules.mainGroup.from, 0);
+          if (positions && positions.length > 0) {
+            groupedPositions.set(0, positions);
+            activeGroups.add(0);
+            LogUtils.log(`主組成功獲取 ${positions.length} 個位置`);
+          } else {
+            LogUtils.warn(`主組位置獲取失敗: "${ManualReplaceManager._rules.mainGroup.from}"`);
+          }
+        }
+        
+        // 然後處理額外組
+        ManualReplaceManager._rules.extraGroups.forEach((rule, index) => {
+          if (rule.from?.trim()) {
+            const positions = this._getGroupPositions(textArea, rule.from, index + 1);
+            if (positions && positions.length > 0) {
+              groupedPositions.set(index + 1, positions);
+              activeGroups.add(index + 1);
+            }
+          }
         });
-      } catch (error) {
-        console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 虛擬滾動更新失敗:`, error);
+        
+        // 清理非活躍組的高亮
+        this.groupHighlights.forEach((groupHighlightMap, groupIndex) => {
+          if (!activeGroups.has(groupIndex)) {
+            LogUtils.log(`清理非活躍組 ${groupIndex} 的高亮`);
+            this.clearGroupHighlights(groupIndex);
+          }
+        });
+        
+        // 🆕 保存位置數據到獨立緩存並標記已初始化
+        LogUtils.log(`保存 ${groupedPositions.size} 個組的位置數據到緩存`);
+        this.cachedGroupPositions.clear();
+        groupedPositions.forEach((positions, groupIndex) => {
+          this.cachedGroupPositions.set(groupIndex, positions);
+        });
+        
+        // 🆕 標記緩存已初始化（即使是空的也算已初始化）
+        this.isCacheInitialized = true;
+
+        // 使用 SharedVirtualScroll 更新可見性
+        try {
+          TextHighlight.SharedVirtualScroll.updateMultiGroupVirtualView({
+            groupedPositions,
+            groupHighlights: this.groupHighlights,
+            visibleTop: scrollTop - bufferSize,
+            visibleBottom: scrollBottom + bufferSize,
+            scrollTop,
+            createHighlight: (pos) => {
+              const element = TextHighlight.Renderer.createPreviewHighlight(
+                pos.position,
+                pos.position.width,
+                pos.lineHeight,
+                pos.color
+              );
+              // 🔗 存儲位置數據供滾動時重用
+              element.positionData = pos;
+              return element;
+            },
+            container: this.container,
+            highlightClass: 'replace-preview-highlight'
+          });
+        } catch (error) {
+          LogUtils.error(`❌ 虛擬滾動更新失敗:`, error);
+        }
+      } finally {
+        // 🆕 重置更新標記
+        this._isUpdating = false;
       }
     },
 
     // 🚀 輕量級滾動更新 - 專門用於滾動時的性能優化
     _updateScrollVisibility(textArea) {
+      // 🆕 防止重複調用
+      if (this._isUpdating) {
+        return;
+      }
+      
       // 滾動時只更新可見性，不重新計算位置
       const scrollTop = textArea.scrollTop;
       const scrollBottom = scrollTop + textArea.clientHeight;
       const bufferSize = 200;
+      
+      // 🆕 修復判斷邏輯：只有在緩存未初始化時才回退到完整更新
+      if (!this.isCacheInitialized) {
+        LogUtils.log(`緩存未初始化，執行首次完整更新`);
+        this._updateVirtualScrolling(textArea);
+        return;
+      }
       
       // 🆕 直接從獨立緩存獲取位置數據（不依賴DOM元素）
       const groupedPositions = new Map();
@@ -756,14 +792,8 @@ const ManualReplaceManager = {
         }
       });
       
-      // 如果沒有緩存位置數據，回退到完整更新
-      if (groupedPositions.size === 0) {
-        console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 無緩存位置數據，回退到完整更新`);
-        this._updateVirtualScrolling(textArea);
-        return;
-      }
-      
-      console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 快速滾動更新: ${groupedPositions.size} 個組，共 ${Array.from(groupedPositions.values()).reduce((sum, positions) => sum + positions.length, 0)} 個位置`);
+      // 🆕 即使緩存為空也是正常狀態，不需要回退到完整更新
+      LogUtils.log(`快速滾動更新: ${groupedPositions.size} 個組，共 ${Array.from(groupedPositions.values()).reduce((sum, positions) => sum + positions.length, 0)} 個位置`);
       
       // 使用 SharedVirtualScroll 僅更新可見性
       try {
@@ -788,8 +818,9 @@ const ManualReplaceManager = {
           highlightClass: 'replace-preview-highlight'
         });
       } catch (error) {
-        console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 快速滾動更新失敗，回退到完整更新:`, error);
-        this._updateVirtualScrolling(textArea);
+        LogUtils.error(`❌ 快速滾動更新失敗:`, error);
+        // 🆕 發生錯誤時重置緩存狀態，下次會完整更新
+        this.isCacheInitialized = false;
       }
     },
 
@@ -799,15 +830,16 @@ const ManualReplaceManager = {
         // 確保獲取最新的文本內容
         const text = textArea.value;
         
-        // 驗證文本合法性
+        // 驗證文本合法性 - 🆕 降低日誌級別，避免控制台污染
         if (!text || typeof text !== 'string') {
-          console.warn(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 無效的文本內容，組 ${groupIndex}`);
+          // 只在調試模式下輸出，避免正常使用時的控制台污染
+          LogUtils.log(`文本內容無效，組 ${groupIndex}`);
           return [];
         }
         
         // 驗證搜尋文字
         if (!searchText || !searchText.trim()) {
-          console.warn(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 搜尋文字為空，組 ${groupIndex}`);
+          // 搜尋文字為空是正常情況，不需要輸出日誌
           return [];
         }
         
@@ -817,8 +849,8 @@ const ManualReplaceManager = {
           regex = RegexHelper.createRegex(searchText);
           matches = Array.from(text.matchAll(regex));
         } catch (regexError) {
-          console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 正則表達式創建失敗，組 ${groupIndex}:`, regexError);
-          console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 問題文字: "${searchText}"`);
+          LogUtils.error(`❌ 正則表達式創建失敗，組 ${groupIndex}:`, regexError);
+          LogUtils.error(`問題文字: "${searchText}"`);
           return [];
         }
         
@@ -828,7 +860,7 @@ const ManualReplaceManager = {
 
         // 檢查匹配數量是否超過上限
         if (matches.length > ManualReplaceManager.CONFIG.MAX_PREVIEWS) {
-          console.warn(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 組 ${groupIndex} 匹配數量 ${matches.length} 超過上限，截取到 ${ManualReplaceManager.CONFIG.MAX_PREVIEWS}`);
+          LogUtils.warn(`組 ${groupIndex} 匹配數量 ${matches.length} 超過上限，截取到 ${ManualReplaceManager.CONFIG.MAX_PREVIEWS}`);
           matches.length = ManualReplaceManager.CONFIG.MAX_PREVIEWS;
         }
 
@@ -848,7 +880,7 @@ const ManualReplaceManager = {
       
       // 🆕 主動確保 DOM 容器存在
       if (!TextHighlight.PositionCalculator || !TextHighlight.PositionCalculator.cache || !TextHighlight.PositionCalculator.cache.div) {
-        console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 組 ${groupIndex} DOM 容器不存在，主動初始化`);
+        LogUtils.log(`組 ${groupIndex} DOM 容器不存在，主動初始化`);
         
         // 主動觸發 DOM 容器創建：調用一次位置計算來初始化容器
         if (text.length > 0 && TextHighlight.PositionCalculator && TextHighlight.PositionCalculator.calculatePosition) {
@@ -856,13 +888,13 @@ const ManualReplaceManager = {
             // 使用文本的第一個字符來觸發容器創建
             const firstChar = text.charAt(0);
             TextHighlight.PositionCalculator.calculatePosition(textArea, 0, text, firstChar, styles);
-            console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 組 ${groupIndex} DOM 容器已成功初始化`);
+            LogUtils.log(`組 ${groupIndex} DOM 容器已成功初始化`);
           } catch (initError) {
-            console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 組 ${groupIndex} DOM 容器初始化失敗:`, initError);
+            LogUtils.error(`❌ 組 ${groupIndex} DOM 容器初始化失敗:`, initError);
             return [];
           }
         } else {
-          console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 組 ${groupIndex} 無法初始化 DOM 容器（文本為空或缺少依賴）`);
+          LogUtils.error(`❌ 組 ${groupIndex} 無法初始化 DOM 容器（文本為空或缺少依賴）`);
           return [];
         }
       }
@@ -873,11 +905,11 @@ const ManualReplaceManager = {
         domContentLength = divText.length;
         
         if (domContentLength !== text.length) {
-          console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 組 ${groupIndex} DOM 內容與文本不同步！DOM: ${domContentLength}, Text: ${text.length}`);
+          LogUtils.error(`❌ 組 ${groupIndex} DOM 內容與文本不同步！DOM: ${domContentLength}, Text: ${text.length}`);
           return [];
         }
       } else {
-        console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 組 ${groupIndex} DOM 容器初始化後仍然找不到`);
+        LogUtils.error(`❌ 組 ${groupIndex} DOM 容器初始化後仍然找不到`);
         return [];
       }
         
@@ -886,7 +918,7 @@ const ManualReplaceManager = {
           
           // 🔥 加強邊界檢查：多重驗證
           if (match.index < 0 || match.index >= text.length) {
-            console.warn(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 組 ${groupIndex} 跳過無效匹配索引: ${match.index}, 文本長度: ${text.length}`);
+            LogUtils.warn(`組 ${groupIndex} 跳過無效匹配索引: ${match.index}, 文本長度: ${text.length}`);
             failCount++;
             continue;
           }
@@ -894,21 +926,21 @@ const ManualReplaceManager = {
           // 檢查匹配文本的結束位置
           const endIndex = match.index + match[0].length;
           if (endIndex > text.length) {
-            console.warn(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 組 ${groupIndex} 跳過無效匹配結束位置: ${endIndex}, 文本長度: ${text.length}`);
+            LogUtils.warn(`組 ${groupIndex} 跳過無效匹配結束位置: ${endIndex}, 文本長度: ${text.length}`);
             failCount++;
             continue;
           }
           
           // 🆕 檢查索引是否在 DOM 範圍內
           if (match.index >= domContentLength) {
-            console.warn(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 組 ${groupIndex} 跳過超出 DOM 範圍的匹配: index=${match.index}, DOM長度=${domContentLength}`);
+            LogUtils.warn(`組 ${groupIndex} 跳過超出 DOM 範圍的匹配: index=${match.index}, DOM長度=${domContentLength}`);
             failCount++;
             continue;
           }
           
           // 🆕 檢查結束位置是否在 DOM 範圍內
           if (endIndex > domContentLength) {
-            console.warn(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 組 ${groupIndex} 跳過超出 DOM 範圍的匹配結束位置: endIndex=${endIndex}, DOM長度=${domContentLength}`);
+            LogUtils.warn(`組 ${groupIndex} 跳過超出 DOM 範圍的匹配結束位置: endIndex=${endIndex}, DOM長度=${domContentLength}`);
             failCount++;
             continue;
           }
@@ -916,7 +948,7 @@ const ManualReplaceManager = {
           // 🆕 檢查匹配的字符是否一致
           const textSubstring = text.substring(match.index, endIndex);
           if (textSubstring !== match[0]) {
-            console.warn(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 組 ${groupIndex} 匹配內容不一致: 期望="${match[0]}", 實際="${textSubstring}"`);
+            LogUtils.warn(`組 ${groupIndex} 匹配內容不一致: 期望="${match[0]}", 實際="${textSubstring}"`);
             failCount++;
             continue;
           }
@@ -947,12 +979,12 @@ const ManualReplaceManager = {
               });
               successCount++;
             } else {
-              console.warn(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 組 ${groupIndex} 匹配 ${i} 位置計算失敗`);
+              LogUtils.warn(`組 ${groupIndex} 匹配 ${i} 位置計算失敗`);
               failCount++;
             }
           } catch (posError) {
-            console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 組 ${groupIndex} 匹配 ${i} 位置計算出錯:`, posError);
-            console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 錯誤詳情: index=${match.index}, text="${match[0]}", textLength=${text.length}, domLength=${domContentLength}`);
+            LogUtils.error(`❌ 組 ${groupIndex} 匹配 ${i} 位置計算出錯:`, posError);
+            LogUtils.error(`錯誤詳情: index=${match.index}, text="${match[0]}", textLength=${text.length}, domLength=${domContentLength}`);
             failCount++;
           }
         }
@@ -960,17 +992,17 @@ const ManualReplaceManager = {
         return positions;
         
       } catch (error) {
-        console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 組 ${groupIndex} 獲取位置數據失敗:`, error);
-        console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 詳細信息: 搜尋文字="${searchText}", 文本長度=${textArea.value?.length || 'undefined'}`);
+        LogUtils.error(`❌ 組 ${groupIndex} 獲取位置數據失敗:`, error);
+        LogUtils.error(`詳細信息: 搜尋文字="${searchText}", 文本長度=${textArea.value?.length || 'undefined'}`);
         return [];
       }
     },
 
     updatePreview(textArea, searchText, groupIndex) {
-      console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] updatePreview 被調用: 組 ${groupIndex}, 搜尋文字: "${searchText}"`);
+      LogUtils.log(`updatePreview 被調用: 組 ${groupIndex}, 搜尋文字: "${searchText}"`);
       
       if (!searchText || !searchText.trim()) {
-        console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 清理組 ${groupIndex} 高亮（搜尋文字為空）`);
+        LogUtils.log(`清理組 ${groupIndex} 高亮（搜尋文字為空）`);
         this.clearGroupHighlights(groupIndex);
         return;
       }
@@ -982,15 +1014,15 @@ const ManualReplaceManager = {
       
       // 🎯 主組（用戶選取的文字）立即更新，不使用防抖
       if (groupIndex === 0) {
-        console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 主組立即更新高亮`);
+        LogUtils.log(`主組立即更新高亮`);
         this._updateVirtualScrolling(textArea);
         return;
       }
       
       // 其他組使用防抖機制，避免頻繁更新
-      console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 組 ${groupIndex} 使用防抖更新（16ms 延遲）`);
+      LogUtils.log(`組 ${groupIndex} 使用防抖更新（16ms 延遲）`);
       this._updateTimer = setTimeout(() => {
-        console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 執行防抖更新: 組 ${groupIndex}`);
+        LogUtils.log(`執行防抖更新: 組 ${groupIndex}`);
         this._updateVirtualScrolling(textArea);
       }, 16); // 約60fps的更新頻率
     },
@@ -1005,7 +1037,7 @@ const ManualReplaceManager = {
       
       // 🆕 同時清理該組的位置緩存
       this.cachedGroupPositions.delete(groupIndex);
-      console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 清理組 ${groupIndex} 的位置緩存`);
+      LogUtils.log(`清理組 ${groupIndex} 的位置緩存`);
     },
 
     clearAllHighlights() {
@@ -1015,9 +1047,10 @@ const ManualReplaceManager = {
         this.observer
       );
       
-      // 🆕 同時清理所有位置緩存
+      // 🆕 同時清理所有位置緩存並重置初始化狀態
       this.cachedGroupPositions.clear();
-      console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 清理所有組的位置緩存`);
+      this.isCacheInitialized = false; // 🆕 重置初始化狀態
+      LogUtils.log(`清理所有組的位置緩存並重置狀態`);
     }
   },
 
@@ -1049,7 +1082,7 @@ const ManualReplaceManager = {
     window.ReplaceManager.StorageHelper.saveRules(
       storageKey,
       extraRules,
-      () => console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 手動替換規則已保存`)
+      () => LogUtils.log(`手動替換規則已保存`)
     );
   },
 
@@ -1114,7 +1147,7 @@ const ManualReplaceManager = {
       const currentHash = this._hashText(currentValue);
       
       if (currentValue !== lastValue || currentLength !== lastLength || currentHash !== lastHash) {
-        console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 📝 文本變化: ${lastLength} → ${currentLength} 字符`);
+        LogUtils.important(`📝 文本變化: ${lastLength} → ${currentLength} 字符`);
         
         isProcessing = true; // 🆕 標記正在處理
         
@@ -1158,9 +1191,10 @@ const ManualReplaceManager = {
       TextHighlight.GlobalPositionCache.clear();
     }
     
-    // 🆕 只清理獨立位置緩存，不再調用 clearAllHighlights 避免重複
+    // 🆕 清理獨立位置緩存並重置初始化狀態
     this.PreviewHighlight.cachedGroupPositions.clear();
-    console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 智能清理獨立位置緩存`);
+    this.PreviewHighlight.isCacheInitialized = false; // 🆕 重置初始化狀態
+    LogUtils.log(`智能清理獨立位置緩存並重置狀態`);
     
     // 🆕 直接清理高亮元素，不再通過其他方法
     TextHighlight.SharedVirtualScroll.clearAllGroupHighlights(
@@ -1233,6 +1267,14 @@ const ManualReplaceManager = {
 
   /** 檢查並強制更新高亮 */
   checkAndForceUpdateHighlights() {
+    const textArea = document.querySelector('textarea[name="content"]');
+    
+    // 🆕 檢查文本有效性，避免在無效文本時進行無意義的處理
+    if (!textArea || !textArea.value || typeof textArea.value !== 'string' || textArea.value.length === 0) {
+      LogUtils.log(`文本無效，跳過強制更新高亮`);
+      return;
+    }
+    
     const highlights = document.querySelectorAll('.replace-preview-highlight');
     const totalHighlights = highlights.length;
     const visibleHighlights = Array.from(highlights).filter(h => 
@@ -1241,10 +1283,7 @@ const ManualReplaceManager = {
     ).length;
 
     if (visibleHighlights === 0 && totalHighlights === 0) {
-      const textArea = document.querySelector('textarea[name="content"]');
-      if (textArea) {
-        this._updatePreviews();
-      }
+      this._updatePreviews();
     }
   },
 
@@ -1267,7 +1306,7 @@ const ManualReplaceManager = {
     
     const container = group.parentElement;
     if (!container) {
-      console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 無法找到替換組的父容器`);
+      LogUtils.error(`❌ 無法找到替換組的父容器`);
       return;
     }
     
@@ -1320,18 +1359,18 @@ const ManualReplaceManager = {
   refreshFromStorage() {
     // 🆕 防重複調用機制：如果正在刷新中，跳過此次調用
     if (this._refreshInProgress) {
-      console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] UI刷新已在進行中，跳過此次調用`);
+      LogUtils.log(`UI刷新已在進行中，跳過此次調用`);
       return;
     }
     
     this._refreshInProgress = true;
-    console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 從存儲刷新替換組UI`);
+    LogUtils.log(`從存儲刷新替換組UI`);
     
     const textArea = document.querySelector('textarea[name="content"]');
     const manualContainer = document.querySelector('.manual-replace-container');
     
     if (!textArea || !manualContainer) {
-      console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 找不到必要的DOM元素，跳過刷新`);
+      LogUtils.log(`找不到必要的DOM元素，跳過刷新`);
       this._refreshInProgress = false; // 重置標記
       return;
     }
@@ -1346,11 +1385,11 @@ const ManualReplaceManager = {
     // 從存儲重新載入規則
     const storageKey = 'replace_' + this.CONFIG.MANUAL_REPLACE_KEY;
     window.ReplaceManager.StorageHelper.loadRules(storageKey, [], (rules) => {
-      console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 從存儲載入的規則:`, rules);
+      LogUtils.log(`從存儲載入的規則:`, rules);
       
       // 過濾掉空組
       const filteredRules = rules.filter(rule => rule.from?.trim() || rule.to?.trim());
-      console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 過濾後的規則:`, filteredRules);
+      LogUtils.log(`過濾後的規則:`, filteredRules);
       
       // 如果沒有規則，創建一個空的預設規則
       const finalRules = filteredRules.length > 0 ? filteredRules : [{ from: '', to: '' }];
@@ -1371,7 +1410,7 @@ const ManualReplaceManager = {
         // 更新預覽（延遲一點讓DOM完全更新）
         setTimeout(() => {
           this._updatePreviews();
-          console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ✅ 替換組UI刷新完成`);
+          LogUtils.important(`✅ 替換組UI刷新完成`);
           
           // 🆕 重置刷新標記，允許後續刷新
           this._refreshInProgress = false;

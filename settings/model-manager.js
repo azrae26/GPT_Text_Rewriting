@@ -46,10 +46,10 @@ const ModelManager = {
       // 儲存到 storage
       await window.GlobalSettings.saveSingleSetting('customModels', window.GlobalSettings.customModels);
       
-      console.log(`[ModelManager] 成功新增自定義模型: ${modelName}`);
+      LogUtils.log(`成功新增自定義模型: ${modelName}`);
       return true;
     } catch (error) {
-      console.error('[ModelManager] 新增自定義模型失敗:', error);
+      LogUtils.error('新增自定義模型失敗:', error);
       throw error;
     }
   },
@@ -78,10 +78,10 @@ const ModelManager = {
       // 儲存更新後的自定義模型列表
       await window.GlobalSettings.saveSingleSetting('customModels', window.GlobalSettings.customModels);
       
-      console.log(`[ModelManager] 成功移除自定義模型: ${modelName}`);
+      LogUtils.log(`成功移除自定義模型: ${modelName}`);
       return true;
     } catch (error) {
-      console.error('[ModelManager] 移除自定義模型失敗:', error);
+      LogUtils.error('移除自定義模型失敗:', error);
       throw error;
     }
   },
@@ -148,10 +148,10 @@ const ModelManager = {
    * @returns {string|null} - API金鑰名稱或null
    */
   getApiKeyNameForModel(modelName) {
-    console.log('[ModelManager][getApiKeyNameForModel] 開始處理模型:', modelName);
+    LogUtils.log('開始處理模型:', modelName);
     const apiType = this.getModelApiType(modelName);
-    console.log('[ModelManager][getApiKeyNameForModel] 模型 API 類型:', apiType);
-    console.log('[ModelManager][getApiKeyNameForModel] 當前可用的 API 金鑰:', Object.keys(window.GlobalSettings.apiKeys));
+    LogUtils.log('模型 API 類型:', apiType);
+    LogUtils.log('當前可用的 API 金鑰:', Object.keys(window.GlobalSettings.apiKeys));
     
     switch (apiType) {
       case 'gemini':
@@ -159,31 +159,31 @@ const ModelManager = {
         const geminiKeys = Object.keys(window.GlobalSettings.apiKeys).filter(key => 
           key === 'gemini' && window.GlobalSettings.apiKeys[key]  // 只查找 'gemini' 金鑰
         );
-        console.log('[ModelManager][getApiKeyNameForModel] 找到的 Gemini 金鑰:', geminiKeys);
+        LogUtils.log('找到的 Gemini 金鑰:', geminiKeys);
         if (geminiKeys.length > 0) {
-          console.log('[ModelManager][getApiKeyNameForModel] 使用 Gemini 金鑰:', geminiKeys[0]);
+          LogUtils.log('使用 Gemini 金鑰:', geminiKeys[0]);
           return geminiKeys[0];
         }
-        console.log('[ModelManager][getApiKeyNameForModel] 未找到可用的 Gemini 金鑰');
+        LogUtils.log('未找到可用的 Gemini 金鑰');
         return null;
         
       case 'openai':
-        console.log('[ModelManager][getApiKeyNameForModel] 檢查 OpenAI 金鑰');
+        LogUtils.log('檢查 OpenAI 金鑰');
         if (window.GlobalSettings.apiKeys['openai'] && window.GlobalSettings.apiKeys['openai'].trim()) {
-          console.log('[ModelManager][getApiKeyNameForModel] 找到 OpenAI 金鑰');
+          LogUtils.log('找到 OpenAI 金鑰');
           return 'openai';
         } else {
-          console.log('[ModelManager][getApiKeyNameForModel] 未找到可用的 OpenAI 金鑰');
-          console.log('[ModelManager][getApiKeyNameForModel] 當前 OpenAI 金鑰值:', window.GlobalSettings.apiKeys['openai'] || 'undefined');
+          LogUtils.log('未找到可用的 OpenAI 金鑰');
+          LogUtils.log('當前 OpenAI 金鑰值:', window.GlobalSettings.apiKeys['openai'] || 'undefined');
           return null;
         }
         
       case 'google-translate':
-        console.log('[ModelManager][getApiKeyNameForModel] 使用 Google Translate 金鑰');
+        LogUtils.log('使用 Google Translate 金鑰');
         return 'google-translate';
         
       default:
-        console.error('[ModelManager][getApiKeyNameForModel] 未知 API 類型:', apiType, '模型:', modelName);
+        LogUtils.error('未知 API 類型:', apiType, '模型:', modelName);
         return null;
     }
   },
@@ -194,29 +194,29 @@ const ModelManager = {
    * @returns {string} - 顯示名稱
    */
   getModelDisplayName(modelName) {
-    console.log('[ModelManager][getModelDisplayName] 開始處理模型名稱:', modelName);
+    LogUtils.log('開始處理模型名稱:', modelName);
     
     if (!modelName) {
-      console.log('[ModelManager][getModelDisplayName] 模型名稱為空，返回未知模型');
+      LogUtils.log('模型名稱為空，返回未知模型');
       return '未知模型';
     }
     
     // 優先檢查 API.models 中是否有對應的顯示名稱
     if (window.GlobalSettings.API.models[modelName]) {
-      console.log('[ModelManager][getModelDisplayName] 找到 API 模型:', window.GlobalSettings.API.models[modelName]);
+      LogUtils.log('找到 API 模型:', window.GlobalSettings.API.models[modelName]);
       return window.GlobalSettings.API.models[modelName];
     }
     
     // 檢查是否為自定義模型
     if (window.GlobalSettings.customModels[modelName]) {
-      console.log('[ModelManager][getModelDisplayName] 找到自定義模型:', window.GlobalSettings.customModels[modelName].displayName);
+      LogUtils.log('找到自定義模型:', window.GlobalSettings.customModels[modelName].displayName);
       return window.GlobalSettings.customModels[modelName].displayName;
     }
     
     // 如果都沒有，直接返回模型名稱
-    console.log('[ModelManager][getModelDisplayName] 沒有找到顯示名稱，返回原始模型名稱:', modelName);
-    console.log('[ModelManager][getModelDisplayName] 當前自定義模型列表:', Object.keys(window.GlobalSettings.customModels));
-    console.log('[ModelManager][getModelDisplayName] 當前 API 模型列表:', Object.keys(window.GlobalSettings.API.models));
+    LogUtils.log('沒有找到顯示名稱，返回原始模型名稱:', modelName);
+    LogUtils.log('當前自定義模型列表:', Object.keys(window.GlobalSettings.customModels));
+    LogUtils.log('當前 API 模型列表:', Object.keys(window.GlobalSettings.API.models));
     return modelName;
   },
 

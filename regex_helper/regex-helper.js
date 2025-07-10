@@ -26,7 +26,7 @@ const RegexHelper = {
       }
       return this._createRegexFromText(text);
     } catch (error) {
-      console.error('正則表達式創建失敗:', error);
+      LogUtils.error('正則表達式創建失敗:', error);
       // 返回一個永遠不會匹配的正則表達式
       return new RegExp('(?!)', 'g');
     }
@@ -63,7 +63,7 @@ const RegexHelper = {
         return new RegExp(text, 'gim');
       }
     } catch (error) {
-      console.error('正則表達式解析失敗:', error);
+      LogUtils.error('正則表達式解析失敗:', error);
       return new RegExp('(?!)', 'g');
     }
   },
@@ -80,7 +80,7 @@ const RegexHelper = {
       
       // 空字串或無效輸入的處理
       if (!text || typeof text !== 'string' || text.length === 0) {
-        console.warn('無效的替換文字:', text);
+        LogUtils.warn('無效的替換文字:', text);
         return new RegExp('(?!)', 'g');
       }
       
@@ -96,8 +96,8 @@ const RegexHelper = {
       const pattern = firstChar + escapedText.slice(1);
       return new RegExp(pattern.replace(reChar, firstChar), 'gi');
     } catch (error) {
-      console.error('文轉則表達式失敗:', error);
-      console.error('問題文字:', text);
+      LogUtils.error('文轉則表達式失敗:', error);
+      LogUtils.error('問題文字:', text);
       return new RegExp('(?!)', 'g');
     }
   },
@@ -108,7 +108,7 @@ const RegexHelper = {
   escapeRegExp(string) {
     // 確保 string 是字串類型
     if (typeof string !== 'string') {
-      console.warn('轉義輸入不是字串:', string);
+      LogUtils.warn('轉義輸入不是字串:', string);
       return '';
     }
     

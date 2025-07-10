@@ -15,7 +15,7 @@
  * - TextProcessor：處理 AI 文本生成請求
  */
 
-console.log('[AutoComplete] 腳本載入');
+LogUtils.log('腳本載入');
 
 window.AutoComplete = {
   // 計數器和時間戳
@@ -29,16 +29,16 @@ window.AutoComplete = {
   // 初始化
   initialize() {
     if (this.isInitialized) {
-      console.log('[AutoComplete] 已經初始化過，跳過');
+      LogUtils.log('已經初始化過，跳過');
       return;
     }
 
-    console.log('[AutoComplete] 開始初始化...');
+    LogUtils.log('開始初始化...');
     
     // 檢查是否在正確的頁面上
     const textArea = document.querySelector('textarea[name="content"]');
     if (!textArea) {
-      console.log('[AutoComplete] 未找到目標文本區域，可能不在正確的頁面上');
+      LogUtils.log('未找到目標文本區域，可能不在正確的頁面上');
       return;
     }
 
@@ -46,15 +46,15 @@ window.AutoComplete = {
       this.setupEventListeners();
       this.setupAutoComplete(textArea);
       this.isInitialized = true;
-      console.log('[AutoComplete] 初始化完成');
+      LogUtils.log('初始化完成');
     } catch (error) {
-      console.error('[AutoComplete] 初始化失敗:', error);
+      LogUtils.error('初始化失敗:', error);
     }
   },
 
   // 設置自動完成監聽
   setupAutoComplete(textArea) {
-    console.log('[AutoComplete] 設置自動完成監聽');
+    LogUtils.log('設置自動完成監聽');
     
     let previousLength = textArea.value.length;
     let previousText = textArea.value;
@@ -115,7 +115,7 @@ window.AutoComplete = {
 
   // 設置事件監聽器
   setupEventListeners() {
-    console.log('[AutoComplete] 開始設置事件監聽器');
+    LogUtils.log('開始設置事件監聽器');
     
     // 移除可能存在的舊監聽器
     document.removeEventListener('keydown', this._boundHandleKeyDown);
@@ -138,7 +138,7 @@ window.AutoComplete = {
       // 檢查是否在 500ms 內的連續按鍵
       if (currentTime - this.lastCtrlTime < 500) {
         this.ctrlCount++;
-        console.log('[AutoComplete] Ctrl 點擊次數:', this.ctrlCount); // 添加日誌
+        LogUtils.log('Ctrl 點擊次數:', this.ctrlCount); // 添加日誌
         
         // 如果是第三次按下，觸發自動完成
         if (this.ctrlCount === 3) {
@@ -146,7 +146,7 @@ window.AutoComplete = {
           if (this.autoCompleteTimer) {
             clearTimeout(this.autoCompleteTimer);
           }
-          console.log('[AutoComplete] 檢測到連續三次 Ctrl，觸發自動完成');
+          LogUtils.log('檢測到連續三次 Ctrl，觸發自動完成');
           this.triggerAutoComplete();
         }
       } else {
@@ -174,20 +174,20 @@ window.AutoComplete = {
   // 觸發自動完成功能
   async triggerAutoComplete() {
     if (this.isProcessing) {
-      console.log('[AutoComplete] 正在處理中，請稍候...');
+      LogUtils.log('正在處理中，請稍候...');
       return;
     }
 
     const textArea = document.querySelector('textarea[name="content"]');
     if (!textArea) {
-      console.log('[AutoComplete] 錯誤：找不到文本輸入區域');
+      LogUtils.log('錯誤：找不到文本輸入區域');
       return;
     }
 
     try {
       this.isProcessing = true;
       this.isAIGenerating = true;  // 標記開始生成 AI 內容
-      console.log('[AutoComplete] 開始處理自動完成請求');
+      LogUtils.log('開始處理自動完成請求');
       
       // 獲取當前游標位置之前的文本
       const cursorPosition = textArea.selectionStart;
@@ -195,12 +195,12 @@ window.AutoComplete = {
       
       // 如果前文為空，不進行處理
       if (!textBeforeCursor.trim()) {
-        console.log('[AutoComplete] 錯誤：沒有檢測到前文內容');
+        LogUtils.log('錯誤：沒有檢測到前文內容');
         return;
       }
 
-      console.log('[AutoComplete] 前文長度:', textBeforeCursor.length);
-      console.log('[AutoComplete] 游標位置:', cursorPosition);
+      LogUtils.log('前文長度:', textBeforeCursor.length);
+      LogUtils.log('游標位置:', cursorPosition);
 
       // 顯示處理中通知
       await window.Notification.showNotification('正在生成自動完成內容...', true);
@@ -210,7 +210,7 @@ window.AutoComplete = {
       
       const model = settings.autoRewriteModel;
       if (!model) {
-        console.warn('未設置自動改寫模型');
+        LogUtils.warn('未設置自動改寫模型');
         return;
       }
       
@@ -222,11 +222,11 @@ window.AutoComplete = {
       const apiKey = settings.apiKeys[apiKeyName];
       
       if (!apiKey) {
-        console.warn(`未設置 ${apiType.toUpperCase()} API 金鑰`);
+        LogUtils.warn(`未設置 ${apiType.toUpperCase()} API 金鑰`);
         return;
       }
 
-      console.log('[AutoComplete] 使用模型:', model);
+      LogUtils.log('使用模型:', model);
 
       // 準備上下文信息
       const context = [
@@ -326,7 +326,7 @@ Nvidia 認證仍在進行中：自法人一個月前的台灣 AI 論壇以來，
 續寫的內容不需有結語，只需自然地接著寫下去。
 續寫時不要加入任何解釋或說明。
 續寫時不必包含前文內容，只需接著最後一個字寫。`;
-      console.log('[AutoComplete] 準備發送 API 請求');
+      LogUtils.log('準備發送 API 請求');
       const { endpoint, body } = window.TextProcessor._prepareApiConfig(
         model,
         textBeforeCursor,
@@ -335,9 +335,9 @@ Nvidia 認證仍在進行中：自法人一個月前的台灣 AI 論壇以來，
       );
 
       // 發送請求
-      console.log('[AutoComplete] 發送 API 請求');
+      LogUtils.log('發送 API 請求');
       const completedText = await window.TextProcessor._sendRequest(endpoint, body, apiKey, isGemini);
-      console.log('[AutoComplete] 收到 API 回應，生成文本長度:', completedText.length);
+      LogUtils.log('收到 API 回應，生成文本長度:', completedText.length);
       
       // 插入生成的文本
       const textAfterCursor = textArea.value.substring(cursorPosition);
@@ -346,46 +346,46 @@ Nvidia 認證仍在進行中：自法人一個月前的台灣 AI 論壇以來，
       // 更新游標位置
       const newCursorPosition = textBeforeCursor.length + completedText.length;
       textArea.setSelectionRange(newCursorPosition, newCursorPosition);
-      console.log('[AutoComplete] 更新游標位置:', newCursorPosition);
+      LogUtils.log('更新游標位置:', newCursorPosition);
       
       // 觸發 input 事件以更新 UI
       const event = new Event('input', { bubbles: true });
       event.isAIGenerated = true;  // 標記這是 AI 生成的事件
       textArea.dispatchEvent(event);
-      console.log('[AutoComplete] 觸發 input 事件');
+      LogUtils.log('觸發 input 事件');
 
       // 顯示完成通知
       await window.Notification.showNotification('自動完成內容已生成', false);
-      console.log('[AutoComplete] 自動完成處理完成');
+      LogUtils.log('自動完成處理完成');
 
     } catch (error) {
-      console.error('[AutoComplete] 自動完成處理失敗:', error);
+      LogUtils.error('自動完成處理失敗:', error);
       await window.Notification.showNotification(`自動完成失敗: ${error.message}`, false);
     } finally {
       this.isProcessing = false;
       this.ctrlCount = 0;
       this.isAIGenerating = false;  // 標記結束生成 AI 內容
-      console.log('[AutoComplete] 重置處理狀態');
+      LogUtils.log('重置處理狀態');
     }
   }
 };
 
 // 確保在頁面載入時初始化
 if (document.readyState === 'loading') {
-  console.log('[AutoComplete] 等待 DOMContentLoaded 事件...');
+  LogUtils.log('等待 DOMContentLoaded 事件...');
   document.addEventListener('DOMContentLoaded', () => {
-    console.log('[AutoComplete] DOMContentLoaded 事件觸發');
+    LogUtils.log('DOMContentLoaded 事件觸發');
     window.AutoComplete.initialize();
   });
 } else {
-  console.log('[AutoComplete] 文檔已經載入，直接初始化');
+  LogUtils.log('文檔已經載入，直接初始化');
   window.AutoComplete.initialize();
 }
 
 // 為了確保在動態加載的情況下也能正常工作
 // 在 window 載入完成後也嘗試初始化一次
 window.addEventListener('load', () => {
-  console.log('[AutoComplete] Window load 事件觸發');
+  LogUtils.log('Window load 事件觸發');
   window.AutoComplete.initialize();
 }); 
 

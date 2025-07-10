@@ -86,9 +86,9 @@ const LogUtils = {
     const fileName = this._getFileName();
     const currentTime = this._get24HourTime();
     if (data !== null) {
-      console.log(`[${fileName}][${currentTime}] ${message}`, data);
+      console.log(`%c[AI助手]%c[${fileName}][${currentTime}] ${message}`, 'color:rgb(179, 0, 255); font-weight: bold;', 'color: inherit;', data);
     } else {
-      console.log(`[${fileName}][${currentTime}] ${message}`);
+      console.log(`%c[AI助手]%c[${fileName}][${currentTime}] ${message}`, 'color:rgb(179, 0, 255); font-weight: bold;', 'color: inherit;');
     }
   },
 
@@ -101,9 +101,9 @@ const LogUtils = {
     const fileName = this._getFileName();
     const currentTime = this._get24HourTime();
     if (data !== null) {
-      console.log(`[${fileName}][${currentTime}] ${message}`, data);
+      console.log(`%c[AI助手]%c[${fileName}][${currentTime}] ${message}`, 'color:rgb(179, 0, 255); font-weight: bold;', 'color: inherit;', data);
     } else {
-      console.log(`[${fileName}][${currentTime}] ${message}`);
+      console.log(`%c[AI助手]%c[${fileName}][${currentTime}] ${message}`, 'color:rgb(179, 0, 255); font-weight: bold;', 'color: inherit;');
     }
   },
 
@@ -116,9 +116,9 @@ const LogUtils = {
     const fileName = this._getFileName();
     const currentTime = this._get24HourTime();
     if (error !== null) {
-      console.error(`[${fileName}][${currentTime}] ❌ ${message}`, error);
+      console.error(`%c[AI助手]%c[${fileName}][${currentTime}] ❌ ${message}`, 'color:rgb(179, 0, 255); font-weight: bold;', 'color: inherit;', error);
     } else {
-      console.error(`[${fileName}][${currentTime}] ❌ ${message}`);
+      console.error(`%c[AI助手]%c[${fileName}][${currentTime}] ❌ ${message}`, 'color:rgb(179, 0, 255); font-weight: bold;', 'color: inherit;');
     }
   },
 
@@ -131,9 +131,9 @@ const LogUtils = {
     const fileName = this._getFileName();
     const currentTime = this._get24HourTime();
     if (data !== null) {
-      console.warn(`[${fileName}][${currentTime}] ⚠️ ${message}`, data);
+      console.warn(`%c[AI助手]%c[${fileName}][${currentTime}] ⚠️ ${message}`, 'color:rgb(176, 0, 252); font-weight: bold;', 'color: inherit;', data);
     } else {
-      console.warn(`[${fileName}][${currentTime}] ⚠️ ${message}`);
+      console.warn(`%c[AI助手]%c[${fileName}][${currentTime}] ⚠️ ${message}`, 'color:rgb(179, 0, 255); font-weight: bold;', 'color: inherit;');
     }
   }
 };

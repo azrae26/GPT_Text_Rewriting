@@ -34,7 +34,7 @@ const StockManager = {
   
   // 初始化
   init(stockListInputElement, triggerContentScriptUpdateFn) {
-    console.log('初始化股票功能管理器');
+    LogUtils.log('初始化股票功能管理器');
     this.stockListInput = stockListInputElement;
     this.triggerContentScriptUpdate = triggerContentScriptUpdateFn;
     this.copyButton = document.getElementById('copy-stock-list');
@@ -47,7 +47,7 @@ const StockManager = {
     // 初始化股票爬蟲控制器
     StockCrawlerController.init();
     
-    console.log('股票功能管理器初始化完成');
+    LogUtils.log('股票功能管理器初始化完成');
   },
 
   // 更新股票清單設定
@@ -62,11 +62,11 @@ const StockManager = {
           stockList: StockManager.stockListInput.value
         }, function(response) {
           if (chrome.runtime.lastError) {
-            console.log('content script 未載入，股票清單將在下次載入時應用');
+            LogUtils.log('content script 未載入，股票清單將在下次載入時應用');
           } else if (response && response.success) {
-            console.log('股票清單已立即更新');
+            LogUtils.log('股票清單已立即更新');
           } else {
-            console.error('更新股票清單失敗:', response?.error || '未知錯誤');
+            LogUtils.error('更新股票清單失敗:', response?.error || '未知錯誤');
           }
         });
       }
@@ -107,7 +107,7 @@ const StockManager = {
         this.copyButton.innerHTML = originalIcon;
       }, 1000);
     }).catch(err => {
-      console.error('複製失敗:', err);
+      LogUtils.error('複製失敗:', err);
     });
   },
 
@@ -141,11 +141,11 @@ const StockCrawlerController = {
   
   // 初始化
   init() {
-    console.log('初始化背景股票爬蟲控制器');
+    LogUtils.log('初始化背景股票爬蟲控制器');
     
     // 防止重複初始化
     if (this.initialized) {
-      console.log('StockCrawlerController 已經初始化過，跳過重複初始化');
+      LogUtils.log('StockCrawlerController 已經初始化過，跳過重複初始化');
       return;
     }
     
@@ -160,7 +160,7 @@ const StockCrawlerController = {
     
     // 標記為已初始化
     this.initialized = true;
-    console.log('StockCrawlerController 初始化完成');
+    LogUtils.log('StockCrawlerController 初始化完成');
   },
   
   // 綁定事件
@@ -187,7 +187,7 @@ const StockCrawlerController = {
     this.intervalInput.addEventListener('change', () => {
       // 如果當前有定時爬取，重新啟動以應用新間隔
       if (this.isScheduled) {
-        console.log('間隔時間已變更，重新啟動定時爬取...');
+        LogUtils.log('間隔時間已變更，重新啟動定時爬取...');
         this.stopScheduledCrawl();
         // 增加延遲時間確保停止操作完成
         setTimeout(() => {
@@ -215,7 +215,7 @@ const StockCrawlerController = {
     }, (response) => {
       // 檢查 chrome.runtime.lastError
       if (chrome.runtime.lastError) {
-        console.log('查詢狀態時通信錯誤:', chrome.runtime.lastError.message);
+        LogUtils.log('查詢狀態時通信錯誤:', chrome.runtime.lastError.message);
         this.updateStatus('無法連接到背景腳本', 'error');
         return;
       }
@@ -255,7 +255,7 @@ const StockCrawlerController = {
     });
     
     port.onDisconnect.addListener(() => {
-      console.log('狀態監聽器連接已斷開');
+      LogUtils.log('狀態監聽器連接已斷開');
     });
     
     // 也發送添加監聽器的請求（用於立即狀態同步）
@@ -265,7 +265,7 @@ const StockCrawlerController = {
     }, (response) => {
       // 檢查 chrome.runtime.lastError
       if (chrome.runtime.lastError) {
-        console.log('設置狀態監聽器時通信錯誤:', chrome.runtime.lastError.message);
+        LogUtils.log('設置狀態監聽器時通信錯誤:', chrome.runtime.lastError.message);
         return;
       }
       
@@ -277,7 +277,7 @@ const StockCrawlerController = {
   
   // 處理狀態更新
   handleStatusUpdate(message) {
-    console.log('收到爬蟲狀態更新:', message);
+    LogUtils.log('收到爬蟲狀態更新:', message);
     
     this.isRunning = message.isRunning;
     this.isScheduled = message.intervalMinutes > 0;
@@ -364,7 +364,7 @@ const StockCrawlerController = {
   
   // 開始單次爬取
   startSingleCrawl() {
-    console.log('請求開始單次股票爬取');
+    LogUtils.log('請求開始單次股票爬取');
     this.updateStatus('請求開始爬取...', 'running');
     this.updateStartButtonState(true);
     this.showProgress();
@@ -396,7 +396,7 @@ const StockCrawlerController = {
   
   // 停止當前爬取
   stopCurrentCrawl() {
-    console.log('請求停止當前股票爬取');
+    LogUtils.log('請求停止當前股票爬取');
     this.updateStatus('正在停止...', 'info');
     
     chrome.runtime.sendMessage({
@@ -423,7 +423,7 @@ const StockCrawlerController = {
   startScheduledCrawl() {
     // 檢查是否已初始化
     if (!this.initialized) {
-      console.log('StockCrawlerController 尚未初始化完成，等待...');
+      LogUtils.log('StockCrawlerController 尚未初始化完成，等待...');
       setTimeout(() => this.startScheduledCrawl(), 50);
       return;
     }
@@ -444,7 +444,7 @@ const StockCrawlerController = {
   _attemptStartScheduled(interval, retryCount = 0) {
     const maxRetries = 6;
     
-    console.log(`請求開始定時股票爬取，間隔 ${interval} 分鐘 (嘗試 ${retryCount + 1}/${maxRetries + 1})`);
+    LogUtils.log(`請求開始定時股票爬取，間隔 ${interval} 分鐘 (嘗試 ${retryCount + 1}/${maxRetries + 1})`);
     
     // 更新狀態為啟動中
     if (retryCount === 0) {
@@ -461,7 +461,7 @@ const StockCrawlerController = {
     }, (response) => {
       // 檢查 chrome.runtime.lastError
       if (chrome.runtime.lastError) {
-        console.log(`嘗試 ${retryCount + 1} 通信錯誤:`, chrome.runtime.lastError.message);
+        LogUtils.log(`嘗試 ${retryCount + 1} 通信錯誤:`, chrome.runtime.lastError.message);
         this._handleStartScheduledFailure(interval, retryCount, maxRetries, `通信錯誤: ${chrome.runtime.lastError.message}`);
         return;
       }
@@ -470,14 +470,14 @@ const StockCrawlerController = {
         // 成功：更新狀態和按鈕
         this.isScheduled = true;
         this.updateStatus(`已啟動自動爬取，每 ${interval} 分鐘執行一次`);
-        console.log('定時爬取啟動成功');
+        LogUtils.log('定時爬取啟動成功');
         // 延遲更新按鈕狀態以避免閃爍
         setTimeout(() => {
           this.updateAutoToggleButtonState(true); // 設置為已啟動狀態
         }, 300);
       } else {
         const errorMsg = response?.error || '未知錯誤';
-        console.log(`嘗試 ${retryCount + 1} 啟動失敗:`, errorMsg);
+        LogUtils.log(`嘗試 ${retryCount + 1} 啟動失敗:`, errorMsg);
         this._handleStartScheduledFailure(interval, retryCount, maxRetries, errorMsg);
       }
     });
@@ -487,13 +487,13 @@ const StockCrawlerController = {
   _handleStartScheduledFailure(interval, retryCount, maxRetries, errorMsg) {
     if (retryCount < maxRetries) {
       // 繼續重試
-      console.log(`1秒後進行第 ${retryCount + 2} 次嘗試...`);
+      LogUtils.log(`1秒後進行第 ${retryCount + 2} 次嘗試...`);
       setTimeout(() => {
         this._attemptStartScheduled(interval, retryCount + 1);
       }, 1000);
     } else {
       // 重試次數用盡，恢復原狀態
-      console.log('重試次數用盡，啟動失敗');
+      LogUtils.log('重試次數用盡，啟動失敗');
       this.updateStatus('啟動自動爬取失敗: ' + errorMsg, 'error');
       // 延遲恢復按鈕狀態以避免閃爍
       setTimeout(() => {
@@ -506,12 +506,12 @@ const StockCrawlerController = {
   stopScheduledCrawl() {
     // 檢查是否已初始化
     if (!this.initialized) {
-      console.log('StockCrawlerController 尚未初始化完成，等待...');
+      LogUtils.log('StockCrawlerController 尚未初始化完成，等待...');
       setTimeout(() => this.stopScheduledCrawl(), 50);
       return;
     }
     
-    console.log('請求停止定時股票爬取');
+    LogUtils.log('請求停止定時股票爬取');
     this.updateStatus('正在停止自動爬取...', 'info');
     this.updateAutoToggleButtonState('stopping'); // 設置為停止中狀態
     
@@ -521,7 +521,7 @@ const StockCrawlerController = {
     }, (response) => {
       // 檢查 chrome.runtime.lastError
       if (chrome.runtime.lastError) {
-        console.log('停止定時爬取通信錯誤:', chrome.runtime.lastError.message);
+        LogUtils.log('停止定時爬取通信錯誤:', chrome.runtime.lastError.message);
         this.updateStatus('通信錯誤: ' + chrome.runtime.lastError.message, 'error');
         // 延遲恢復按鈕狀態以避免閃爍
         setTimeout(() => {
@@ -531,11 +531,11 @@ const StockCrawlerController = {
       }
       
       if (response && response.success) {
-        console.log('停止定時爬取請求成功，等待狀態更新...');
+        LogUtils.log('停止定時爬取請求成功，等待狀態更新...');
         // 不在這裡更新狀態，讓 handleStatusUpdate 處理
         // 這樣避免重複更新導致的閃爍
       } else {
-        console.log('停止定時爬取請求失敗:', response?.error || '未知錯誤');
+        LogUtils.log('停止定時爬取請求失敗:', response?.error || '未知錯誤');
         this.updateStatus('停止自動爬取失敗: ' + (response?.error || '未知錯誤'), 'error');
         // 延遲恢復按鈕狀態以避免閃爍
         setTimeout(() => {
@@ -553,7 +553,7 @@ const StockCrawlerController = {
   
   // 更新進度顯示
   updateProgress(progress) {
-    console.log('更新進度:', progress);
+    LogUtils.log('更新進度:', progress);
     this.progressFill.style.width = `${progress}%`;
     this.progressText.textContent = `${progress}%`;
   },
@@ -607,7 +607,7 @@ const StockCrawlerController = {
   
   // 爬取完成回調
   onCrawlComplete(result) {
-    console.log('爬取完成', result);
+    LogUtils.log('爬取完成', result);
     
     // 重新載入股票清單到輸入框
     this.reloadStockList();
@@ -622,13 +622,13 @@ const StockCrawlerController = {
       // 如果內容有變化，更新輸入框
       if (newStockList !== this.savedStockListValue) {
         StockManager.stockListInput.value = newStockList;
-        console.log('股票清單已更新');
+        LogUtils.log('股票清單已更新');
         
         // 觸發內容腳本更新
         StockManager.triggerContentScriptUpdate();
       }
     } catch (error) {
-      console.error('重新載入股票清單失敗:', error);
+      LogUtils.error('重新載入股票清單失敗:', error);
     }
   }
 };

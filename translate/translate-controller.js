@@ -29,11 +29,11 @@ class TranslationController {
   setState(newState, phase = '') {
     // 安全檢查：如果當前狀態是 cancelled，不允許設置為 completed
     if (this.state === 'cancelled' && newState === 'completed') {
-      console.log(`[TranslationController] 拒絕狀態變更: ${this.state} → ${newState} (已取消的流程不能變為完成)`);
+      LogUtils.log(`❌ 拒絕狀態變更: ${this.state} → ${newState} (已取消的流程不能變為完成)`);
       return;
     }
     
-    console.log(`[TranslationController] 狀態變更: ${this.state} → ${newState}${phase ? ` (${phase})` : ''}`);
+    LogUtils.log(`🔄 狀態變更: ${this.state} → ${newState}${phase ? ` (${phase})` : ''}`);
     this.state = newState;
     this.currentPhase = phase;
     this._notifyObservers();
@@ -59,7 +59,7 @@ class TranslationController {
    * 取消翻譯流程
    */
   cancel() {
-    console.log('[TranslationController] 執行取消操作');
+    LogUtils.important('🛑 執行取消操作');
     this.setState('cancelled');
     this.abortController.abort();
     
@@ -73,7 +73,7 @@ class TranslationController {
    * 重置控制器狀態
    */
   reset() {
-    console.log('[TranslationController] 重置控制器');
+    LogUtils.log('🔄 重置控制器');
     
     if (this.abortController) {
       this.abortController.abort();
@@ -113,7 +113,7 @@ class TranslationController {
       try {
         observer(this.state, this.currentPhase);
       } catch (error) {
-        console.error('[TranslationController] 通知觀察者時出錯:', error);
+        LogUtils.error('通知觀察者時出錯:', error);
       }
     });
   }
@@ -167,4 +167,4 @@ class TranslationController {
 // 導出到全局
 window.TranslationController = TranslationController;
 
-console.log('[TranslationController] 翻譯控制器模組已載入'); 
+LogUtils.log('翻譯控制器模組已載入'); 
