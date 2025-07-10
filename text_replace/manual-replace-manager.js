@@ -843,20 +843,43 @@ const ManualReplaceManager = {
         let successCount = 0;
         let failCount = 0;
         
-        // 🔍 預先驗證 DOM 同步狀態
-        let domContentLength = 0;
-        if (TextHighlight.PositionCalculator && TextHighlight.PositionCalculator.cache && TextHighlight.PositionCalculator.cache.div) {
-          const divText = TextHighlight.PositionCalculator.cache.div.textContent || '';
-          domContentLength = divText.length;
-          
-          if (domContentLength !== text.length) {
-            console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 組 ${groupIndex} DOM 內容與文本不同步！DOM: ${domContentLength}, Text: ${text.length}`);
+              // 🔍 預先驗證 DOM 同步狀態，確保 DOM 容器存在
+      let domContentLength = 0;
+      
+      // 🆕 主動確保 DOM 容器存在
+      if (!TextHighlight.PositionCalculator || !TextHighlight.PositionCalculator.cache || !TextHighlight.PositionCalculator.cache.div) {
+        console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 組 ${groupIndex} DOM 容器不存在，主動初始化`);
+        
+        // 主動觸發 DOM 容器創建：調用一次位置計算來初始化容器
+        if (text.length > 0 && TextHighlight.PositionCalculator && TextHighlight.PositionCalculator.calculatePosition) {
+          try {
+            // 使用文本的第一個字符來觸發容器創建
+            const firstChar = text.charAt(0);
+            TextHighlight.PositionCalculator.calculatePosition(textArea, 0, text, firstChar, styles);
+            console.log(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] 組 ${groupIndex} DOM 容器已成功初始化`);
+          } catch (initError) {
+            console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 組 ${groupIndex} DOM 容器初始化失敗:`, initError);
             return [];
           }
         } else {
-          console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 組 ${groupIndex} 找不到位置計算的 DOM 容器`);
+          console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 組 ${groupIndex} 無法初始化 DOM 容器（文本為空或缺少依賴）`);
           return [];
         }
+      }
+      
+      // 再次檢查 DOM 容器是否存在
+      if (TextHighlight.PositionCalculator && TextHighlight.PositionCalculator.cache && TextHighlight.PositionCalculator.cache.div) {
+        const divText = TextHighlight.PositionCalculator.cache.div.textContent || '';
+        domContentLength = divText.length;
+        
+        if (domContentLength !== text.length) {
+          console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 組 ${groupIndex} DOM 內容與文本不同步！DOM: ${domContentLength}, Text: ${text.length}`);
+          return [];
+        }
+      } else {
+        console.error(`[ManualReplaceManager][${ManualReplaceManager._getTimeStamp()}] ❌ 組 ${groupIndex} DOM 容器初始化後仍然找不到`);
+        return [];
+      }
         
         for (let i = 0; i < matches.length; i++) {
           const match = matches[i];
