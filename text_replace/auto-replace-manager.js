@@ -422,43 +422,48 @@ const AutoReplaceManager = {
     };
   },
 
-  /** 從網頁獲取當前年份 */
-  async getCurrentYear() {
+  /** 從網頁獲取當前年份（帶緩存） */
+  async getCurrentYear(useCache = true) {
     try {
-      console.log(`[AutoReplace][${new Date().toISOString()}] 🗓️ 開始獲取當前年份...`);
+      // 🆕 使用緩存避免重複獲取
+      if (useCache && this._cachedYear && this._cacheTime && (Date.now() - this._cacheTime < 30000)) {
+        return this._cachedYear;
+      }
       
       // 延遲指定毫秒數
       await new Promise(resolve => setTimeout(resolve, this.CONFIG.YEAR_FETCH_DELAY));
       
       // 嘗試從指定的CSS選擇器獲取年份
       const dateInput = document.querySelector('.MuiInputBase-root.MuiOutlinedInput-root.MuiInputBase-colorPrimary.MuiInputBase-formControl.MuiInputBase-adornedEnd.css-1oy18r0 input');
-      console.log(`[AutoReplace][${new Date().toISOString()}] 🔍 查找日期輸入框: ${dateInput ? '找到' : '未找到'}`);
       
       if (dateInput && dateInput.value) {
         const dateValue = dateInput.value;
-        console.log(`[AutoReplace][${new Date().toISOString()}] 📅 日期框值: ${dateValue}`);
-        
         // 嘗試從日期值中提取年份
         const yearMatch = dateValue.match(/(\d{4})/);
         if (yearMatch) {
           const year = parseInt(yearMatch[1]);
-          console.log(`[AutoReplace][${new Date().toISOString()}] ✅ 從網頁日期框成功獲取年份: ${year}`);
+          
+          // 🆕 緩存年份值
+          this._cachedYear = year;
+          this._cacheTime = Date.now();
           return year;
-        } else {
-          console.log(`[AutoReplace][${new Date().toISOString()}] ⚠️ 日期值中未找到四位年份格式`);
         }
-      } else {
-        console.log(`[AutoReplace][${new Date().toISOString()}] ⚠️ 日期框為空或不存在`);
       }
       
       // 如果無法從網頁獲取，使用當前系統年份作為備份
       const currentYear = new Date().getFullYear();
-      console.log(`[AutoReplace][${new Date().toISOString()}] 🔄 使用系統年份作為備份: ${currentYear}`);
+      
+      // 🆕 緩存系統年份
+      this._cachedYear = currentYear;
+      this._cacheTime = Date.now();
       return currentYear;
     } catch (error) {
       console.warn(`[AutoReplace][${new Date().toISOString()}] ❌ 獲取年份時出錯，使用系統年份:`, error);
       const fallbackYear = new Date().getFullYear();
-      console.log(`[AutoReplace][${new Date().toISOString()}] 🆘 異常備份年份: ${fallbackYear}`);
+      
+      // 🆕 緩存備份年份
+      this._cachedYear = fallbackYear;
+      this._cacheTime = Date.now();
       return fallbackYear;
     }
   },
@@ -472,24 +477,19 @@ const AutoReplaceManager = {
     // 檢查是否包含年份格式
     const hasYearFormat = /YYYY([+-]\d+)?|YY([+-]\d+)?/g.test(text);
     if (!hasYearFormat) {
-      return text; // 沒有年份格式，直接返回，不顯示調試訊息
+      return text; // 沒有年份格式，直接返回
     }
 
-    console.log(`[AutoReplace][${new Date().toISOString()}] 🔄 開始處理年份格式，原始文本: "${text}"`);
-    const currentYear = await this.getCurrentYear();
+    const currentYear = await this.getCurrentYear(); // 使用緩存機制
     let processedText = text;
-
-    console.log(`[AutoReplace][${new Date().toISOString()}] 📊 基準年份: ${currentYear}`);
 
     // 處理四位年份格式 YYYY±數字
     processedText = processedText.replace(/YYYY([+-]\d+)?/g, (match, offset) => {
       if (offset) {
         const adjustment = parseInt(offset);
         const targetYear = currentYear + adjustment;
-        console.log(`[AutoReplace][${new Date().toISOString()}] 🔢 四位年份格式替換: ${match} → ${targetYear} (基準${currentYear}${offset}=${targetYear})`);
         return targetYear.toString();
       } else {
-        console.log(`[AutoReplace][${new Date().toISOString()}] 🔢 四位年份格式替換: ${match} → ${currentYear}`);
         return currentYear.toString();
       }
     });
@@ -502,11 +502,9 @@ const AutoReplaceManager = {
         targetYear = currentYear + adjustment;
       }
       const twoDigitYear = (targetYear % 100).toString().padStart(2, '0');
-      console.log(`[AutoReplace][${new Date().toISOString()}] 🔢 兩位年份格式替換: ${match} → ${twoDigitYear} (來自${targetYear})`);
       return twoDigitYear;
     });
 
-    console.log(`[AutoReplace][${new Date().toISOString()}] ✅ 年份格式處理完成: "${text}" → "${processedText}"`);
     return processedText;
   },
 
@@ -517,6 +515,10 @@ const AutoReplaceManager = {
     let totalChanges = 0;
     let replacementDetails = [];
     let regexCache = new Map(); // 正則表達式緩存
+
+    // 🆕 重置年份緩存，確保在新的替換過程中使用最新年份
+    this._cachedYear = null;
+    this._cacheTime = null;
 
     const rules = this._getActiveRules();
     
@@ -603,6 +605,12 @@ const AutoReplaceManager = {
   /** 創建正則表達式 */
   createRegex(text) {
     return RegexHelper.createRegex(text);
+  },
+
+  /** 🆕 清理年份緩存 */
+  clearYearCache() {
+    this._cachedYear = null;
+    this._cacheTime = null;
   }
 };
 
