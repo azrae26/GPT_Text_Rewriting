@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chrome Extension 測試頁面</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        
+        textarea[name="content"] {
+            width: 100%;
+            min-height: 200px;
+            padding: 15px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            font-family: Arial, sans-serif;
+            resize: vertical;
+        }
+        
+        .test-section {
+            margin: 30px 0;
+            padding: 20px;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            background-color: #f9f9f9;
+        }
+        
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+        
+        h2 {
+            color: #555;
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+        }
+        
+        .sample-text {
+            background-color: #fff;
+            padding: 15px;
+            border-left: 4px solid #007cba;
+            margin: 10px 0;
+        }
+        
+        .test-controls {
+            margin: 20px 0;
+            padding: 15px;
+            background-color: #e8f4f8;
+            border-radius: 5px;
+        }
+        
+        button {
+            background-color: #007cba;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        
+        button:hover {
+            background-color: #005a87;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 GPT Text Rewriting 插件測試頁面</h1>
+    
+    <div class="test-section">
+        <h2>📝 主要文本區域</h2>
+        <textarea name="content" placeholder="請在此輸入要測試的文本內容...">這是一段測試文本。我們可以使用這個文本來測試 GPT 文章改寫助手的各種功能，包括文本改寫、翻譯、替換等功能。
+
+這個測試頁面專門設計來測試 Chrome 插件的各種功能，確保插件能夠正常運作並提供良好的用戶體驗。</textarea>
+    </div>
+    
+    <div class="test-section">
+        <h2>🎯 特殊文本測試</h2>
+        <div class="sample-text">
+            <strong>英文文本：</strong>This is a sample English text for translation testing. The quick brown fox jumps over the lazy dog.
+        </div>
+        <div class="sample-text">
+            <strong>中文文本：</strong>這是用於翻譯測試的中文範例文本。快速的棕色狐狸跳過懶惰的狗。
+        </div>
+        <div class="sample-text">
+            <strong>混合文本：</strong>This text contains both English and 中文內容，適合測試混合語言的處理能力。
+        </div>
+        <div class="sample-text">
+            <strong>特殊字符：</strong>Test with special characters: @#$%^&*()_+{}|:"<>?[];\',./`~
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>🔧 測試控制</h2>
+        <div class="test-controls">
+            <button onclick="loadSampleText()">載入範例文本</button>
+            <button onclick="clearContent()">清空內容</button>
+            <button onclick="selectAllContent()">全選文本</button>
+            <button onclick="addTimestamp()">添加時間戳</button>
+        </div>
+    </div>
+    
+    <div class="test-section">
+        <h2>ℹ️ 測試說明</h2>
+        <ul>
+            <li>這個頁面專門用於測試 Chrome 插件功能</li>
+            <li>主要文本區域使用 <code>textarea[name="content"]</code> 選擇器</li>
+            <li>包含各種類型的測試文本</li>
+            <li>提供測試控制按鈕</li>
+            <li>適合自動化測試使用</li>
+        </ul>
+    </div>
+
+    <script>
+        function loadSampleText() {
+            const textarea = document.querySelector('textarea[name="content"]');
+            textarea.value = `這是一個完整的測試文本範例。
+
+包含多段落：
+1. 第一段落 - 測試基本文本處理
+2. 第二段落 - 測試特殊字符 @#$%^&*()
+3. 第三段落 - 測試 English and 中文混合內容
+
+這個文本適合測試以下功能：
+- 文本改寫和優化
+- 翻譯功能（中英互譯）
+- 自動替換和手動替換
+- 文本高亮顯示
+- 內容自動保存
+
+時間戳：${new Date().toLocaleString()}`;
+        }
+        
+        function clearContent() {
+            const textarea = document.querySelector('textarea[name="content"]');
+            textarea.value = '';
+        }
+        
+        function selectAllContent() {
+            const textarea = document.querySelector('textarea[name="content"]');
+            textarea.select();
+        }
+        
+        function addTimestamp() {
+            const textarea = document.querySelector('textarea[name="content"]');
+            textarea.value += `\n\n[時間戳] ${new Date().toLocaleString()}`;
+        }
+        
+        // 模擬用戶互動事件
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('🧪 測試頁面已載入');
+            
+            const textarea = document.querySelector('textarea[name="content"]');
+            
+            // 添加事件監聽器來模擬用戶互動
+            textarea.addEventListener('input', function() {
+                console.log('📝 文本內容已更改');
+            });
+            
+            textarea.addEventListener('focus', function() {
+                console.log('🎯 文本區域已聚焦');
+            });
+            
+            textarea.addEventListener('blur', function() {
+                console.log('👁️ 文本區域失去焦點');
+            });
+        });
+    </script>
+</body>
+</html> 
