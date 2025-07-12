@@ -1104,6 +1104,11 @@ function loadDependencies() {
     // 載入必要的依賴（default.js 已在檔案開頭載入）
     importScripts('settings.js');
     importScripts('settings/settings-key.js');
+    importScripts('settings/settings-classifier.js');
+    importScripts('settings/settings-exporter.js');
+    importScripts('settings/settings-importer.js');
+    importScripts('settings/storage-manager.js');
+    importScripts('settings/model-manager.js');
     importScripts('SettingsIO/settings-io.js');
     
     // 檢查是否成功載入

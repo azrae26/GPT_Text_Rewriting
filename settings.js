@@ -129,10 +129,11 @@ const GlobalSettings = {
    * @returns {Promise<object>} - 一個 Promise 物件，resolve 後返回載入的設定物件。
    */
   async loadSettings() {
-    if (!window.SettingsLoader) {
+    const SettingsLoader = this._getGlobalModule('SettingsLoader');
+    if (!SettingsLoader) {
       throw new Error('SettingsLoader 未載入，請檢查載入順序');
     }
-    return window.SettingsLoader.loadSettings(this);
+    return SettingsLoader.loadSettings(this);
   },
 
   /**
@@ -392,10 +393,11 @@ const GlobalSettings = {
 
   // 委託給 SettingsClassifier 處理設定分類
   _categorizeSettings(settings) {
-    if (!window.SettingsClassifier) {
+    const SettingsClassifier = this._getGlobalModule('SettingsClassifier');
+    if (!SettingsClassifier) {
       throw new Error('SettingsClassifier 未載入，請檢查載入順序');
     }
-    return window.SettingsClassifier.categorizeSettings(settings, this);
+    return SettingsClassifier.categorizeSettings(settings, this);
   },
 
   // 過濾有效的設定
@@ -409,55 +411,62 @@ const GlobalSettings = {
 
   // 委託給 SettingsCleanup 處理殭屍設定清理
   async cleanupZombieSettings() {
-    if (!window.SettingsCleanup) {
+    const SettingsCleanup = this._getGlobalModule('SettingsCleanup');
+    if (!SettingsCleanup) {
       throw new Error('SettingsCleanup 未載入，請檢查載入順序');
     }
-    return window.SettingsCleanup.cleanupZombieSettings();
+    return SettingsCleanup.cleanupZombieSettings();
   },
 
   // 委託給 SettingsExporter 處理設定匯出
   async getAllSettings() {
-    if (!window.SettingsExporter) {
+    const SettingsExporter = this._getGlobalModule('SettingsExporter');
+    if (!SettingsExporter) {
       throw new Error('SettingsExporter 未載入，請檢查載入順序');
     }
-    return window.SettingsExporter.getAllSettings(this);
+    return SettingsExporter.getAllSettings(this);
   },
 
   // 委託給 SettingsImporter 處理設定匯入
   async applySettings(settings) {
-    if (!window.SettingsImporter) {
+    const SettingsImporter = this._getGlobalModule('SettingsImporter');
+    if (!SettingsImporter) {
       throw new Error('SettingsImporter 未載入，請檢查載入順序');
     }
-    return window.SettingsImporter.applySettings(settings, this);
+    return SettingsImporter.applySettings(settings, this);
   },
 
   // 委託給 SettingsImporter 處理非阻塞式設定匯入
   async applySettingsNonBlocking(settings, progressCallback) {
-    if (!window.SettingsImporter) {
+    const SettingsImporter = this._getGlobalModule('SettingsImporter');
+    if (!SettingsImporter) {
       throw new Error('SettingsImporter 未載入，請檢查載入順序');
     }
-    return window.SettingsImporter.applySettingsNonBlocking(settings, this, progressCallback);
+    return SettingsImporter.applySettingsNonBlocking(settings, this, progressCallback);
   },
 
   // 委託給 StorageManager 進行分批儲存
   async _setChromeStorageInBatches(data, type = 'local', progressCallback, batchSize = 5) {
-    if (!window.StorageManager) {
+    const StorageManager = this._getGlobalModule('StorageManager');
+    if (!StorageManager) {
       throw new Error('StorageManager 未載入，請檢查載入順序');
     }
-    return window.StorageManager.setChromeStorageInBatches(data, type, progressCallback, batchSize);
+    return StorageManager.setChromeStorageInBatches(data, type, progressCallback, batchSize);
   },
 
   // 委託給 StorageManager 處理 Chrome storage 操作
   _getChromeStorage(type = 'sync') {
-    if (!window.StorageManager) {
+    const StorageManager = this._getGlobalModule('StorageManager');
+    if (!StorageManager) {
       throw new Error('StorageManager 未載入，請檢查載入順序');
     }
-    return window.StorageManager.getAllStorageData(type);
+    return StorageManager.getAllStorageData(type);
   },
 
   // 委託給 StorageManager 儲存資料到 Chrome storage
   _setChromeStorage(data, type = 'sync', prefix = '') {
-    if (!window.StorageManager) {
+    const StorageManager = this._getGlobalModule('StorageManager');
+    if (!StorageManager) {
       throw new Error('StorageManager 未載入，請檢查載入順序');
     }
       
@@ -466,74 +475,83 @@ const GlobalSettings = {
         Object.fromEntries(Object.entries(data).map(([key, value]) => [`${prefix}${key}`, value])) :
         data;
       
-    return window.StorageManager.setChromeStorage(prefixedData, type, prefix);
+    return StorageManager.setChromeStorage(prefixedData, type, prefix);
   },
 
   // 委託給 ModelManager 處理自定義模型管理
   async addCustomModel(modelName, displayName, apiType) {
-    if (!window.ModelManager) {
+    const ModelManager = this._getGlobalModule('ModelManager');
+    if (!ModelManager) {
       throw new Error('ModelManager 未載入，請檢查載入順序');
     }
-    return window.ModelManager.addCustomModel(modelName, displayName, apiType);
+    return ModelManager.addCustomModel(modelName, displayName, apiType);
   },
 
   async removeCustomModel(modelName) {
-    if (!window.ModelManager) {
+    const ModelManager = this._getGlobalModule('ModelManager');
+    if (!ModelManager) {
       throw new Error('ModelManager 未載入，請檢查載入順序');
     }
-    return window.ModelManager.removeCustomModel(modelName);
+    return ModelManager.removeCustomModel(modelName);
   },
 
   getCustomModels() {
-    if (!window.ModelManager) {
+    const ModelManager = this._getGlobalModule('ModelManager');
+    if (!ModelManager) {
       throw new Error('ModelManager 未載入，請檢查載入順序');
     }
-    return window.ModelManager.getCustomModels();
+    return ModelManager.getCustomModels();
   },
 
   getAllAvailableModels() {
-    if (!window.ModelManager) {
+    const ModelManager = this._getGlobalModule('ModelManager');
+    if (!ModelManager) {
       throw new Error('ModelManager 未載入，請檢查載入順序');
     }
-    return window.ModelManager.getAllAvailableModels();
+    return ModelManager.getAllAvailableModels();
   },
 
   isCustomModel(modelName) {
-    if (!window.ModelManager) {
+    const ModelManager = this._getGlobalModule('ModelManager');
+    if (!ModelManager) {
       throw new Error('ModelManager 未載入，請檢查載入順序');
     }
-    return window.ModelManager.isCustomModel(modelName);
+    return ModelManager.isCustomModel(modelName);
   },
 
   getModelApiType(modelName) {
-    if (!window.ModelManager) {
+    const ModelManager = this._getGlobalModule('ModelManager');
+    if (!ModelManager) {
       throw new Error('ModelManager 未載入，請檢查載入順序');
     }
-    return window.ModelManager.getModelApiType(modelName);
+    return ModelManager.getModelApiType(modelName);
   },
 
   // 委託給 ModelManager 獲取模型對應的 API 金鑰名稱
   getApiKeyNameForModel(modelName) {
-    if (!window.ModelManager) {
+    const ModelManager = this._getGlobalModule('ModelManager');
+    if (!ModelManager) {
       throw new Error('ModelManager 未載入，請檢查載入順序');
     }
-    return window.ModelManager.getApiKeyNameForModel(modelName);
+    return ModelManager.getApiKeyNameForModel(modelName);
   },
 
   // 委託給 ModelManager 獲取模型的顯示名稱
   getModelDisplayName(modelName) {
-    if (!window.ModelManager) {
+    const ModelManager = this._getGlobalModule('ModelManager');
+    if (!ModelManager) {
       throw new Error('ModelManager 未載入，請檢查載入順序');
     }
-    return window.ModelManager.getModelDisplayName(modelName);
+    return ModelManager.getModelDisplayName(modelName);
   },
 
   // 委託給 ModelManager 獲取預設模型
   getDefaultModel() {
-    if (!window.ModelManager) {
+    const ModelManager = this._getGlobalModule('ModelManager');
+    if (!ModelManager) {
       throw new Error('ModelManager 未載入，請檢查載入順序');
     }
-    return window.ModelManager.getDefaultModel();
+    return ModelManager.getDefaultModel();
   },
 
   // 取得適當環境的全域 DefaultSettings
@@ -546,6 +564,18 @@ const GlobalSettings = {
       return global.DefaultSettings;
     }
     return {};
+  },
+
+  // 取得適當環境的全域模組 - 兼容不同環境
+  _getGlobalModule(moduleName) {
+    if (typeof window !== 'undefined' && window[moduleName]) {
+      return window[moduleName];
+    } else if (typeof self !== 'undefined' && self[moduleName]) {
+      return self[moduleName];
+    } else if (typeof global !== 'undefined' && global[moduleName]) {
+      return global[moduleName];
+    }
+    return null;
   }
 };
 

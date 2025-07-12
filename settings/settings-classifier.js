@@ -10,7 +10,7 @@
  * - GlobalSettings.isLocalStorageKey 方法
  */
 
-window.SettingsClassifier = {
+const SettingsClassifier = {
   /**
    * 分類設定到不同的儲存類型
    * @param {Object} settings - 要分類的設定物件
@@ -200,9 +200,15 @@ window.SettingsClassifier = {
   }
 };
 
-// 確保全域可訪問
+// 確保全域可訪問 - 兼容不同環境
 if (typeof window !== 'undefined') {
-  window.SettingsClassifier = window.SettingsClassifier;
+  window.SettingsClassifier = SettingsClassifier;
+} else if (typeof self !== 'undefined') {
+  // Service Worker 環境
+  self.SettingsClassifier = SettingsClassifier;
+} else if (typeof global !== 'undefined') {
+  // Node.js 環境
+  global.SettingsClassifier = SettingsClassifier;
 }
 
 LogUtils.log('設定分類管理器已載入'); 

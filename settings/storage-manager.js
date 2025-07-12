@@ -202,14 +202,31 @@ const StorageManager = {
   },
 
   /**
+   * 獲取 KeyClassifier - 兼容不同環境
+   * @private
+   * @returns {Object|null} - KeyClassifier 實例或 null
+   */
+  _getKeyClassifier() {
+    if (typeof window !== 'undefined' && window.KeyClassifier) {
+      return window.KeyClassifier;
+    } else if (typeof self !== 'undefined' && self.KeyClassifier) {
+      return self.KeyClassifier;
+    } else if (typeof global !== 'undefined' && global.KeyClassifier) {
+      return global.KeyClassifier;
+    }
+    return null;
+  },
+
+  /**
    * 根據鍵值決定存儲類型
    * @param {string} key - 設定鍵值
    * @returns {string} - 存儲類型 ('sync' | 'local')
    */
   getStorageTypeForKey(key) {
     // 如果有 KeyClassifier，使用它來判斷
-    if (window.KeyClassifier) {
-      return window.KeyClassifier.getStorageType(key);
+    const KeyClassifier = this._getKeyClassifier();
+    if (KeyClassifier) {
+      return KeyClassifier.getStorageType(key);
     }
     
     // 後備判斷邏輯
@@ -271,7 +288,13 @@ const StorageManager = {
   }
 };
 
-// 暴露到全局
+// 暴露到全局 - 兼容不同環境
 if (typeof window !== 'undefined') {
   window.StorageManager = StorageManager;
+} else if (typeof self !== 'undefined') {
+  // Service Worker 環境
+  self.StorageManager = StorageManager;
+} else if (typeof global !== 'undefined') {
+  // Node.js 環境
+  global.StorageManager = StorageManager;
 } 

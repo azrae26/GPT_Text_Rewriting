@@ -13,7 +13,7 @@
  * - SettingsClassifier.filterValidSettings
  */
 
-window.SettingsExporter = {
+const SettingsExporter = {
   /**
    * 獲取所有設定用於匯出
    * @param {Object} settingsInstance - GlobalSettings 實例
@@ -50,9 +50,10 @@ window.SettingsExporter = {
       // 應用同步優先權
       const finalData = this._applySyncPriority(mergedData, filteredData.syncData);
       
-      // 過濾有效設定
-      const validSettings = window.SettingsClassifier 
-        ? window.SettingsClassifier.filterValidSettings(finalData)
+      // 過濾有效設定 - 兼容 Service Worker 環境
+      const SettingsClassifier = this._getSettingsClassifier();
+      const validSettings = SettingsClassifier 
+        ? SettingsClassifier.filterValidSettings(finalData)
         : this._fallbackFilterValidSettings(finalData);
 
       LogUtils.log('設定匯出完成:', {
@@ -218,6 +219,22 @@ window.SettingsExporter = {
   },
 
   /**
+   * 獲取 SettingsClassifier - 兼容不同環境
+   * @private
+   * @returns {Object|null} - SettingsClassifier 實例或 null
+   */
+  _getSettingsClassifier() {
+    if (typeof window !== 'undefined' && window.SettingsClassifier) {
+      return window.SettingsClassifier;
+    } else if (typeof self !== 'undefined' && self.SettingsClassifier) {
+      return self.SettingsClassifier;
+    } else if (typeof global !== 'undefined' && global.SettingsClassifier) {
+      return global.SettingsClassifier;
+    }
+    return null;
+  },
+
+  /**
    * 後備的設定過濾方法
    * @private
    * @param {Object} result - 要過濾的設定
@@ -277,9 +294,15 @@ window.SettingsExporter = {
   }
 };
 
-// 確保全域可訪問
+// 確保全域可訪問 - 兼容不同環境
 if (typeof window !== 'undefined') {
-  window.SettingsExporter = window.SettingsExporter;
+  window.SettingsExporter = SettingsExporter;
+} else if (typeof self !== 'undefined') {
+  // Service Worker 環境
+  self.SettingsExporter = SettingsExporter;
+} else if (typeof global !== 'undefined') {
+  // Node.js 環境
+  global.SettingsExporter = SettingsExporter;
 }
 
 LogUtils.log('設定匯出管理器已載入'); 

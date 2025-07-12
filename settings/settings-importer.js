@@ -13,7 +13,7 @@
  * - 進度回調支援
  */
 
-window.SettingsImporter = {
+const SettingsImporter = {
   /**
    * 套用設定（阻塞式）
    * @param {Object} settings - 要匯入的設定
@@ -186,13 +186,30 @@ window.SettingsImporter = {
    * @returns {Object} - 分類後的設定
    */
   _categorizeSettingsWithInstance(settings, settingsInstance) {
-    if (window.SettingsClassifier) {
-      return window.SettingsClassifier.categorizeSettings(settings, settingsInstance);
+    const SettingsClassifier = this._getSettingsClassifier();
+    if (SettingsClassifier) {
+      return SettingsClassifier.categorizeSettings(settings, settingsInstance);
     } else {
       // 後備邏輯
       LogUtils.warn('SettingsClassifier 未載入，使用後備分類邏輯');
       return settingsInstance._categorizeSettings(settings);
     }
+  },
+
+  /**
+   * 獲取 SettingsClassifier - 兼容不同環境
+   * @private
+   * @returns {Object|null} - SettingsClassifier 實例或 null
+   */
+  _getSettingsClassifier() {
+    if (typeof window !== 'undefined' && window.SettingsClassifier) {
+      return window.SettingsClassifier;
+    } else if (typeof self !== 'undefined' && self.SettingsClassifier) {
+      return self.SettingsClassifier;
+    } else if (typeof global !== 'undefined' && global.SettingsClassifier) {
+      return global.SettingsClassifier;
+    }
+    return null;
   },
 
   /**
@@ -381,9 +398,15 @@ window.SettingsImporter = {
   }
 };
 
-// 確保全域可訪問
+// 確保全域可訪問 - 兼容不同環境
 if (typeof window !== 'undefined') {
-  window.SettingsImporter = window.SettingsImporter;
+  window.SettingsImporter = SettingsImporter;
+} else if (typeof self !== 'undefined') {
+  // Service Worker 環境
+  self.SettingsImporter = SettingsImporter;
+} else if (typeof global !== 'undefined') {
+  // Node.js 環境
+  global.SettingsImporter = SettingsImporter;
 }
 
 LogUtils.log('設定匯入管理器已載入'); 

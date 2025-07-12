@@ -14,7 +14,6 @@
  */
 
 const ModelManager = {
-  
   /**
    * 新增自定義模型
    * @param {string} modelName - 模型名稱
@@ -244,7 +243,13 @@ const ModelManager = {
   }
 };
 
-// 暴露到全局
+// 暴露到全局 - 兼容不同環境
 if (typeof window !== 'undefined') {
   window.ModelManager = ModelManager;
-} 
+} else if (typeof self !== 'undefined') {
+  // Service Worker 環境
+  self.ModelManager = ModelManager;
+} else if (typeof global !== 'undefined') {
+  // Node.js 環境
+  global.ModelManager = ModelManager;
+}
