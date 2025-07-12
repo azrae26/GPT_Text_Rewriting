@@ -281,7 +281,15 @@ class SettingsIO {
   }
 
   async authenticateWithGoogle(interactive = false) {
-    return await this.tokenManager.getToken(interactive);
+    const authResult = await this.tokenManager.getToken(interactive);
+    
+    // 🔧 修復：如果是互動式認證且成功，觸發狀態變化通知
+    if (interactive && authResult.success) {
+      LogUtils.log('✅ 互動式認證成功，通知狀態管理器');
+      await this._notifySyncStatusChange();
+    }
+    
+    return authResult;
   }
 
   async manualSync() {
@@ -334,6 +342,9 @@ class SettingsIO {
     } else {
       this.stopPeriodicSync();
     }
+
+    // 通知同步狀態管理器啟用/禁用狀態變化
+    await this._notifySyncStatusChange();
 
     return enabled;
   }
@@ -1018,6 +1029,13 @@ class SettingsIO {
       [SettingsIO.CONSTANTS.KEYS.LAST_SYNC]: Date.now()
     };
 
+    // 🔧 修復：如果同步成功，確保 SYNC_ENABLED 狀態正確
+    // 因為能夠成功同步說明同步功能是啟用的
+    if (status === 'success') {
+      statusData[SettingsIO.CONSTANTS.KEYS.SYNC_ENABLED] = true;
+      LogUtils.log('✅ 同步成功，確保 SYNC_ENABLED 狀態為 true');
+    }
+
     if (error) {
       statusData[SettingsIO.CONSTANTS.KEYS.SYNC_ERROR] = error;
     } else {
@@ -1025,6 +1043,9 @@ class SettingsIO {
     }
 
     await chrome.storage.local.set(statusData);
+    
+    // 通知同步狀態管理器狀態變化
+    await this._notifySyncStatusChange();
   }
 
   async setSyncError(error) {
@@ -1032,6 +1053,47 @@ class SettingsIO {
       [SettingsIO.CONSTANTS.KEYS.SYNC_ERROR]: error,
       [SettingsIO.CONSTANTS.KEYS.SYNC_STATUS]: 'error'
     });
+    
+    // 通知同步狀態管理器錯誤狀態
+    await this._notifySyncStatusChange();
+  }
+
+  /**
+   * 通知同步狀態管理器狀態變化
+   * @private
+   */
+  async _notifySyncStatusChange() {
+    try {
+      const currentStatus = await this.getSyncStatus();
+      
+      LogUtils.log('通知同步狀態變化:', currentStatus);
+      
+      // 發送消息到所有匹配的 content scripts
+      const message = {
+        action: 'syncStatusChanged',
+        status: currentStatus
+      };
+      
+      // 嘗試發送到所有 tabs
+      try {
+        const tabs = await chrome.tabs.query({url: 'https://data.uanalyze.twobitto.com/*'});
+        
+        for (const tab of tabs) {
+          try {
+            await chrome.tabs.sendMessage(tab.id, message);
+          } catch (error) {
+            // 忽略無法發送的 tab（可能尚未載入 content script）
+            LogUtils.log(`無法發送消息到 tab ${tab.id}:`, error.message);
+          }
+        }
+        
+        LogUtils.log(`已發送同步狀態通知到 ${tabs.length} 個匹配的分頁`);
+      } catch (error) {
+        LogUtils.warn('發送同步狀態通知失敗:', error);
+      }
+    } catch (error) {
+      LogUtils.error('通知同步狀態變化失敗:', error);
+    }
   }
 
   // 統一的消息發送方法，自動處理不同環境
