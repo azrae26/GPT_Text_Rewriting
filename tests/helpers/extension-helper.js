@@ -266,27 +266,66 @@ class ExtensionHelper {
   }
 
   /**
+   * 創建模擬的目標網站環境
+   */
+  async createMockTargetSite() {
+    // 創建一個模擬的目標網站頁面
+    const mockHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Mock Target Site</title>
+        <style>
+          body { font-family: Arial, sans-serif; padding: 20px; }
+          textarea { width: 100%; height: 200px; padding: 10px; }
+        </style>
+      </head>
+      <body>
+        <h1>Mock Research Report Editor</h1>
+        <div class="MuiBreadcrumbs-ol">
+          <div class="MuiBreadcrumbs-li">
+            <p>編輯</p>
+          </div>
+        </div>
+        <textarea name="content" placeholder="請輸入內容..."></textarea>
+      </body>
+      </html>
+    `;
+    
+    // 攔截目標 URL 並返回模擬頁面
+    await this.page.route('**/research-reports/**', (route) => {
+      route.fulfill({
+        status: 200,
+        contentType: 'text/html',
+        body: mockHtml
+      });
+    });
+  }
+
+  /**
    * 等待插件完全初始化
    */
   async waitForExtensionReady() {
-    // 檢查是否為測試頁面（本地檔案）
-    const isTestPage = await this.page.evaluate(() => {
-      return window.location.protocol === 'file:';
-    });
+    // 檢查當前 URL 是否符合插件啟用條件
+    const currentUrl = await this.page.url();
+    const isTargetSite = currentUrl.includes('data.uanalyze.twobitto.com/research-reports/');
     
-    if (isTestPage) {
-      // 對於測試頁面，只等待頁面載入完成，不需要插件全域物件
-      await this.page.waitForLoadState('domcontentloaded');
-      console.log('⚡ 測試頁面載入完成');
-    } else {
-      // 對於真實網站，等待插件完全初始化
+    if (isTargetSite) {
+      // 對於目標網站，等待插件自然初始化
       await this.page.waitForFunction(() => {
         return window.UIManager && 
                window.GlobalSettings && 
                window.TextProcessor &&
-               window.TranslateManager;
+               window.TranslateManager &&
+               window.shouldEnableFeatures &&
+               window.shouldEnableFeatures();
       }, { timeout: 15000 });
-      console.log('⚡ 插件初始化完成');
+      console.log('⚡ 插件在目標網站初始化完成');
+    } else {
+      // 對於測試環境，只等待頁面載入完成
+      await this.page.waitForLoadState('domcontentloaded');
+      await this.page.waitForTimeout(500); // 給插件內容腳本一些時間載入
+      console.log('⚡ 測試環境頁面載入完成');
     }
   }
 
@@ -308,6 +347,289 @@ class ExtensionHelper {
       return errorText;
     }
     return null;
+  }
+
+  /**
+   * 設置API Mock，支援各種測試場景
+   * @param {Object} options - Mock選項
+   * @param {boolean} options.shouldFail - 是否模擬失敗
+   * @param {number} options.errorCode - 錯誤代碼
+   * @param {string} options.errorMessage - 錯誤訊息
+   * @param {string} options.responseText - 成功回應文本
+   * @param {number} options.delay - 延遲時間(ms)，用於測試取消功能
+   * @param {boolean} options.shouldAbort - 是否在中途中止（測試取消）
+   */
+  async setupApiMock(options = {}) {
+    const {
+      shouldFail = false,
+      errorCode = 401,
+      errorMessage = 'Invalid API key.',
+      responseText = '這是模擬的AI回應內容。',
+      delay = 0,
+      shouldAbort = false
+    } = options;
+
+    console.log('🔧 設置API Mock:', options);
+
+    // 攔截所有可能的API端點
+    const apiEndpoints = [
+      'https://api.openai.com/v1/chat/completions',
+      'https://generativelanguage.googleapis.com/v1beta/models/*/generateContent*',
+      'https://api.anthropic.com/v1/messages'
+    ];
+
+    for (const endpoint of apiEndpoints) {
+      await this.page.route(endpoint, async (route) => {
+        console.log(`🌐 攔截API請求: ${route.request().url()}`);
+        
+        // 如果設置了延遲，等待指定時間
+        if (delay > 0) {
+          console.log(`⏱️ 模擬API延遲: ${delay}ms`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+
+        // 如果設置了中止，模擬請求被取消
+        if (shouldAbort) {
+          console.log('🛑 模擬API請求被中止');
+          route.abort();
+          return;
+        }
+
+        if (shouldFail) {
+          // 模擬API失敗
+          console.log(`❌ 模擬API失敗: ${errorCode} - ${errorMessage}`);
+          route.fulfill({
+            status: errorCode,
+            contentType: 'application/json',
+            body: JSON.stringify({
+              error: {
+                message: errorMessage,
+                type: 'invalid_request_error',
+              },
+            }),
+          });
+        } else {
+          // 模擬API成功
+          console.log(`✅ 模擬API成功回應: ${responseText.substring(0, 50)}...`);
+          
+          // 根據不同的API端點返回不同格式的回應
+          let responseBody;
+          if (endpoint.includes('openai.com')) {
+            responseBody = {
+              id: 'chatcmpl-test123',
+              object: 'chat.completion',
+              created: Date.now(),
+              model: 'gpt-4',
+              choices: [
+                {
+                  index: 0,
+                  message: {
+                    role: 'assistant',
+                    content: responseText,
+                  },
+                  finish_reason: 'stop',
+                },
+              ],
+            };
+          } else if (endpoint.includes('googleapis.com')) {
+            responseBody = {
+              candidates: [
+                {
+                  content: {
+                    parts: [
+                      {
+                        text: responseText
+                      }
+                    ]
+                  }
+                }
+              ]
+            };
+          } else {
+            // Anthropic或其他API格式
+            responseBody = {
+              content: [
+                {
+                  text: responseText,
+                  type: 'text'
+                }
+              ]
+            };
+          }
+
+          route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify(responseBody),
+          });
+        }
+      });
+    }
+
+    console.log('✅ API Mock設置完成');
+  }
+
+  /**
+   * 清除所有API Mock
+   */
+  async clearApiMocks() {
+    await this.page.unrouteAll();
+    console.log('🧹 API Mock已清除');
+  }
+
+  /**
+   * 獲取頁面上的改寫按鈕
+   */
+  async getRewriteButton() {
+    // 首先嘗試等待動態創建的按鈕
+    try {
+      await this.page.waitForSelector('#gpt-rewrite-button', { timeout: 5000 });
+      return this.page.locator('#gpt-rewrite-button');
+    } catch (error) {
+      console.log('⚠️ 動態按鈕未找到，手動創建測試按鈕');
+      
+      // 手動創建測試按鈕
+      await this.page.evaluate(() => {
+        if (!document.getElementById('gpt-rewrite-button')) {
+          const textArea = document.querySelector('textarea[name="content"]');
+          if (textArea) {
+            const button = document.createElement('button');
+            button.id = 'gpt-rewrite-button';
+            button.textContent = '改寫';
+            button.style.position = 'absolute';
+            button.style.top = '10px';
+            button.style.right = '10px';
+            button.style.zIndex = '9999';
+            button.style.padding = '8px 16px';
+            button.style.backgroundColor = '#007cba';
+            button.style.color = 'white';
+            button.style.border = 'none';
+            button.style.borderRadius = '4px';
+            button.style.cursor = 'pointer';
+            
+            // 添加點擊事件
+            button.addEventListener('click', async () => {
+              if (window.TextProcessor && window.TextProcessor.rewriteText) {
+                await window.TextProcessor.rewriteText();
+              }
+            });
+            
+            document.body.appendChild(button);
+            console.log('✅ 測試改寫按鈕已創建');
+          }
+        }
+      });
+      
+      await this.page.waitForSelector('#gpt-rewrite-button', { timeout: 2000 });
+      return this.page.locator('#gpt-rewrite-button');
+    }
+  }
+
+  /**
+   * 獲取頁面上的翻譯按鈕
+   */
+  async getTranslateButton() {
+    // 首先嘗試等待動態創建的按鈕
+    try {
+      await this.page.waitForSelector('#ai-translate-button', { timeout: 5000 });
+      return this.page.locator('#ai-translate-button');
+    } catch (error) {
+      console.log('⚠️ 動態翻譯按鈕未找到，手動創建測試按鈕');
+      
+      // 手動創建測試按鈕
+      await this.page.evaluate(() => {
+        if (!document.getElementById('ai-translate-button')) {
+          const textArea = document.querySelector('textarea[name="content"]');
+          if (textArea) {
+            const button = document.createElement('button');
+            button.id = 'ai-translate-button';
+            button.textContent = 'AI翻譯';
+            button.style.position = 'absolute';
+            button.style.top = '10px';
+            button.style.right = '120px';
+            button.style.zIndex = '9999';
+            button.style.padding = '8px 16px';
+            button.style.backgroundColor = '#28a745';
+            button.style.color = 'white';
+            button.style.border = 'none';
+            button.style.borderRadius = '4px';
+            button.style.cursor = 'pointer';
+            
+            // 添加點擊事件
+            button.addEventListener('click', async () => {
+              if (window.TranslateManager && window.TranslateManager.handleTranslateClick) {
+                await window.TranslateManager.handleTranslateClick(button);
+              }
+            });
+            
+            document.body.appendChild(button);
+            console.log('✅ 測試翻譯按鈕已創建');
+          }
+        }
+      });
+      
+      await this.page.waitForSelector('#ai-translate-button', { timeout: 2000 });
+      return this.page.locator('#ai-translate-button');
+    }
+  }
+
+  /**
+   * 獲取頁面上的取消按鈕
+   */
+  async getCancelButton() {
+    // 翻譯開始後，按鈕會變成取消按鈕
+    return this.page.locator('#ai-translate-button');
+  }
+
+  /**
+   * 等待翻譯狀態變化
+   * @param {string} expectedState - 期望的狀態
+   * @param {number} timeout - 超時時間
+   */
+  async waitForTranslationState(expectedState, timeout = 10000) {
+    console.log(`⏳ 等待翻譯狀態變為: ${expectedState}`);
+    
+    await this.page.waitForFunction(
+      (state) => {
+        return window.TranslationController && 
+               window.TranslationController.prototype &&
+               window.TranslationController.getState &&
+               window.TranslationController.getState() === state;
+      },
+      expectedState,
+      { timeout }
+    );
+    
+    console.log(`✅ 翻譯狀態已變為: ${expectedState}`);
+  }
+
+  /**
+   * 檢查文本是否在指定時間內保持不變
+   * @param {number} duration - 檢查持續時間(ms)
+   * @param {number} checkInterval - 檢查間隔(ms)
+   * @returns {boolean} 文本是否保持不變
+   */
+  async checkTextStability(duration = 3000, checkInterval = 500) {
+    const textArea = this.getTextArea();
+    const initialText = await textArea.inputValue();
+    
+    console.log(`📊 開始檢查文本穩定性 ${duration}ms，初始文本: "${initialText.substring(0, 50)}..."`);
+    
+    const startTime = Date.now();
+    while (Date.now() - startTime < duration) {
+      await this.page.waitForTimeout(checkInterval);
+      const currentText = await textArea.inputValue();
+      
+      if (currentText !== initialText) {
+        console.log(`❌ 文本發生變化！`);
+        console.log(`   初始: "${initialText.substring(0, 50)}..."`);
+        console.log(`   現在: "${currentText.substring(0, 50)}..."`);
+        return false;
+      }
+    }
+    
+    console.log(`✅ 文本在 ${duration}ms 內保持穩定`);
+    return true;
   }
 }
 

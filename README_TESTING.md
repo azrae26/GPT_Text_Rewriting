@@ -62,6 +62,55 @@ npx playwright test tests/02-core-functions.spec.js -g "文字改寫基本功能
 npx playwright test tests/02-core-functions.spec.js -g "翻譯取消功能"
 ```
 
+### 基本測試命令
+
+```powershell
+# 執行所有測試（有頭模式，可以看到瀏覽器）
+npm test
+
+# 只執行關鍵設定測試（推薦先執行這個）
+npm run test:critical
+
+# 執行核心功能測試（包含Mock API測試）
+npm run test:core
+
+# 執行高級AI功能測試
+npm run test:advanced
+
+# 只執行AI相關測試（核心+高級）
+npm run test:ai-only
+
+# 專門測試取消功能和競態條件
+npm run test:cancel
+
+# 快速執行Mock API測試
+npm run test:mock
+
+# 偵錯模式（逐步執行）
+npm run test:debug
+
+# 查看測試報告
+npm run test:report
+```
+
+### 針對性測試命令
+
+```powershell
+# 測試最關鍵的取消功能問題
+npm run test:cancel
+
+# 測試完整的AI功能流程
+npm run test:ai-only
+
+# 測試特定功能（使用grep過濾）
+npx playwright test -g "競態條件"
+npx playwright test -g "多階段翻譯"
+npx playwright test -g "反思機制"
+
+# 快速測試（只看結果，不看過程）
+npm run test:mock
+```
+
 ## 📁 測試檔案結構
 
 ```
@@ -93,6 +142,14 @@ tests/
 - **⚠️ API 錯誤處理測試**: 測試各種API錯誤的處理
 - **🔄 多任務處理測試**: 測試同時多個改寫任務的處理
 - **📝 特殊文字識別測試**: 測試股票代碼等特殊文字識別
+
+### 03-advanced-ai-features.spec.js - 高級AI功能測試
+
+- **🔄 多階段翻譯流程測試**: 測試初始翻譯→反思→優化的完整流程
+- **🧠 反思機制測試**: 驗證翻譯反思功能的準確性
+- **⚡ 高負載並發測試**: 測試快速連續點擊的處理能力
+- **🔄 中斷恢復測試**: 測試任務中斷後的恢復機制
+- **🎯 邊界條件測試**: 測試空文本、超長文本等邊界情況
 
 ## 🔧 測試配置
 
