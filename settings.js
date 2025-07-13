@@ -220,7 +220,8 @@ const GlobalSettings = {
             generationOptimize_2_Instruction: this.generationOptimize_2_Instruction,
             reflect3Instruction: this.reflect3Instruction,
             generationOptimize_3_Instruction: this.generationOptimize_3_Instruction,
-            backgroundKnowledge: this.backgroundKnowledge
+            backgroundKnowledge: this.backgroundKnowledge,
+            customModels: this.customModels  // 新增：自定義模型資料到本地儲存
           }, resolve);
         })
       ]);
@@ -377,7 +378,7 @@ const GlobalSettings = {
       'stockNames', 'processedStocks', 'failedStocks', 'retryRecords',
       'replaceContent', 'confirmContent', 'manualReplaceValues_0',
       'manualReplaceValues_1', 'manualReplaceValues_2', 'syncEnabled', 'lastModified',
-      'highlightWords', 'highlightColors'
+      'highlightWords', 'highlightColors', 'customModels'  // 新增：自定義模型使用 Local Storage
     ];
     
     return (

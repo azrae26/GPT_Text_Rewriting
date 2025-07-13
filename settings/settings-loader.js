@@ -62,7 +62,7 @@ window.SettingsLoader = {
       this._loadGenerationSettings(settingsInstance, syncResult);
       
       // 載入和處理自定義模型
-      this._loadCustomModels(settingsInstance, syncResult);
+      this._loadCustomModels(settingsInstance, syncResult, localResult);
       
       // 清理無效的模型設定
       await this._cleanupInvalidModelSettings(settingsInstance);
@@ -143,7 +143,8 @@ window.SettingsLoader = {
           'reflect3Instruction',
           'generationOptimize_3_Instruction',
           'backgroundKnowledge',
-          'stockList'
+          'stockList',
+          'customModels'          // 新增：自定義模型 Local Storage 載入
         ];
         
         chrome.storage.local.get(localKeys, (items) => {
@@ -363,10 +364,11 @@ window.SettingsLoader = {
    * @private
    * @param {Object} settingsInstance - GlobalSettings 實例
    * @param {Object} syncResult - 同步儲存結果
+   * @param {Object} localResult - 本地儲存結果
    */
-  _loadCustomModels(settingsInstance, syncResult) {
-    // 載入自定義模型
-    settingsInstance.customModels = syncResult.customModels || {};
+  _loadCustomModels(settingsInstance, syncResult, localResult) {
+    // 載入自定義模型（根據新功能儲存策略，從 Local Storage 載入）
+    settingsInstance.customModels = localResult.customModels || {};
     
     // 將自定義模型合併到 API.models 中
     // 先清空 API.models，確保只有自定義模型

@@ -1023,8 +1023,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         
         modelItem.innerHTML = `
           <div class="custom-model-info">
-            <div class="custom-model-name">${model.displayName}</div>
-            <div class="custom-model-details">${key}</div>
+            <div class="custom-model-name">${key}</div>
+            <div class="custom-model-details">${model.displayName}</div>
             <div class="custom-model-api-type">${model.apiType === 'gemini' ? 'Gemini API' : 'OpenAI API'}</div>
           </div>
           <div class="custom-model-actions">
@@ -1488,6 +1488,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     try {
       CustomModelManager.init();
       CustomModelManager.updateAllModelSelects();
+      
+      // 初始化 ModelManager 的 UI 功能（自動填入）
+      if (typeof ModelManager !== 'undefined' && ModelManager.initializeUI) {
+        ModelManager.initializeUI();
+      }
       
       // 重新載入設定以恢復用戶的模型選擇
       const currentSettings = await GlobalSettings.loadSettings();

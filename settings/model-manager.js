@@ -212,11 +212,12 @@ const ModelManager = {
       return window.GlobalSettings.customModels[modelName].displayName;
     }
     
-    // 如果都沒有，直接返回模型名稱
-    LogUtils.log('沒有找到顯示名稱，返回原始模型名稱:', modelName);
+    // 如果都沒有，使用自動轉換功能
+    const formattedName = this._formatModelName(modelName);
+    LogUtils.log('沒有找到顯示名稱，使用自動轉換:', modelName, '->', formattedName);
     LogUtils.log('當前自定義模型列表:', Object.keys(window.GlobalSettings.customModels));
     LogUtils.log('當前 API 模型列表:', Object.keys(window.GlobalSettings.API.models));
-    return modelName;
+    return formattedName;
   },
 
   /**
@@ -240,6 +241,230 @@ const ModelManager = {
     
     // 返回第一個可用模型
     return modelKeys[0];
+  },
+
+  /**
+   * 自動轉換模型名稱格式
+   * @param {string} modelName - 原始模型名稱
+   * @returns {string} - 格式化後的模型名稱
+   */
+  _formatModelName(modelName) {
+    if (!modelName) return '';
+    
+    // 常見的模型名稱轉換規則
+    const brandMap = {
+      'gemini': 'Gemini',
+      'gpt': 'GPT',
+      'claude': 'Claude',
+      'palm': 'PaLM',
+      'bard': 'Bard',
+      'llama': 'LLaMA',
+      'mistral': 'Mistral',
+      'codellama': 'Code Llama',
+      'vicuna': 'Vicuna',
+      'alpaca': 'Alpaca'
+    };
+    
+    // 將連字符替換為空格，並分割成單詞
+    let words = modelName.toLowerCase().split(/[-_]/);
+    
+    // 處理每個單詞
+    words = words.map(word => {
+      // 如果是品牌名稱，使用預定義的大寫格式
+      if (brandMap[word]) {
+        return brandMap[word];
+      }
+      
+      // 如果是版本號或數字，保持原樣
+      if (/^\d+(\.\d+)*$/.test(word)) {
+        return word;
+      }
+      
+      // 如果是類似 "4o" 的格式，保持原樣
+      if (/^\d+[a-z]$/.test(word)) {
+        return word;
+      }
+      
+      // 如果是常見的模型後綴，使用特定格式
+      if (word === 'flash') {
+        return 'Flash';
+      }
+      if (word === 'thinking') {
+        return 'Thinking';
+      }
+      if (word === 'preview') {
+        return 'Preview';
+      }
+      if (word === 'exp') {
+        return 'Experimental';
+      }
+      if (word === 'latest') {
+        return 'Latest';
+      }
+      if (word === 'pro') {
+        return 'Pro';
+      }
+      if (word === 'mini') {
+        return 'Mini';
+      }
+      if (word === 'turbo') {
+        return 'Turbo';
+      }
+      if (word === 'instruct') {
+        return 'Instruct';
+      }
+      if (word === 'chat') {
+        return 'Chat';
+      }
+      
+      // 其他單詞首字母大寫
+      return word.charAt(0).toUpperCase() + word.slice(1);
+    });
+    
+    // 將單詞連接成最終的顯示名稱
+    return words.join(' ');
+  },
+
+  /**
+   * 初始化模型管理器的 UI 功能
+   * 綁定自動填入事件監聽器
+   */
+  initializeUI() {
+    LogUtils.log('初始化模型管理器 UI 功能');
+    
+    // 獲取 DOM 元素
+    const customModelNameInput = document.getElementById('custom-model-name');
+    const customModelDisplayInput = document.getElementById('custom-model-display');
+    
+    if (!customModelNameInput || !customModelDisplayInput) {
+      LogUtils.warn('找不到自定義模型輸入框元素');
+      return;
+    }
+    
+    // 防抖定時器
+    let debounceTimer = null;
+    
+    // 監聽模型名稱輸入
+    customModelNameInput.addEventListener('input', (e) => {
+      const modelName = e.target.value.trim();
+      
+      // 清除之前的定時器
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+      
+      // 防抖處理
+      debounceTimer = setTimeout(() => {
+        this.autoFillDisplayName(modelName, customModelDisplayInput);
+      }, 300);
+    });
+    
+    // 監聽失焦事件，立即處理
+    customModelNameInput.addEventListener('blur', (e) => {
+      const modelName = e.target.value.trim();
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+      this.autoFillDisplayName(modelName, customModelDisplayInput);
+    });
+    
+    // 監聽顯示名稱輸入框的手動修改
+    customModelDisplayInput.addEventListener('input', (e) => {
+      // 當用戶手動修改顯示名稱時，清除自動填入標記
+      if (e.target.dataset.autoFilled === 'true') {
+        // 檢查是否是用戶手動修改（不是程序設置的）
+        if (e.isTrusted) {
+          e.target.dataset.autoFilled = 'false';
+          LogUtils.log('用戶手動修改顯示名稱，清除自動填入標記');
+        }
+      }
+    });
+    
+    LogUtils.log('模型管理器 UI 事件綁定完成');
+  },
+
+  /**
+   * 自動填入顯示名稱
+   * @param {string} modelName - 模型名稱
+   * @param {HTMLElement} displayInput - 顯示名稱輸入框
+   */
+  autoFillDisplayName(modelName, displayInput) {
+    if (!modelName || !displayInput) return;
+    
+    // 使用 _formatModelName 方法自動轉換
+    const formattedName = this._formatModelName(modelName);
+    const currentValue = displayInput.value.trim();
+    
+    // 檢查是否應該更新顯示名稱
+    const shouldUpdate = this._shouldUpdateDisplayName(modelName, formattedName, currentValue);
+    
+    if (shouldUpdate && formattedName) {
+      displayInput.value = formattedName;
+      
+      // 標記為自動填入
+      displayInput.dataset.autoFilled = 'true';
+      displayInput.dataset.lastModelName = modelName;
+      
+      // 添加視覺反饋動畫
+      this.addAutoFillAnimation(displayInput);
+      
+      LogUtils.log(`自動填入顯示名稱: ${modelName} -> ${formattedName}`);
+    }
+  },
+
+  /**
+   * 判斷是否應該更新顯示名稱
+   * @param {string} modelName - 當前模型名稱
+   * @param {string} formattedName - 格式化後的名稱
+   * @param {string} currentValue - 當前顯示名稱
+   * @returns {boolean} - 是否應該更新
+   */
+  _shouldUpdateDisplayName(modelName, formattedName, currentValue) {
+    // 如果顯示名稱為空，可以填入
+    if (!currentValue) {
+      return true;
+    }
+    
+    // 如果當前值是之前自動填入的，可以更新
+    const displayInput = document.getElementById('custom-model-display');
+    const isAutoFilled = displayInput && displayInput.dataset.autoFilled === 'true';
+    const lastModelName = displayInput && displayInput.dataset.lastModelName;
+    
+    if (isAutoFilled && lastModelName) {
+      // 如果是連續輸入（模型名稱是上次的擴展），可以更新
+      if (modelName.startsWith(lastModelName) || lastModelName.startsWith(modelName)) {
+        return true;
+      }
+      
+      // 如果當前值是上次模型名稱的格式化結果，可以更新
+      const lastFormattedName = this._formatModelName(lastModelName);
+      if (currentValue === lastFormattedName) {
+        return true;
+      }
+    }
+    
+    // 如果當前值與格式化後的名稱不同，且轉換後的名稱與原始名稱不同，可以更新
+    if (currentValue !== formattedName && formattedName !== modelName) {
+      return true;
+    }
+    
+    return false;
+  },
+
+  /**
+   * 添加自動填入動畫效果
+   * @param {HTMLElement} element - 要添加動畫的元素
+   */
+  addAutoFillAnimation(element) {
+    if (!element) return;
+    
+    // 添加綠色邊框和跳躍動畫
+    element.classList.add('auto-detected', 'gemini', 'auto-detect-pulse');
+    
+    // 1.2秒後移除動畫效果
+    setTimeout(() => {
+      element.classList.remove('auto-detected', 'gemini', 'auto-detect-pulse');
+    }, 1200);
   }
 };
 

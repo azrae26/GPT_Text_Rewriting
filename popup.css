@@ -872,6 +872,7 @@ input[type="checkbox"] {
   width: 100%;
   margin: 0;
   font-family: inherit;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease;
 }
 
 .form-input:focus {
@@ -962,7 +963,7 @@ input.form-input {
 }
 
 .custom-model-details {
-  font-size: 11px;
+  font-size: 13px;
   color: #495057;
   margin-bottom: 0;
   line-height: 1.3;  /* 增加行高 */
@@ -972,7 +973,7 @@ input.form-input {
 }
 
 .custom-model-api-type {
-  font-size: 11px;
+  font-size: 13px;
   color: #495057;
   line-height: 1.3;  /* 增加行高 */
   overflow: hidden;
