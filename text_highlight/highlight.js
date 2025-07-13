@@ -1110,25 +1110,13 @@ const TextHighlight = {
       return;
     }
 
-    // 分析文本變化並更新位置
+    // 🔧 修復殘留問題：當文字內容改變時，先完全清理所有高亮元素
     if (this._lastText && this._lastText !== text) {
-      const change = this.PositionCalculator.analyzeTextChange(this._lastText, text);
-      const positions = Array.from(this.PositionCalculator.cache.positions.values());
+      LogUtils.log('文字內容已改變，清理舊的高亮元素');
+      this.DOMManager.clearHighlights();
       
-      // 更新現有位置
-      const updatedPositions = this.PositionCalculator.updatePositionsAfterChange(
-        change,
-        positions,
-        text
-      );
-      
-      // 更新快取
-      this.PositionCalculator.cache.positions.clear();
-      updatedPositions.forEach(pos => {
-        if (pos) {
-          this.PositionCalculator.cache.positions.set(`${pos.index}-${pos.text}`, pos);
-        }
-      });
+      // 清理位置計算快取，確保重新計算
+      this.PositionCalculator.clearCache();
     }
     
     this._lastText = text;
@@ -1298,10 +1286,12 @@ const TextHighlight = {
         visibleHighlights.set(key, highlight);
       });
 
-      // 隱藏不再可見的元素
+      // 🔧 修復殘留問題：完全移除不再需要的元素，而不只是隱藏
       const hiddenCount = existingHighlights.size;
       existingHighlights.forEach((highlight, key) => {
-        highlight.style.display = 'none';
+        if (highlight.parentNode) {
+          highlight.parentNode.removeChild(highlight);
+        }
       });
 
       const endTime = new Date();
@@ -1385,9 +1375,11 @@ const TextHighlight = {
           groupHighlightMap.set(key, highlight);
         });
 
-        // 隱藏不再可見的元素
+        // 🔧 修復殘留問題：完全移除不再需要的元素，而不只是隱藏
         existingHighlights.forEach(highlight => {
-          highlight.style.display = 'none';
+          if (highlight.parentNode) {
+            highlight.parentNode.removeChild(highlight);
+          }
         });
       });
       
