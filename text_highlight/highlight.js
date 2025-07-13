@@ -236,8 +236,26 @@ const TextHighlight = {
      * 清除所有標示
      */
     clearHighlights() {
-      this.elements.highlights.forEach(element => element.remove());
+      // 🔧 加強清理機制：直接清理容器中的所有高亮元素
+      if (this.elements.container) {
+        // 清理所有類型的高亮元素
+        const allHighlights = this.elements.container.querySelectorAll('.text-highlight, .text-highlight-border');
+        allHighlights.forEach(element => element.remove());
+      }
+      
+      // 清理數組中記錄的元素（保險起見）
+      this.elements.highlights.forEach(element => {
+        if (element.parentNode) {
+          element.remove();
+        }
+      });
       this.elements.highlights = [];
+      
+      // 清理虛擬滾動數據
+      if (this.elements.virtualScrollData) {
+        this.elements.virtualScrollData.allPositions = [];
+        this.elements.virtualScrollData.visibleHighlights.clear();
+      }
     },
 
     /**
@@ -1243,49 +1261,30 @@ const TextHighlight = {
         const left = pos.position ? pos.position.left : pos.left;
         const text = pos.position ? pos.position.text : pos.text;
         const color = pos.color || 'rgba(50, 205, 50, 0.3)';
+        const style = pos.style || 'background';
         
-        const key = `${top}-${left}-${text}`;
+        // 🔧 修復：在 key 中包含樣式信息，避免相同位置不同樣式的元素衝突
+        const key = `${top}-${left}-${text}-${style}`;
         let highlight = existingHighlights.get(key);
 
         // 計算最終渲染位置（滾動補償）
         const finalTop = top - scrollTop;
 
         if (highlight) {
-          // 重用現有元素，更新 transform 和顏色
+          // 重用現有元素，只更新位置和顏色（不再進行複雜的樣式切換）
           existingHighlights.delete(key);
           highlight.style.transform = `translate3d(0, ${finalTop}px, 0)`;
           highlight.style.display = 'block';
           
-          // 🔧 檢查並更新顏色（修復顏色即時更新問題）
+          // 簡化顏色更新邏輯
           const currentColor = color || 'rgba(50, 205, 50, 0.3)';
-          const isCurrentBorderStyle = pos.style === 'border';
-          const isBorderElement = highlight.className.includes('text-highlight-border');
-          
-          if (isCurrentBorderStyle && !isBorderElement) {
-            // 需要從背景式改為邊框式
-            highlight.style.backgroundColor = '';
-            highlight.style.border = '';
-            highlight.style.borderRadius = '';
-            highlight.style.background = '';
-            highlight.style.color = currentColor; // 設置 color 讓 currentColor 生效
-            highlight.className = highlight.className.replace('text-highlight', 'text-highlight-border');
-          } else if (!isCurrentBorderStyle && isBorderElement) {
-            // 需要從邊框式改為背景式
-            highlight.style.backgroundColor = currentColor;
-            highlight.style.border = '';
-            highlight.style.borderRadius = '';
-            highlight.style.background = '';
-            highlight.style.color = '';
-            highlight.className = highlight.className.replace('text-highlight-border', 'text-highlight');
-          } else if (isCurrentBorderStyle) {
-            // 都是邊框式，更新顏色
-            highlight.style.color = currentColor; // 設置 color 讓 currentColor 生效
+          if (style === 'border') {
+            highlight.style.color = currentColor;
           } else {
-            // 都是背景式，更新背景顏色
             highlight.style.backgroundColor = currentColor;
           }
         } else {
-          // 創建新元素時已經應用了 GPU 加速
+          // 創建新元素（樣式在創建時就確定，避免後續切換）
           highlight = createHighlight(pos);
           // 只有在元素沒有className時才設置默認class，避免覆蓋邊框式高亮的class
           if (!highlight.className) {
@@ -1359,8 +1358,10 @@ const TextHighlight = {
           const top = pos.position ? pos.position.top : pos.top;
           const left = pos.position ? pos.position.left : pos.left;
           const text = pos.position ? pos.position.text : pos.text;
+          const style = pos.style || 'background';
           
-          const key = `${top}-${left}-${text}`;
+          // 🔧 修復：在 key 中包含樣式信息，避免相同位置不同樣式的元素衝突
+          const key = `${top}-${left}-${text}-${style}`;
           let highlight = existingHighlights.get(key);
 
           if (highlight) {
