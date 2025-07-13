@@ -58,7 +58,7 @@ class KeyClassifier {
     USER_DATA: [
       'autoReplaceRules', 'manualReplaceRules', 'customModels',
       'generationSettingsGroups', 'currentGenerationSettings',
-      'highlightWords', 'highlightColors', 'autoSyncEnabled',
+      'highlightWords', 'highlightColors', 'highlightStyle', 'autoSyncEnabled',
       'replaceContent', 'confirmContent'
     ],
 

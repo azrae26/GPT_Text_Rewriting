@@ -297,42 +297,47 @@ const GlobalSettings = {
 
   // 委託給 ApiKeyManager 來檢查 API 金鑰
   hasApiKey(model) {
-    if (!window.ApiKeyManager) {
+    const ApiKeyManager = this._getGlobalModule('ApiKeyManager');
+    if (!ApiKeyManager) {
       throw new Error('ApiKeyManager 未載入，請檢查載入順序');
     }
-    return window.ApiKeyManager.hasApiKey(model);
+    return ApiKeyManager.hasApiKey(model);
   },
 
   // 委託給 GenerationManager 來儲存生成設定組合
   async saveGenerationSettingsGroup(name, settings) {
-    if (!window.GenerationManager) {
+    const GenerationManager = this._getGlobalModule('GenerationManager');
+    if (!GenerationManager) {
       throw new Error('GenerationManager 未載入，請檢查載入順序');
     }
-    return window.GenerationManager.saveGenerationSettingsGroup(name, settings);
+    return GenerationManager.saveGenerationSettingsGroup(name, settings);
   },
 
   // 委託給 GenerationManager 來載入生成設定組合
   async loadGenerationSettingsGroup(name) {
-    if (!window.GenerationManager) {
+    const GenerationManager = this._getGlobalModule('GenerationManager');
+    if (!GenerationManager) {
       throw new Error('GenerationManager 未載入，請檢查載入順序');
     }
-    return window.GenerationManager.loadGenerationSettingsGroup(name);
+    return GenerationManager.loadGenerationSettingsGroup(name);
   },
 
   // 委託給 GenerationManager 來刪除生成設定組合
   async deleteGenerationSettingsGroup(name) {
-    if (!window.GenerationManager) {
+    const GenerationManager = this._getGlobalModule('GenerationManager');
+    if (!GenerationManager) {
       throw new Error('GenerationManager 未載入，請檢查載入順序');
     }
-    return window.GenerationManager.deleteGenerationSettingsGroup(name);
+    return GenerationManager.deleteGenerationSettingsGroup(name);
   },
 
   // 委託給 GenerationManager 來獲取當前生成設定
   getCurrentGenerationSettings() {
-    if (!window.GenerationManager) {
+    const GenerationManager = this._getGlobalModule('GenerationManager');
+    if (!GenerationManager) {
       throw new Error('GenerationManager 未載入，請檢查載入順序');
     }
-    return window.GenerationManager.getCurrentGenerationSettings();
+    return GenerationManager.getCurrentGenerationSettings();
   },
 
   // 定義需要使用 local storage 的大型文字設定
@@ -354,9 +359,10 @@ const GlobalSettings = {
 
   // 檢查是否為需要使用 local storage 的設定（使用新的 KeyClassifier，保持向後兼容）
   isLocalStorageKey(key) {
-    // 使用新的統一分類器
-    if (typeof window.KeyClassifier !== 'undefined' && window.KeyClassifier) {
-      return window.KeyClassifier.getStorageType(key) === 'local';
+    // 使用新的統一分類器，兼容不同環境（瀏覽器、Service Worker、Node.js）
+    const KeyClassifier = this._getGlobalModule('KeyClassifier');
+    if (KeyClassifier) {
+      return KeyClassifier.getStorageType(key) === 'local';
     }
     
     // 舊版本的後備邏輯（向後兼容）
