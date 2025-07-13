@@ -257,31 +257,12 @@ const ModelManager = {
   _formatModelName(modelName) {
     if (!modelName) return '';
     
-    // 常見的模型名稱轉換規則
-    const brandMap = {
-      'gemini': 'Gemini',
-      'gpt': 'GPT',
-      'claude': 'Claude',
-      'palm': 'PaLM',
-      'bard': 'Bard',
-      'llama': 'LLaMA',
-      'mistral': 'Mistral',
-      'codellama': 'Code Llama',
-      'vicuna': 'Vicuna',
-      'alpaca': 'Alpaca'
-    };
-    
-    // 將連字符替換為空格，並分割成單詞
+    // 將連字符和底線替換為空格，並分割成單詞
     let words = modelName.toLowerCase().split(/[-_]/);
     
     // 處理每個單詞
     words = words.map(word => {
-      // 如果是品牌名稱，使用預定義的大寫格式
-      if (brandMap[word]) {
-        return brandMap[word];
-      }
-      
-      // 如果是版本號或數字，保持原樣
+      // 如果是版本號，保持原樣
       if (/^\d+(\.\d+)*$/.test(word)) {
         return word;
       }
@@ -291,39 +272,18 @@ const ModelManager = {
         return word;
       }
       
-      // 如果是常見的模型後綴，使用特定格式
-      if (word === 'flash') {
-        return 'Flash';
+      // 只有幾個特殊縮寫需要全大寫
+      if (word === 'gpt') {
+        return 'GPT';
       }
-      if (word === 'thinking') {
-        return 'Thinking';
+      if (word === 'llama') {
+        return 'LLaMA';
       }
-      if (word === 'preview') {
-        return 'Preview';
-      }
-      if (word === 'exp') {
-        return 'Experimental';
-      }
-      if (word === 'latest') {
-        return 'Latest';
-      }
-      if (word === 'pro') {
-        return 'Pro';
-      }
-      if (word === 'mini') {
-        return 'Mini';
-      }
-      if (word === 'turbo') {
-        return 'Turbo';
-      }
-      if (word === 'instruct') {
-        return 'Instruct';
-      }
-      if (word === 'chat') {
-        return 'Chat';
+      if (word === 'palm') {
+        return 'PaLM';
       }
       
-      // 其他單詞首字母大寫
+      // 其他所有單詞都是首字母大寫
       return word.charAt(0).toUpperCase() + word.slice(1);
     });
     
