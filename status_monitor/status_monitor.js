@@ -1,19 +1,19 @@
 /**
- * sync-status-manager.js - 同步狀態管理器
- * 功能：專門負責同步狀態的檢測和顯示，在目標網站右下角顯示同步狀態
+ * status_monitor.js - 狀態監控器
+ * 功能：負責各種異常狀態的檢測和顯示，在目標網站右下角顯示狀態指示器
  * 職責：
- * - 定期檢測同步功能狀態
- * - 在右下角顯示同步狀態指示器
- * - 處理狀態變化和錯誤提示
+ * - 定期檢測系統功能狀態
+ * - 在右下角顯示狀態指示器
+ * - 處理狀態變化和異常提示
  * - 只在目標網站啟用功能
  * 
  * 依賴：
  * - Chrome Extensions API (runtime, storage)
  * - LogUtils (日誌記錄)
- * - Background Script (同步狀態檢測)
+ * - Background Script (狀態檢測)
  */
 
-const SyncStatusManager = {
+const StatusMonitor = {
   
   // 狀態指示器 DOM 元素
   indicator: null,
@@ -30,11 +30,11 @@ const SyncStatusManager = {
   init() {
     // 檢查是否在目標網站
     if (!this.isTargetWebsite()) {
-      LogUtils.log('非目標網站，跳過同步狀態顯示功能');
+      LogUtils.log('非目標網站，跳過狀態監控功能');
       return;
     }
 
-    LogUtils.log('初始化同步狀態管理器');
+    LogUtils.log('初始化狀態監控器');
     
     try {
       this.createStatusIndicator();
@@ -47,9 +47,9 @@ const SyncStatusManager = {
         }
       });
       
-      LogUtils.log('同步狀態管理器初始化完成');
+      LogUtils.log('狀態監控器初始化完成');
     } catch (error) {
-      LogUtils.error('初始化同步狀態管理器失敗:', error);
+              LogUtils.error('初始化狀態監控器失敗:', error);
     }
   },
 
@@ -75,7 +75,7 @@ const SyncStatusManager = {
     this.indicator.className = 'sync-status-hidden'; // 默認隱藏
     
     document.body.appendChild(this.indicator);
-    LogUtils.log('同步狀態指示器已創建');
+    LogUtils.log('狀態指示器已創建');
   },
 
   /**
@@ -88,7 +88,7 @@ const SyncStatusManager = {
     // 創建消息監聽器並保存引用
     this.messageListener = (request, sender, sendResponse) => {
       if (request.action === 'syncStatusChanged') {
-        LogUtils.log('收到同步狀態變化通知:', request.status);
+        LogUtils.log('收到狀態變化通知:', request.status);
         this.updateStatusDisplay(request.status);
         sendResponse({success: true});
       }
@@ -97,7 +97,7 @@ const SyncStatusManager = {
     // 監聽背景腳本的同步狀態變化通知
     chrome.runtime.onMessage.addListener(this.messageListener);
     
-    LogUtils.log('開始監聽同步狀態變化事件');
+    LogUtils.log('開始監聽狀態變化事件');
   },
 
   /**
@@ -105,7 +105,7 @@ const SyncStatusManager = {
    */
   stopStatusCheck() {
     // 事件監聽器會在頁面銷毀時自動清理
-    LogUtils.log('同步狀態監聽已停止');
+    LogUtils.log('狀態監聽已停止');
   },
 
   /**
@@ -129,12 +129,12 @@ const SyncStatusManager = {
       if (response && response.success) {
         this.updateStatusDisplay(response);
       } else {
-        LogUtils.warn('獲取同步狀態失敗:', response);
-        this.showError('無法獲取同步狀態');
+        LogUtils.warn('獲取狀態失敗:', response);
+        this.showError('無法獲取狀態');
       }
     } catch (error) {
-      LogUtils.error('檢查同步狀態失敗:', error);
-      this.showError('同步狀態檢查錯誤');
+              LogUtils.error('檢查狀態失敗:', error);
+        this.showError('狀態檢查錯誤');
     }
   },
 
@@ -222,7 +222,7 @@ const SyncStatusManager = {
       <div class="sync-status-message">${statusInfo.message}</div>
     `;
     
-    LogUtils.log(`顯示同步狀態: ${statusInfo.type} - ${statusInfo.message}`);
+    LogUtils.log(`顯示狀態: ${statusInfo.type} - ${statusInfo.message}`);
   },
 
   /**
@@ -265,9 +265,9 @@ const SyncStatusManager = {
     }
     
     this.lastStatus = null;
-    LogUtils.log('同步狀態管理器已銷毀');
+    LogUtils.log('狀態監控器已銷毀');
   }
 };
 
-// 將管理器暴露到全域
-window.SyncStatusManager = SyncStatusManager; 
+// 將監控器暴露到全域
+window.StatusMonitor = StatusMonitor; 

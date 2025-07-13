@@ -41,7 +41,7 @@
         "settings/settings-exporter.js",
         "settings/settings-importer.js",
         "settings/settings-loader.js",
-        "settings/sync-status-manager.js",
+        "status_monitor/status_monitor.js",
         "settings.js",
         "notification.js",
         "undo.js",

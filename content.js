@@ -257,12 +257,12 @@ function initializeExtension() {
       // 在這裡也初始化高亮功能
       initHighlight();
       
-      // 初始化同步狀態管理器
-      if (window.SyncStatusManager) {
-        window.SyncStatusManager.init();
-        LogUtils.log('同步狀態管理器已初始化');
+      // 初始化狀態監控器
+      if (window.StatusMonitor) {
+        window.StatusMonitor.init();
+        LogUtils.log('狀態監控器已初始化');
       } else {
-        LogUtils.warn('SyncStatusManager 未載入');
+        LogUtils.warn('StatusMonitor 未載入');
       }
       
     } catch (error) {
@@ -298,9 +298,9 @@ function initializeExtension() {
           window.UIManager.removeAllUI();
           window.TextHighlight?.DOMManager?.clearHighlights?.(); // 清除高亮
           
-          // 清理同步狀態管理器
-          if (window.SyncStatusManager) {
-            window.SyncStatusManager.destroy();
+          // 清理狀態監控器
+          if (window.StatusMonitor) {
+            window.StatusMonitor.destroy();
           }
           
           isInitialized = false;
