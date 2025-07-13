@@ -370,7 +370,8 @@ const GlobalSettings = {
       'backgroundKnowledge', 'stockList', 'stockListData', 'stockCrawlerState',
       'stockNames', 'processedStocks', 'failedStocks', 'retryRecords',
       'replaceContent', 'confirmContent', 'manualReplaceValues_0',
-      'manualReplaceValues_1', 'manualReplaceValues_2', 'syncEnabled', 'lastModified'
+      'manualReplaceValues_1', 'manualReplaceValues_2', 'syncEnabled', 'lastModified',
+      'highlightWords', 'highlightColors'
     ];
     
     return (

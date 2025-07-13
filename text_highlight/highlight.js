@@ -196,7 +196,7 @@ const TextHighlight = {
         width: ${textArea.offsetWidth}px;
         height: ${textArea.offsetHeight}px;
         pointer-events: none;
-        z-index: 1000;
+        z-index: 1;
         overflow: hidden;
       `;
 
@@ -215,11 +215,18 @@ const TextHighlight = {
       // 將內層容器添加到外層容器
       outerContainer.appendChild(container);
 
-      // 將外層容器添加到 textarea 的父元素中
+      // 將外層容器插入到 textarea 父元素的上一層
       const textAreaParent = textArea.parentElement;
-      if (textAreaParent) {
-        textAreaParent.style.position = 'relative';
-        textAreaParent.appendChild(outerContainer);
+      const textAreaGrandParent = textAreaParent?.parentElement;
+      if (textAreaGrandParent) {
+        textAreaGrandParent.style.position = 'relative';
+        textAreaGrandParent.insertBefore(outerContainer, textAreaParent);
+        
+        // 設置 textarea 的 z-index 為較高值，確保文字在高亮之上
+        textArea.style.position = 'relative';
+        textArea.style.zIndex = '10';
+        textArea.style.background = 'transparent';
+        
         this.elements.container = container;
         this.elements.textArea = textArea;
       }
@@ -835,12 +842,13 @@ const TextHighlight = {
     // 過濾空白文字
     this.targetWords = words.filter(word => word.trim());
     
+
+    
     // 保存顏色設置到 storage
     if (Object.keys(colors).length > 0) {
       this.wordColors = colors;
-      chrome.storage.local.set({ highlightColors: colors }, () => {
-        LogUtils.log('顏色設置已保存');
-      });
+
+              chrome.storage.local.set({ highlightColors: colors });
     }
 
     // 清除位置計算的快取，確保新的關鍵字能正確計算位置
@@ -930,6 +938,8 @@ const TextHighlight = {
   // 修改取得顏色和樣式的方法
   getColorForWord(word) {
     const colorValue = this.wordColors[word] || this.CONFIG.DEFAULT_COLOR;
+    
+
     
     // 解析顏色值，支援外框式樣式
     if (typeof colorValue === 'string' && colorValue.startsWith('border:')) {
@@ -1081,6 +1091,7 @@ const TextHighlight = {
     const text = textArea.value;
     const styles = this.PositionCalculator.getTextAreaStyles(textArea);
     
+    // 如果文本和滾動位置都沒有變化，則跳過更新
     if (this._lastText === text && this._lastScrollTop === textArea.scrollTop) {
       return;
     }
@@ -1244,10 +1255,37 @@ const TextHighlight = {
         const finalTop = top - scrollTop;
 
         if (highlight) {
-          // 重用現有元素，只更新 transform
+          // 重用現有元素，更新 transform 和顏色
           existingHighlights.delete(key);
           highlight.style.transform = `translate3d(0, ${finalTop}px, 0)`;
           highlight.style.display = 'block';
+          
+          // 🔧 檢查並更新顏色（修復顏色即時更新問題）
+          const currentColor = color || 'rgba(50, 205, 50, 0.3)';
+          const isCurrentBorderStyle = pos.style === 'border';
+          const isBorderElement = highlight.className.includes('text-highlight-border');
+          
+          if (isCurrentBorderStyle && !isBorderElement) {
+            // 需要從背景式改為邊框式
+            highlight.style.backgroundColor = 'transparent';
+            highlight.style.border = `0px solid ${currentColor}`;
+            highlight.style.borderRadius = '2px';
+            highlight.style.background = 'none';
+            highlight.className = highlight.className.replace('text-highlight', 'text-highlight-border');
+          } else if (!isCurrentBorderStyle && isBorderElement) {
+            // 需要從邊框式改為背景式
+            highlight.style.backgroundColor = currentColor;
+            highlight.style.border = 'none';
+            highlight.style.borderRadius = '';
+            highlight.style.background = '';
+            highlight.className = highlight.className.replace('text-highlight-border', 'text-highlight');
+          } else if (isCurrentBorderStyle) {
+            // 都是邊框式，更新邊框顏色
+            highlight.style.border = `0px solid ${currentColor}`;
+          } else {
+            // 都是背景式，更新背景顏色
+            highlight.style.backgroundColor = currentColor;
+          }
         } else {
           // 創建新元素時已經應用了 GPU 加速
           highlight = createHighlight(pos);

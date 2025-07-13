@@ -227,7 +227,7 @@ function initializeExtension() {
     window.TextHighlight.initialize();
 
     // 等所有設定都載入完成後，再標記為初始化完成
-    chrome.storage.sync.get(['highlightWords', 'highlightColors'], function(data) {
+    chrome.storage.local.get(['highlightWords', 'highlightColors'], function(data) {
       if (data.highlightWords) {
         const words = data.highlightWords.split('\n').filter(word => word.trim());
         const colors = data.highlightColors || {};
@@ -333,7 +333,7 @@ function initializeExtension() {
             
             // 更新高亮功能
             if (window.TextHighlight) {
-              chrome.storage.sync.get(['highlightWords', 'highlightColors'], function(data) {
+              chrome.storage.local.get(['highlightWords', 'highlightColors'], function(data) {
                 if (data.highlightWords) {
                   const words = data.highlightWords.split('\n').filter(word => word.trim());
                   const colors = data.highlightColors || {};
@@ -468,10 +468,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       }
       break;
     case "updateHighlightWords":
+
       TextHighlight.setTargetWords(request.words, request.colors || {});
       sendResponse({success: true});
       break;
     case "forceUpdateHighlights":
+
       TextHighlight.forceUpdate();
       sendResponse({success: true});
       break;

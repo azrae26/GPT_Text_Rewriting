@@ -206,7 +206,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   updateApiKeyInput();
 
   // 載入已保存的高亮文字
-  chrome.storage.sync.get('highlightWords', function(data) {
+  chrome.storage.local.get('highlightWords', function(data) {
     if (data.highlightWords) {
       highlightWordsInput.value = data.highlightWords;
       highlightWordsInput._previousValue = data.highlightWords;
@@ -674,7 +674,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   let wordColors = {};
 
   // 載入已保存的顏色設置
-  chrome.storage.sync.get('highlightColors', function(data) {
+  chrome.storage.local.get('highlightColors', function(data) {
     if (data.highlightColors) {
       wordColors = data.highlightColors;
     }
@@ -716,16 +716,21 @@ document.addEventListener('DOMContentLoaded', async function() {
             wordColors[word] = color;
           }
           
-          chrome.storage.sync.set({ highlightColors: wordColors });
+
+          
+          chrome.storage.local.set({ highlightColors: wordColors });
           updatePreview();
           
           sendMessageToTab({
             action: "updateHighlightWords",
             words: words,
             colors: wordColors
-          }, function() {
+          }, function(response) {
+
             sendMessageToTab({
               action: "forceUpdateHighlights"
+            }, function(response2) {
+              
             });
           });
         }
@@ -824,7 +829,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   function updateHighlightWords(text) {
     const words = text.split('\n').filter(word => word.trim());
     
-    chrome.storage.sync.set({
+    chrome.storage.local.set({
       highlightWords: text,
       highlightColors: wordColors
     }, function() {
@@ -961,7 +966,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   });
 
   // 初始化預覽
-  chrome.storage.sync.get(['highlightWords', 'highlightColors'], function(data) {
+  chrome.storage.local.get(['highlightWords', 'highlightColors'], function(data) {
     if (data.highlightColors) {
       wordColors = data.highlightColors;
     }

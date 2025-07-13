@@ -147,8 +147,8 @@ class KeyClassifier {
     // 匯出：除了內部系統狀態外都匯出
     export: ['CORE_SETTINGS', 'UI_STATE', 'LARGE_CONTENT', 'USER_DATA'],
     
-    // 本地存儲：大型內容 + 內部系統狀態 + 特殊項目
-    localStorage: ['LARGE_CONTENT', 'INTERNAL_SYSTEM'],
+    // 本地存儲：大型內容 + 內部系統狀態 + 用戶數據 + 特殊項目
+    localStorage: ['LARGE_CONTENT', 'INTERNAL_SYSTEM', 'USER_DATA'],
     
     // 比較過濾：排除界面狀態和內部系統狀態
     comparison: ['CORE_SETTINGS', 'LARGE_CONTENT', 'USER_DATA']

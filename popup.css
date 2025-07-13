@@ -310,7 +310,7 @@ input[type="checkbox"] {
 /* 高亮功能容器 */
 .highlight-container {
   position: relative;
-  height: 454px;
+  height: 426px;
   background: #ffffff;
 }
 
@@ -333,7 +333,7 @@ input[type="checkbox"] {
   z-index: 1;
   background: transparent;
   width: 97%;
-  height: 439px;
+  height: 410px;
 }
 
 /* 高亮預覽元素 */
@@ -361,14 +361,26 @@ input[type="checkbox"] {
 .color-picker {
   display: flex;
   gap: 5px;
+  background: #fff;
+}
+
+.color-picker.background-picker {
+  padding: 5px 5px 0px 5px;
+  border-radius: 4px 4px 0 0;
+  /* 支持換行以容納30個按鈕 */
+  flex-wrap: wrap;
+  max-width: 530px; /* 限制最大寬度，讓按鈕自動折行 */
+}
+
+.color-picker.border-picker {
   padding: 5px;
-  border-radius: 4px;
+  border-radius: 0 0 4px 4px;
   margin-bottom: 8px;
 }
 
 /* 顏色方塊 */
 .color-box {
-  width: 30.1px;
+  width: 30px;
   height: 26.5px;
   border-radius: 4px;
   cursor: pointer;
