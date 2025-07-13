@@ -234,14 +234,19 @@
     transform: scale(1);
     box-shadow: 0 0 0 0px rgba(52, 152, 219, 0.6);
   }
-  50% { 
+  60% { 
     transform: scale(1.2);
     box-shadow: 0 0 0 4px rgba(52, 152, 219, 0.4);
   }
-  100% { 
-    transform: scale(1.1);
+  70% { 
+    transform: scale(1.2);
     box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.6), 
                 0 0 0 4px rgba(52, 152, 219, 0.2);
+  }
+  100% { 
+    transform: scale(1.1);
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0), 
+                0 0 0 4px rgba(52, 152, 219, 0);
   }
 }
 

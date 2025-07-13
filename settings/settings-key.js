@@ -93,7 +93,8 @@ class KeyClassifier {
       /^replace_/,                    // 替換規則
       /^manualReplaceValues_/,        // 手動替換值
       /^generation_settings_/,        // 生成設定組合
-      /^history_/                     // 歷史記錄
+      /^history_/,                    // 歷史記錄
+      /^customHighlightColor_/        // 自定義高亮顏色
     ],
 
     INTERNAL_SYSTEM: [

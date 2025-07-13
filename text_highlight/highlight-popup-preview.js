@@ -315,8 +315,9 @@ const HighlightPreviewManager = {
         
         // 找到匹配的顏色方塊並標記為選中
         this.colorBoxes.forEach(box => {
-          const boxColor = box.dataset.color;
-          const boxStyle = box.dataset.style;
+          // 優先使用自訂顏色，否則使用原始顏色
+          const boxColor = box.dataset.currentColor || box.dataset.color;
+          const boxStyle = box.dataset.currentStyle || box.dataset.style;
           
           let matches = false;
           if (currentColor.startsWith('border:')) {
@@ -330,6 +331,12 @@ const HighlightPreviewManager = {
           
           if (matches) {
             box.classList.add('selected');
+            LogUtils.log('🎯 找到匹配的顏色按鈕:', {
+              word: word,
+              color: boxColor,
+              style: boxStyle,
+              isCustom: !!(box.dataset.currentColor)
+            });
           }
         });
       }
