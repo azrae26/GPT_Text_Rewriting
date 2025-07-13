@@ -205,19 +205,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   
   updateApiKeyInput();
 
-  // 載入已保存的高亮文字
-  chrome.storage.local.get('highlightWords', function(data) {
-    if (data.highlightWords) {
-      highlightWordsInput.value = data.highlightWords;
-      highlightWordsInput._previousValue = data.highlightWords;
-      setTimeout(() => {
-        updatePreview();
-        requestAnimationFrame(() => {
-          updatePreviewsPosition();
-        });
-      }, 0);
-    }
-  });
+  // 高亮功能的載入將由 HighlightPreviewManager 處理
 
   // 載入已保存的主分頁和子分頁狀態
   chrome.storage.sync.get(['lastMainTab', 'lastSubTab'], function(data) {
@@ -670,317 +658,30 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
   }
 
-  let selectedLine = -1;
-  let wordColors = {};
+  // 高亮相關的狀態管理已移至 HighlightPreviewManager
 
-  // 載入已保存的顏色設置
-  chrome.storage.local.get('highlightColors', function(data) {
-    if (data.highlightColors) {
-      wordColors = data.highlightColors;
-    }
-  });
+  // 顏色選擇器的初始化已移至 HighlightPreviewManager
 
-  // 初始化顏色選擇器
-  const colorBoxes = document.querySelectorAll('.color-box');
-  colorBoxes.forEach(box => {
-    const color = box.dataset.color;
-    const style = box.dataset.style;
-    
-    // 設置顏色方塊的顯示樣式
-    if (style === 'border') {
-      // 外框式：設置文字顏色，通過currentColor讓偽元素繼承
-      box.classList.add('border-box');
-      box.style.color = color;
-    } else {
-      // 背景式：設置背景顏色
-      box.style.backgroundColor = color;
-    }
-    
-    box.addEventListener('click', () => {
-      if (selectedLine >= 0) {
-        const words = highlightWordsInput.value.split('\n');
-        const word = words[selectedLine];
-        if (word) {
-          // 清除所有顏色方塊的選中狀態
-          document.querySelectorAll('.color-box').forEach(cb => {
-            cb.classList.remove('selected');
-          });
-          
-          // 為當前點擊的方塊添加選中狀態
-          box.classList.add('selected');
-          
-          // 根據樣式類型設置顏色值
-          if (style === 'border') {
-            wordColors[word] = `border:${color}`;
-          } else {
-            wordColors[word] = color;
-          }
-          
+  // 高亮輸入框的事件處理已移至 HighlightPreviewManager
 
-          
-          chrome.storage.local.set({ highlightColors: wordColors });
-          updatePreview();
-          
-          sendMessageToTab({
-            action: "updateHighlightWords",
-            words: words,
-            colors: wordColors
-          }, function(response) {
+  // 輸入變更監聽已移至 HighlightPreviewManager
 
-            sendMessageToTab({
-              action: "forceUpdateHighlights"
-            }, function(response2) {
-              
-            });
-          });
-        }
-      }
-    });
-  });
+  // updateHighlightWords 函數已移至 HighlightPreviewManager
 
-  // 修改 highlightWordsInput 的點擊事件
-  highlightWordsInput.addEventListener('click', function(e) {
-    const text = this.value;
-    const start = this.selectionStart;
-    const lines = text.substr(0, start).split('\n');
-    selectedLine = lines.length - 1;
-    
-    // 更新顏色選擇器的選中狀態
-    updateColorBoxSelection();
-  });
+  // updatePreview 函數已移至 HighlightPreviewManager
 
-  // 更新顏色選擇器選中狀態的函數
-  function updateColorBoxSelection() {
-    // 清除所有選中狀態
-    document.querySelectorAll('.color-box').forEach(cb => {
-      cb.classList.remove('selected');
-    });
-    
-    if (selectedLine >= 0) {
-      const words = highlightWordsInput.value.split('\n');
-      const word = words[selectedLine];
-      if (word && wordColors[word]) {
-        const currentColor = wordColors[word];
-        
-        // 找到匹配的顏色方塊並標記為選中
-        document.querySelectorAll('.color-box').forEach(box => {
-          const boxColor = box.dataset.color;
-          const boxStyle = box.dataset.style;
-          
-          let matches = false;
-          if (currentColor.startsWith('border:')) {
-            // 外框式顏色
-            const colorValue = currentColor.substring(7);
-            matches = (boxStyle === 'border' && boxColor === colorValue);
-          } else {
-            // 背景式顏色
-            matches = (boxStyle === 'background' && boxColor === currentColor);
-          }
-          
-          if (matches) {
-            box.classList.add('selected');
-          }
-        });
-      }
-    }
-  }
+  // updatePreviewsPosition 函數和滾動監聽已移至 HighlightPreviewManager
 
-  // 監聽文字變更以更新預覽
-  highlightWordsInput.addEventListener('input', function() {
-    const newText = this.value;
-    const oldText = this._previousValue || ''; // 確保 oldText 是字串
-
-    const newLines = newText.split('\n');
-    const oldLines = oldText.split('\n');
-
-    const newEffectiveWordColors = {}; // 這將成為新的全域 wordColors
-
-    for (let i = 0; i < newLines.length; i++) {
-      const newLine = newLines[i];
-
-      if (i < oldLines.length) { // 如果在相同索引處存在對應的舊行
-        const oldLineAtIndex = oldLines[i];
-        if (newLine === oldLineAtIndex) { // 行文字內容相同
-          if (wordColors[oldLineAtIndex] !== undefined) { // 且舊行有顏色
-            newEffectiveWordColors[newLine] = wordColors[oldLineAtIndex]; // 保留顏色
-          }
-        } else { // 行文字內容已改變 (newLine !== oldLineAtIndex)
-          // 優先檢查新文字本身是否對應已設定的顏色
-          if (wordColors[newLine] !== undefined) {
-            newEffectiveWordColors[newLine] = wordColors[newLine];
-          }
-          // 其次，如果舊行有顏色且新行不是空的，則繼承顏色 (用於就地編輯)
-          else if (wordColors[oldLineAtIndex] !== undefined && newLine.trim() !== "") {
-            newEffectiveWordColors[newLine] = wordColors[oldLineAtIndex];
-          }
-        }
-      } else { // 這是新增加到文件末尾的行
-        if (wordColors[newLine] !== undefined) { // 如果新行文字對應已設定的顏色
-          newEffectiveWordColors[newLine] = wordColors[newLine];
-        }
-      }
-    }
-    wordColors = newEffectiveWordColors;
-    this._previousValue = newText;
-    updatePreview();
-    updateHighlightWords(newText);
-  });
-
-  function updateHighlightWords(text) {
-    const words = text.split('\n').filter(word => word.trim());
-    
-    chrome.storage.local.set({
-      highlightWords: text,
-      highlightColors: wordColors
-    }, function() {
-      sendMessageToTab({
-        action: "updateHighlightWords",
-        words: words,
-        colors: wordColors
-      }, function(response) {
-        if (response && response.error) {
-          LogUtils.log('高亮設置已保存，將在頁面重新載入時應用');
-        } else {
-          LogUtils.log('高亮設置已更新');
-          sendMessageToTab({
-            action: "forceUpdateHighlights"
-          });
-        }
-      });
-    });
-  }
-
-  function updatePreview() {
-    if (!highlightWordsInput || !highlightWordsInput.clientWidth) {
-        setTimeout(updatePreview, 10);
-        return;
-    }
-    
-    // 清除所有類型的預覽元素
-    const oldPreviews = document.querySelectorAll('.highlight-preview, .highlight-preview-border');
-    oldPreviews.forEach(p => p.remove());
-
-    const textarea = highlightWordsInput;
+  // 初始化高亮預覽管理器
+  if (typeof HighlightPreviewManager !== 'undefined') {
+    const colorBoxes = document.querySelectorAll('.color-box');
     const overlay = document.querySelector('.highlight-overlay');
-    const text = textarea.value;
-    const lines = text.split('\n');
-
-    const textareaStyle = getComputedStyle(textarea);
-    const font = textareaStyle.font;
-    const lineHeight = parseFloat(textareaStyle.lineHeight);
-    const paddingLeft = parseFloat(textareaStyle.paddingLeft);
-    const paddingTop = parseFloat(textareaStyle.paddingTop);
-    const innerWidth = textarea.clientWidth - paddingLeft - parseFloat(textareaStyle.paddingRight);
-    const div = document.createElement('div');
-    div.style.cssText = `
-      position: absolute;
-      visibility: hidden;
-      white-space: pre-wrap;
-      word-wrap: break-word;
-      width: ${innerWidth}px;
-      font: ${font};
-      line-height: ${lineHeight}px;
-      padding: 0;
-      border: none;
-    `;
-    textarea.parentElement.appendChild(div);
-
-    div.textContent = text;
-    const range = document.createRange();
-    const divRectBase = div.getBoundingClientRect(); 
-
-    lines.forEach((line, index) => {
-      if (!line.trim()) return;
-
-      let lineStart = 0;
-      for (let i = 0; i < index; i++) {
-        lineStart += lines[i].length + 1;
-      }
-
-      if (div.firstChild && div.firstChild.nodeType === Node.TEXT_NODE) {
-        const textNode = div.firstChild;
-        const lineEnd = Math.min(lineStart + line.length, textNode.length);
-        if (lineStart >= lineEnd) return;
-
-        range.setStart(textNode, lineStart);
-        range.setEnd(textNode, lineEnd);
-        
-        const rects = range.getClientRects();
-
-        for (let i = 0; i < rects.length; i++) {
-          const rect = rects[i];
-          const preview = document.createElement('div');
-          
-          // 解析顏色和樣式
-          const colorValue = wordColors[line] || 'rgba(50, 205, 50, 0.3)';
-          let color, isBorder = false;
-          
-          if (colorValue.startsWith('border:')) {
-            isBorder = true;
-            color = colorValue.substring(7); // 移除 'border:' 前綴
-            preview.className = 'highlight-preview-border';
-          } else {
-            color = colorValue;
-            preview.className = 'highlight-preview';
-          }
-          
-          preview.style.top = `${rect.top - divRectBase.top + paddingTop}px`;
-          preview.style.left = `${rect.left - divRectBase.left + paddingLeft}px`;
-          preview.style.width = `${rect.width}px`;
-          preview.style.height = `${lineHeight > rect.height ? lineHeight : rect.height}px`; 
-          
-          if (isBorder) {
-            preview.style.color = color; // 設置 color 屬性讓 currentColor 生效
-          } else {
-            preview.style.backgroundColor = color;
-          }
-          
-          preview.dataset.originalTop = rect.top - divRectBase.top + paddingTop;
-          overlay.appendChild(preview);
-        }
-      }
-    });
-
-    range.detach();
-    div.remove();
-    updatePreviewsPosition();
+    
+    HighlightPreviewManager.init(highlightWordsInput, colorBoxes, overlay, sendMessageToTab);
+    LogUtils.log('高亮預覽管理器已初始化');
+  } else {
+    LogUtils.warn('HighlightPreviewManager 未載入');
   }
-
-  function updatePreviewsPosition() {
-    const textarea = highlightWordsInput;
-    const scrollTop = textarea.scrollTop;
-
-    // 處理底色式和外框式高亮預覽
-    const previews = document.querySelectorAll('.highlight-preview, .highlight-preview-border');
-    previews.forEach(preview => {
-      const originalTop = parseFloat(preview.dataset.originalTop);
-      preview.style.display = 'block';
-      preview.style.transform = `translateY(${-scrollTop}px)`;
-    });
-  }
-
-  highlightWordsInput.addEventListener('scroll', function() {
-    requestAnimationFrame(() => {
-      updatePreviewsPosition();
-    });
-  });
-
-  // 初始化預覽
-  chrome.storage.local.get(['highlightWords', 'highlightColors'], function(data) {
-    if (data.highlightColors) {
-      wordColors = data.highlightColors;
-    }
-    if (data.highlightWords) {
-      highlightWordsInput.value = data.highlightWords;
-      highlightWordsInput._previousValue = data.highlightWords;
-      setTimeout(() => {
-        updatePreview();
-        requestAnimationFrame(() => {
-          updatePreviewsPosition();
-        });
-      }, 0);
-    }
-  });
 
   // 生成設定組合管理
   function updateGenerationSettingsSelect() {
