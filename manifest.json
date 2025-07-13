@@ -125,7 +125,8 @@
     },
     {
       "resources": [
-        "SettingsIO/settings-io.js", 
+        "SettingsIO/settings-io.js",
+        "SettingsIO/settings-io-popup.js", 
         "settings/settings-key.js", 
         "settings/settings-manager.js", 
         "settings/storage-manager.js",

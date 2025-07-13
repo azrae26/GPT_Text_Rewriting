@@ -13,13 +13,15 @@
  * - GlobalSettings：全局設定管理
  * - ModelManager：自定義模型管理（來自 settings/model-manager.js）
  * - StockManager：股票功能管理（來自 popup/stock-controller.js）
+ * - PopupSyncManager：同步功能管理（來自 SettingsIO/settings-io-popup.js）
  * - AutoReplaceManager：自動替換管理
  * - Chrome Extensions API：storage, tabs, runtime
  * 
  * 模組化設計：
  * - 股票相關功能已獨立為 popup/stock-controller.js
  * - 自定義模型管理功能已移至 settings/model-manager.js
- * - 通過 StockManager 和 ModelManager 接口與相關控制器交互
+ * - 同步功能已移至 SettingsIO/settings-io-popup.js
+ * - 通過 StockManager、ModelManager、PopupSyncManager 接口與相關控制器交互
  * - 保持功能完整性和代碼關聯性
  */
 
@@ -109,28 +111,13 @@ document.addEventListener('DOMContentLoaded', async function() {
   const customModelTypeSelect = document.getElementById('custom-model-type');
   const addCustomModelBtn = document.getElementById('add-custom-model');
   const customModelsContainer = document.getElementById('custom-models-container');
-  const syncStatus = document.getElementById('sync-status');
-  const statusIcon = document.getElementById('status-icon');
-  const statusText = document.getElementById('status-text');
-  const authButton = document.getElementById('auth-button');
-  const signoutButton = document.getElementById('signout-button');
-  const manualSyncButton = document.getElementById('manual-sync-button');
-  const autoSyncToggle = document.getElementById('auto-sync-toggle');
-  const syncError = document.getElementById('sync-error');
+  // 同步相關 DOM 元素已移至 PopupSyncManager
 
   // 初始化設定
   let apiKeys = {};
-  let settingsIO = null;
   let settings = await GlobalSettings.loadSettings();
   
-  // 初始化並暴露 SettingsIO 實例
-  if (typeof SettingsIO !== 'undefined') {
-    settingsIO = new SettingsIO();
-    window.settingsIO = settingsIO; // 暴露到全局，供 settings-manager.js 使用
-    LogUtils.log('SettingsIO 實例已初始化並暴露到 window');
-  } else {
-    LogUtils.warn('SettingsIO 類別未載入');
-  }
+  // SettingsIO 實例化已移至 PopupSyncManager
   
   // 檢查是否為首次使用，如果是則應用預設設定
   const hasUserSettings = settings.instruction || settings.translateInstruction || 
@@ -192,17 +179,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     crawlerIntervalInput.value = settings.crawlerInterval || 30;
   }
   
-  // 載入同步間隔設定
-  const syncIntervalInput = document.getElementById('sync-interval');
-  if (syncIntervalInput && settingsIO) {
-    try {
-      const syncInterval = await settingsIO.getSyncInterval();
-      syncIntervalInput.value = syncInterval;
-    } catch (error) {
-      LogUtils.warn('載入同步間隔失敗:', error);
-      syncIntervalInput.value = 2; // 預設值
-    }
-  }
+  // 同步間隔載入已移至 PopupSyncManager
   
   updateApiKeyInput();
 
@@ -865,355 +842,21 @@ document.addEventListener('DOMContentLoaded', async function() {
     LogUtils.warn('⚠️ 找不到自動替換容器或AutoReplaceManager未載入');
   }
 
-  // 同步功能
-  const authOperations = {
-    async authenticateWithGoogle(interactive = false) {
-      if (!settingsIO) {
-        if (typeof SettingsIO !== 'undefined') {
-          settingsIO = new SettingsIO();
-        } else {
-          throw new Error('SettingsIO 未載入');
-        }
-      }
-      return await settingsIO.authenticateWithGoogle(interactive);
-    }
-  };
+  // 同步功能已移至 PopupSyncManager
 
-  const syncOperations = {
-    async manualSync() {
-      return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({
-          action: 'settingsSync',
-          command: 'manualSync'
-        }, response => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve(response);
-          }
-        });
-      });
-    },
+  // 同步功能相關函數已移至 PopupSyncManager
 
-    async toggleAutoSync(enabled) {
-      return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({
-          action: 'settingsSync',
-          command: 'toggleAutoSync',
-          enabled: enabled
-        }, response => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve(response);
-          }
-        });
-      });
-    },
-
-    async getSyncStatus() {
-      return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({
-          action: 'settingsSync',
-          command: 'getSyncStatus'
-        }, response => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve(response);
-          }
-        });
-      });
-    },
-
-    async resetSyncStatus() {
-      return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({
-          action: 'settingsSync',
-          command: 'resetSyncStatus'
-        }, response => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve(response);
-          }
-        });
-      });
-    },
-
-    async signOut() {
-      return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({
-          action: 'settingsSync',
-          command: 'signOut'
-        }, response => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve(response);
-          }
-        });
-      });
-    },
-
-    async forceUpload() {
-      return new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({
-          action: 'settingsSync',
-          command: 'forceUpload'
-        }, response => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve(response);
-          }
-        });
-      });
-    }
-  };
-
-  async function initializeSyncFeatures() {
+  // 初始化 PopupSyncManager
+  if (typeof PopupSyncManager !== 'undefined') {
     try {
-      setupSyncEventHandlers();
-      
-      chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-        if (message.action === 'syncStatusUpdate') {
-          updateSyncStatus();
-        }
-      });
-      
-      await updateSyncStatus();
+      await PopupSyncManager.init();
+      LogUtils.log('PopupSyncManager 已初始化');
     } catch (error) {
-      LogUtils.error('同步功能初始化失敗:', error);
+      LogUtils.error('PopupSyncManager 初始化失敗:', error);
     }
+  } else {
+    LogUtils.warn('PopupSyncManager 未載入');
   }
-
-  // 設置同步相關事件處理器
-  function setupSyncEventHandlers() {
-    // 認證按鈕
-    if (authButton) {
-      authButton.addEventListener('click', async () => {
-        LogUtils.log('開始認證');
-        try {
-          authButton.disabled = true;
-          authButton.textContent = '認證中...';
-          
-          // Google OAuth需要在popup環境中進行交互式認證
-          const result = await authOperations.authenticateWithGoogle(true);
-          if (result.success) {
-            LogUtils.log('認證成功');
-            await updateSyncStatus();
-          } else {
-            throw new Error(result.error || '認證失敗');
-          }
-        } catch (error) {
-          LogUtils.error('認證失敗:', error);
-          showSyncError('認證失敗: ' + error.message);
-        } finally {
-          authButton.disabled = false;
-          authButton.textContent = '連接 Google Drive';
-        }
-      });
-    }
-
-    // 登出按鈕
-    if (signoutButton) {
-      signoutButton.addEventListener('click', async () => {
-        LogUtils.log('開始登出');
-        try {
-          const result = await syncOperations.signOut();
-          if (!result.success) {
-            throw new Error(result.error);
-          }
-          await updateSyncStatus();
-          LogUtils.log('登出成功');
-        } catch (error) {
-          LogUtils.error('登出失敗:', error);
-          showSyncError('登出失敗: ' + error.message);
-        }
-      });
-    }
-
-    // 手動同步按鈕
-    if (manualSyncButton) {
-      manualSyncButton.addEventListener('click', async () => {
-        LogUtils.log('開始手動同步');
-        try {
-          manualSyncButton.disabled = true;
-          manualSyncButton.textContent = '同步中...';
-          
-          const result = await syncOperations.manualSync();
-          if (result.success) {
-            LogUtils.log('手動同步成功');
-            clearSyncError();
-          } else {
-            throw new Error(result.error || '同步失敗');
-          }
-        } catch (error) {
-          LogUtils.error('手動同步失敗:', error);
-          showSyncError('同步失敗: ' + error.message);
-        } finally {
-          manualSyncButton.disabled = false;
-          manualSyncButton.textContent = '手動同步';
-          await updateSyncStatus();
-        }
-      });
-    }
-
-    // 自動同步開關
-    if (autoSyncToggle) {
-      autoSyncToggle.addEventListener('click', async () => {
-        LogUtils.log('切換自動同步');
-        try {
-          const enabled = autoSyncToggle.classList.contains('active');
-          const newState = !enabled;
-          
-          const result = await syncOperations.toggleAutoSync(newState);
-          if (!result.success) {
-            throw new Error(result.error);
-          }
-          
-          if (newState) {
-            autoSyncToggle.classList.add('active');
-          } else {
-            autoSyncToggle.classList.remove('active');
-          }
-          
-          LogUtils.log('自動同步已' + (newState ? '啟用' : '停用'));
-          await updateSyncStatus();
-        } catch (error) {
-          LogUtils.error('切換自動同步失敗:', error);
-          showSyncError('切換自動同步失敗: ' + error.message);
-        }
-      });
-    }
-
-    // 同步間隔輸入框
-    if (syncIntervalInput && settingsIO) {
-      syncIntervalInput.addEventListener('change', async () => {
-        try {
-          const intervalMinutes = parseFloat(syncIntervalInput.value);
-          
-          // 驗證輸入值
-          if (isNaN(intervalMinutes) || intervalMinutes < 0.1 || intervalMinutes > 60) {
-            throw new Error('間隔時間必須在 0.1 到 60 分鐘之間');
-          }
-          
-          await settingsIO.setSyncInterval(intervalMinutes);
-          LogUtils.log(`同步間隔已更新為 ${intervalMinutes} 分鐘`);
-          
-        } catch (error) {
-          LogUtils.error(`更新同步間隔失敗:`, error);
-          showSyncError('更新同步間隔失敗: ' + error.message);
-          
-          // 重新載入正確的值
-          try {
-            const currentInterval = await settingsIO.getSyncInterval();
-            syncIntervalInput.value = currentInterval;
-          } catch (loadError) {
-            syncIntervalInput.value = 2; // 回到預設值
-          }
-        }
-      });
-    }
-
-
-  }
-
-  // 更新同步狀態顯示
-  async function updateSyncStatus() {
-    if (!syncStatus) {
-      LogUtils.log('updateSyncStatus: syncStatus元素未找到');
-      return;
-    }
-
-    try {
-      const result = await syncOperations.getSyncStatus();
-      if (!result.success) {
-        throw new Error(result.error);
-      }
-      // 正確解析狀態數據結構（修正：狀態現在直接在 result 中）
-      const syncStatusData = result;
-      LogUtils.log(`updateSyncStatus: enabled=${syncStatusData.enabled}, status=${syncStatusData.status}`, {
-        fullResult: result,
-        syncStatusData: syncStatusData
-      });
-      
-      // 更新狀態圖示和文字
-      if (statusIcon && statusText) {
-        statusIcon.className = 'status-icon';
-        syncStatus.className = 'sync-status-display';
-        
-        if (syncStatusData.enabled && !syncStatusData.error) {
-          statusIcon.classList.add('connected');
-          syncStatus.classList.add('connected');
-          statusText.textContent = '已連接 Google Drive';
-        } else if (syncStatusData.status === 'syncing') {
-          statusIcon.classList.add('syncing');
-          syncStatus.classList.add('syncing');
-          statusText.textContent = '同步中...';
-        } else if (syncStatusData.error) {
-          statusIcon.classList.add('error');
-          syncStatus.classList.add('error');
-          statusText.textContent = '同步錯誤';
-        } else {
-          statusIcon.classList.add('disconnected');
-          syncStatus.classList.add('disconnected');
-          statusText.textContent = '未連接';
-        }
-      }
-
-      // 更新按鈕狀態
-      if (authButton && signoutButton) {
-        if (syncStatusData.enabled) {
-          authButton.style.display = 'none';
-          signoutButton.style.display = 'inline-block';
-        } else {
-          authButton.style.display = 'inline-block';
-          signoutButton.style.display = 'none';
-        }
-      }
-
-      // 更新自動同步開關（使用 autoSyncActive 屬性）
-      if (autoSyncToggle) {
-        LogUtils.log(`更新自動同步開關狀態: ${syncStatusData.autoSyncActive}`);
-        if (syncStatusData.autoSyncActive) {
-          autoSyncToggle.classList.add('active');
-        } else {
-          autoSyncToggle.classList.remove('active');
-        }
-      }
-
-      // 顯示錯誤訊息
-      if (syncStatusData.error) {
-        showSyncError(syncStatusData.error);
-      } else {
-        clearSyncError();
-      }
-
-    } catch (error) {
-      LogUtils.error('更新同步狀態失敗:', error);
-    }
-  }
-
-  // 顯示同步錯誤
-  function showSyncError(message) {
-    if (syncError) {
-      syncError.textContent = message;
-      syncError.style.display = 'block';
-    }
-  }
-
-  // 清除同步錯誤
-  function clearSyncError() {
-    if (syncError) {
-      syncError.style.display = 'none';
-      syncError.textContent = '';
-    }
-  }
-
-  // 初始化同步功能
-  initializeSyncFeatures();
 
   // 初始化 ModelManager 和 StockCrawlerController
   setTimeout(async () => {
