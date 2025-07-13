@@ -1,0 +1,373 @@
+/**
+ * text_highlight/highlight-color-picker.css - 高亮顏色選擇器擴展樣式
+ * 功能：為高亮顏色按鈕提供雙擊和自定義顏色功能的額外樣式
+ * 職責：
+ * - 雙擊檢測和視覺反饋
+ * - RGB滑桿顏色選擇器樣式
+ * - 自定義顏色指示器
+ * - 顏色選擇器觸發時的效果
+ * 
+ * 注意：基本樣式（.color-box, .color-picker 等）已在 popup.css 中定義
+ * 
+ * 使用方式：
+ * - 在 popup.html 中引入此CSS文件
+ * - 配合 highlight-color-picker.js 使用
+ */
+
+/* ==================== RGB滑桿顏色選擇器樣式 ==================== */
+
+/* RGB顏色選擇器面板 */
+.rgb-color-picker-panel {
+  backdrop-filter: blur(10px);
+  animation: colorPickerFadeIn 0.3s ease-out;
+}
+
+@keyframes colorPickerFadeIn {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+/* 顏色預覽區域 */
+.color-preview {
+  transition: background-color 0.2s ease;
+}
+
+/* RGBA滑桿容器 */
+.rgb-sliders-container {
+  background: #f8f9fa;
+  padding: 15px 15px 10px 15px;
+  border-radius: 8px;
+  margin: 15px 0;
+}
+
+/* 滑桿組樣式 */
+.slider-group {
+  margin-bottom: 15px;
+}
+
+.slider-group:last-child {
+  margin-bottom: 0;
+}
+
+/* RGBA滑桿基本樣式 */
+.rgba-slider {
+  transition: all 0.2s ease;
+  border: 1px solid #ddd;
+}
+
+.rgba-slider:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+
+.rgba-slider:focus {
+  outline: 2px solid rgba(52, 152, 219, 0.5);
+  outline-offset: 2px;
+}
+
+/* 為每個滑桿定制顏色 */
+.r-slider::-webkit-slider-thumb {
+  background: white;
+  border: 2px solid #ff4444;
+  box-shadow: 0 2px 6px rgba(255, 68, 68, 0.3);
+}
+
+.g-slider::-webkit-slider-thumb {
+  background: white;
+  border: 2px solid #44ff44;
+  box-shadow: 0 2px 6px rgba(68, 255, 68, 0.3);
+}
+
+.b-slider::-webkit-slider-thumb {
+  background: white;
+  border: 2px solid #4444ff;
+  box-shadow: 0 2px 6px rgba(68, 68, 255, 0.3);
+}
+
+/* Firefox 滑桿樣式 */
+.r-slider::-moz-range-thumb {
+  border: 2px solid #ff4444;
+  box-shadow: 0 2px 6px rgba(255, 68, 68, 0.3);
+}
+
+.g-slider::-moz-range-thumb {
+  border: 2px solid #44ff44;
+  box-shadow: 0 2px 6px rgba(68, 255, 68, 0.3);
+}
+
+.b-slider::-moz-range-thumb {
+  border: 2px solid #4444ff;
+  box-shadow: 0 2px 6px rgba(68, 68, 255, 0.3);
+}
+
+.a-slider::-webkit-slider-thumb {
+  background: white;
+  border: 2px solid #888888;
+  box-shadow: 0 2px 6px rgba(136, 136, 136, 0.3);
+}
+
+.a-slider::-moz-range-thumb {
+  border: 2px solid #888888;
+  box-shadow: 0 2px 6px rgba(136, 136, 136, 0.3);
+}
+
+/* 數值顯示樣式 */
+.r-value, .g-value, .b-value, .a-value {
+  font-family: 'Monaco', 'Consolas', monospace;
+  transition: all 0.2s ease;
+  background: rgb(234, 238, 241) !important;
+}
+
+.r-value {
+  border-left: 3px solid #ff4444;
+}
+
+.g-value {
+  border-left: 3px solid #44ff44;
+}
+
+.b-value {
+  border-left: 3px solid #4444ff;
+}
+
+.a-value {
+  border-left: 3px solid #888888;
+}
+
+/* 按鈕樣式增強 */
+.rgb-color-picker-panel button {
+  transition: all 0.2s ease;
+  font-weight: 500;
+  min-width: 80px;
+}
+
+.rgb-color-picker-panel button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.rgb-color-picker-panel button:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 確認按鈕特殊樣式 */
+.rgb-color-picker-panel button[style*="background: #007cba"]:hover {
+  background: #0056b3 !important;
+}
+
+/* 取消按鈕特殊樣式 */
+.rgb-color-picker-panel button[style*="background: #6c757d"]:hover {
+  background: #545b62 !important;
+}
+
+/* 遮罩層動畫 */
+.color-picker-overlay {
+  animation: overlayFadeIn 0.3s ease-out;
+}
+
+@keyframes overlayFadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+
+/* ==================== 顏色按鈕激活效果（單擊時的瞬間反饋） ==================== */
+
+.color-box:active {
+  transform: scale(0.95);
+  transition: transform 0.1s ease;
+}
+
+/* ==================== 雙擊功能樣式 ==================== */
+
+/* 雙擊檢測中的樣式 */
+.color-box.double-click-pending {
+  animation: doubleclickPulse 0.3s ease-in-out;
+}
+
+/* 雙擊動畫效果 */
+@keyframes doubleclickPulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.15); }
+  100% { transform: scale(1); }
+}
+
+/* 支持雙擊的按鈕額外樣式（可選的視覺提示） */
+.color-box[title*="雙擊"]::after {
+  content: "⚡";
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  font-size: 8px;
+  /* 移除底色，讓閃電圖標直接顯示 */
+  color: #4eb3d3;
+  width: 12px;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  text-shadow: 0 0 2px rgba(0,0,0,0.5);
+}
+
+.color-box:hover[title*="雙擊"]::after {
+  opacity: 1;
+}
+
+/* ==================== 選中狀態增強動畫效果 ==================== */
+
+/* 選中動畫效果（增強版） */
+@keyframes selectedPulse {
+  0% { 
+    transform: scale(1);
+    box-shadow: 0 0 0 0px rgba(52, 152, 219, 0.6);
+  }
+  50% { 
+    transform: scale(1.2);
+    box-shadow: 0 0 0 4px rgba(52, 152, 219, 0.4);
+  }
+  100% { 
+    transform: scale(1.1);
+    box-shadow: 0 0 0 2px rgba(52, 152, 219, 0.6), 
+                0 0 0 4px rgba(52, 152, 219, 0.2);
+  }
+}
+
+/* 為選中狀態添加動畫效果 */
+.color-box.selected {
+  animation: selectedPulse 0.4s ease-out;
+}
+
+/* ==================== 原生顏色選擇器樣式 ==================== */
+
+/* 隱藏的原生顏色選擇器 */
+.hidden-color-picker {
+  position: absolute;
+  left: -9999px;
+  opacity: 0;
+  pointer-events: none;
+  width: 1px;
+  height: 1px;
+}
+
+/* ==================== 顏色選擇器彈出效果 ==================== */
+
+/* 顏色選擇器觸發時的視覺反饋 */
+.color-box.picker-active {
+  transform: scale(1.15);
+  box-shadow: 0 0 0 3px rgba(255, 165, 0, 0.5);
+  animation: pickerActivePulse 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes pickerActivePulse {
+  0% { 
+    box-shadow: 0 0 0 3px rgba(255, 165, 0, 0.5);
+  }
+  100% { 
+    box-shadow: 0 0 0 6px rgba(255, 165, 0, 0.2);
+  }
+}
+
+/* ==================== 響應式設計（雙擊功能） ==================== */
+
+@media (max-width: 400px) {
+  .color-box[title*="雙擊"]::after {
+    width: 10px;
+    height: 10px;
+    font-size: 7px;
+  }
+}
+
+/* ==================== 無障礙設計（新功能相關） ==================== */
+
+/* 鍵盤焦點樣式 */
+.color-box:focus {
+  outline: 2px solid rgba(52, 152, 219, 0.8);
+  outline-offset: 2px;
+}
+
+/* 減少動畫偏好設定（針對新功能） */
+@media (prefers-reduced-motion: reduce) {
+  .color-box.picker-active,
+  .color-box.custom-color,
+  .rgb-color-picker-panel {
+    animation: none;
+    transition: none;
+  }
+  
+  .color-box.double-click-pending {
+    animation: none;
+  }
+  
+  .color-picker-overlay {
+    animation: none;
+  }
+}
+
+/* ==================== 自定義顏色指示器 ==================== */
+
+/* 表示這是自定義顏色的特殊標記 */
+.color-box.custom-color::after {
+  content: "✨";
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  font-size: 10px;
+  /* 移除底色，讓星星圖標直接顯示 */
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: customColorGlow 2s ease-in-out infinite alternate;
+}
+
+@keyframes customColorGlow {
+  0% { 
+    transform: scale(1);
+  }
+  100% { 
+    text-shadow: 0 0 6px rgba(255, 215, 0, 0); /* 星星發光效果 */
+    transform: scale(1.1);
+  }
+}
+
+/* ==================== 工具提示樣式 ==================== */
+
+.color-box[title] {
+  position: relative;
+}
+
+/* 簡單的工具提示樣式（如果需要自定義工具提示） */
+.color-box-tooltip {
+  position: absolute;
+  bottom: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+  z-index: 1000;
+}
+
+.color-box:hover .color-box-tooltip {
+  opacity: 1;
+} 

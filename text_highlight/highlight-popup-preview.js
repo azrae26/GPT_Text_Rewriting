@@ -116,11 +116,11 @@ const HighlightPreviewManager = {
   bindColorBoxEvents() {
     if (!this.colorBoxes) return;
 
+    // 設置顏色方塊的初始顯示樣式
     this.colorBoxes.forEach(box => {
       const color = box.dataset.color;
       const style = box.dataset.style;
       
-      // 設置顏色方塊的顯示樣式
       if (style === 'border') {
         // 外框式：設置文字顏色，通過currentColor讓偽元素繼承
         box.classList.add('border-box');
@@ -129,11 +129,31 @@ const HighlightPreviewManager = {
         // 背景式：設置背景顏色
         box.style.backgroundColor = color;
       }
-      
-      box.addEventListener('click', () => {
+    });
+
+    // 初始化高亮顏色選擇器
+    if (typeof HighlightColorPicker !== 'undefined') {
+      HighlightColorPicker.init(this.colorBoxes, (color, style, box) => {
         this.handleColorBoxClick(color, style, box);
       });
-    });
+      
+      // 載入保存的自定義顏色
+      HighlightColorPicker.loadCustomColors(this.colorBoxes);
+      
+      LogUtils.log('高亮顏色選擇器已整合');
+    } else {
+      LogUtils.warn('HighlightColorPicker 未載入，將使用基本的顏色選擇功能');
+      
+      // 降級處理：使用原始的單擊事件
+      this.colorBoxes.forEach(box => {
+        const color = box.dataset.color;
+        const style = box.dataset.style;
+        
+        box.addEventListener('click', () => {
+          this.handleColorBoxClick(color, style, box);
+        });
+      });
+    }
   },
 
   /**
@@ -198,37 +218,83 @@ const HighlightPreviewManager = {
   /**
    * 處理顏色方塊點擊事件
    */
-  handleColorBoxClick(color, style, box) {
+  handleColorBoxClick(color, style, box, oldColor = null, oldStyle = null) {
+    const words = this.highlightWordsInput.value.split('\n');
+    
+    // 如果傳入了舊顏色參數，使用傳入的值；否則從按鈕獲取
+    let currentColor, currentStyle;
+    if (oldColor && oldStyle) {
+      currentColor = oldColor;
+      currentStyle = oldStyle;
+    } else {
+      const originalColor = box.dataset.originalColor;
+      const originalStyle = box.dataset.originalStyle;
+      currentColor = box.dataset.currentColor || originalColor;
+      currentStyle = box.dataset.currentStyle || originalStyle;
+    }
+    
+    // 構建當前使用的顏色格式（用於比對）
+    let oldColorFormat;
+    if (currentStyle === 'border') {
+      oldColorFormat = `border:${currentColor}`;
+    } else {
+      oldColorFormat = currentColor;
+    }
+    
+    // 構建新的顏色格式
+    let newColorFormat;
+    if (style === 'border') {
+      newColorFormat = `border:${color}`;
+    } else {
+      newColorFormat = color;
+    }
+    
+    LogUtils.log('🎨 顏色變更:', {
+      from: oldColorFormat,
+      to: newColorFormat,
+      affectedWords: []
+    });
+    
+    // 更新所有使用該顏色的關鍵字
+    let updatedCount = 0;
+    const affectedWords = [];
+    
+    Object.keys(this.wordColors).forEach(word => {
+      if (this.wordColors[word] === oldColorFormat) {
+        this.wordColors[word] = newColorFormat;
+        updatedCount++;
+        affectedWords.push(word);
+      }
+    });
+    
+    // 如果有選中的行但該行沒有被自動更新，則為其設置新顏色
     if (this.selectedLine >= 0) {
-      const words = this.highlightWordsInput.value.split('\n');
-      const word = words[this.selectedLine];
-      
-      if (word) {
-        // 清除所有顏色方塊的選中狀態
-        this.colorBoxes.forEach(cb => {
-          cb.classList.remove('selected');
-        });
-        
-        // 為當前點擊的方塊添加選中狀態
-        box.classList.add('selected');
-        
-        // 根據樣式類型設置顏色值
-        if (style === 'border') {
-          this.wordColors[word] = `border:${color}`;
-        } else {
-          this.wordColors[word] = color;
-        }
-        
-        // 保存顏色設置
-        chrome.storage.local.set({ highlightColors: this.wordColors });
-        
-        // 更新預覽
-        this.updatePreview();
-        
-        // 同步到 content script
-        this.syncToContentScript(words);
+      const selectedWord = words[this.selectedLine];
+      if (selectedWord && !affectedWords.includes(selectedWord)) {
+        this.wordColors[selectedWord] = newColorFormat;
+        affectedWords.push(selectedWord);
+        updatedCount++;
       }
     }
+    
+    LogUtils.log(`✅ 已更新 ${updatedCount} 個關鍵字的顏色:`, affectedWords);
+    
+    // 清除所有顏色方塊的選中狀態
+    this.colorBoxes.forEach(cb => {
+      cb.classList.remove('selected');
+    });
+    
+    // 為當前點擊的方塊添加選中狀態
+    box.classList.add('selected');
+    
+    // 保存顏色設置
+    chrome.storage.local.set({ highlightColors: this.wordColors });
+    
+    // 更新預覽（這會重新渲染所有高亮文字）
+    this.updatePreview();
+    
+    // 同步到 content script（這會更新頁面上的高亮效果）
+    this.syncToContentScript(words);
   },
 
   /**
@@ -451,6 +517,11 @@ const HighlightPreviewManager = {
     // 清除預覽元素
     const previews = document.querySelectorAll('.highlight-preview, .highlight-preview-border');
     previews.forEach(p => p.remove());
+    
+    // 清理顏色選擇器
+    if (typeof HighlightColorPicker !== 'undefined') {
+      HighlightColorPicker.cleanup();
+    }
   }
 };
 
