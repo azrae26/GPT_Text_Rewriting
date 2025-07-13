@@ -998,6 +998,38 @@ const BackgroundStockCrawlerManager = {
         this.statusListeners.delete(sendResponse);
       }
     });
+    
+    // 🆕 同時發送到content script
+    this._notifyContentScriptStatusChange(message);
+  },
+
+  /**
+   * 🆕 通知content script狀態變化（類似同步狀態的實現）
+   */
+  async _notifyContentScriptStatusChange(message) {
+    try {
+      LogUtils.log('通知content script自動爬取狀態變化:', message);
+      
+      // 發送消息到所有匹配的 content scripts
+      try {
+        const tabs = await chrome.tabs.query({url: 'https://data.uanalyze.twobitto.com/*'});
+        
+        for (const tab of tabs) {
+          try {
+            await chrome.tabs.sendMessage(tab.id, message);
+          } catch (error) {
+            // 忽略無法發送的 tab（可能尚未載入 content script）
+            LogUtils.log(`無法發送爬取狀態消息到 tab ${tab.id}:`, error.message);
+          }
+        }
+        
+        LogUtils.log(`已發送爬取狀態通知到 ${tabs.length} 個匹配的分頁`);
+      } catch (error) {
+        LogUtils.warn('發送爬取狀態通知失敗:', error);
+      }
+    } catch (error) {
+      LogUtils.error('通知content script狀態變化失敗:', error);
+    }
   },
 
   /**

@@ -2,15 +2,21 @@
  * status_monitor.js - 狀態監控器
  * 功能：負責各種異常狀態的檢測和顯示，在目標網站右下角顯示狀態指示器
  * 職責：
- * - 定期檢測系統功能狀態
+ * - 定期檢測系統功能狀態（同步功能、自動爬取功能）
  * - 在右下角顯示狀態指示器
  * - 處理狀態變化和異常提示
  * - 只在目標網站啟用功能
+ * 
+ * 監控功能：
+ * - 雲端同步狀態：檢測同步是否啟用、是否有錯誤、是否過時
+ * - 自動爬取狀態：檢測自動爬取是否啟用、間隔是否正常、是否有異常
  * 
  * 依賴：
  * - Chrome Extensions API (runtime, storage)
  * - LogUtils (日誌記錄)
  * - Background Script (狀態檢測)
+ * - BackgroundStockCrawlerManager (自動爬取狀態)
+ * - BackgroundSyncManager (同步狀態)
  */
 
 const StatusMonitor = {
@@ -88,13 +94,19 @@ const StatusMonitor = {
     // 創建消息監聽器並保存引用
     this.messageListener = (request, sender, sendResponse) => {
       if (request.action === 'syncStatusChanged') {
-        LogUtils.log('收到狀態變化通知:', request.status);
-        this.updateStatusDisplay(request.status);
+        LogUtils.log('收到同步狀態變化通知:', request.status);
+        // 重新檢查所有狀態
+        this.checkSyncStatus();
+        sendResponse({success: true});
+      } else if (request.type === 'stockCrawlerStatus') {
+        LogUtils.log('收到自動爬取狀態變化通知:', request.status);
+        // 重新檢查所有狀態
+        this.checkSyncStatus();
         sendResponse({success: true});
       }
     };
     
-    // 監聽背景腳本的同步狀態變化通知
+    // 監聽背景腳本的狀態變化通知
     chrome.runtime.onMessage.addListener(this.messageListener);
     
     LogUtils.log('開始監聽狀態變化事件');
@@ -113,28 +125,44 @@ const StatusMonitor = {
    */
   async checkSyncStatus() {
     try {
-      const response = await new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({
-          action: 'settingsSync',
-          command: 'getSyncStatus'
-        }, (result) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve(result);
-          }
-        });
-      });
+      // 同時檢查同步狀態和自動爬取狀態
+      const [syncResponse, crawlerResponse] = await Promise.all([
+        new Promise((resolve, reject) => {
+          chrome.runtime.sendMessage({
+            action: 'settingsSync',
+            command: 'getSyncStatus'
+          }, (result) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(result);
+            }
+          });
+        }),
+        new Promise((resolve, reject) => {
+          chrome.runtime.sendMessage({
+            action: 'stockCrawler',
+            command: 'getStatus'
+          }, (result) => {
+            if (chrome.runtime.lastError) {
+              reject(new Error(chrome.runtime.lastError.message));
+            } else {
+              resolve(result);
+            }
+          });
+        })
+      ]);
 
-      if (response && response.success) {
-        this.updateStatusDisplay(response);
-      } else {
-        LogUtils.warn('獲取狀態失敗:', response);
-        this.showError('無法獲取狀態');
-      }
+      // 合併兩個狀態
+      const combinedStatus = {
+        sync: syncResponse && syncResponse.success ? syncResponse : null,
+        crawler: crawlerResponse && crawlerResponse.success ? crawlerResponse.status : null
+      };
+
+      this.updateStatusDisplay(combinedStatus);
     } catch (error) {
-              LogUtils.error('檢查狀態失敗:', error);
-        this.showError('狀態檢查錯誤');
+      LogUtils.error('檢查狀態失敗:', error);
+      this.showError('狀態檢查錯誤');
     }
   },
 
@@ -165,12 +193,81 @@ const StatusMonitor = {
    * @returns {object} - 分析後的狀態
    */
   analyzeStatus(data) {
-    const { enabled, status, error, lastSync } = data;
+    const syncData = data.sync || {};
+    const crawlerData = data.crawler || {};
+    
+    // 分析同步狀態
+    const syncStatus = this.analyzeSyncStatus(syncData);
+    
+    // 分析自動爬取狀態
+    const crawlerStatus = this.analyzeCrawlerStatus(crawlerData);
+    
+    // 收集有問題的狀態訊息
+    const errorMessages = [];
+    const warningMessages = [];
+    const disabledMessages = [];
+    
+    // 收集同步狀態訊息
+    if (syncStatus.type === 'error') {
+      errorMessages.push(syncStatus.message);
+    } else if (syncStatus.type === 'warning') {
+      warningMessages.push(syncStatus.message);
+    } else if (syncStatus.type === 'disabled') {
+      disabledMessages.push(syncStatus.message);
+    }
+    
+    // 收集自動爬取狀態訊息
+    if (crawlerStatus.type === 'error') {
+      errorMessages.push(crawlerStatus.message);
+    } else if (crawlerStatus.type === 'warning') {
+      warningMessages.push(crawlerStatus.message);
+    } else if (crawlerStatus.type === 'disabled') {
+      disabledMessages.push(crawlerStatus.message);
+    }
+    
+    // 按優先級返回狀態
+    if (errorMessages.length > 0) {
+      return {
+        shouldShow: true,
+        type: 'error',
+        message: errorMessages.join(' | ')
+      };
+    }
+    
+    if (warningMessages.length > 0) {
+      return {
+        shouldShow: true,
+        type: 'warning',
+        message: warningMessages.join(' | ')
+      };
+    }
+    
+    if (disabledMessages.length > 0) {
+      return {
+        shouldShow: true,
+        type: 'disabled',
+        message: disabledMessages.join(' | ')
+      };
+    }
+    
+    // 所有狀態都正常
+    return {
+      shouldShow: false,
+      type: 'normal'
+    };
+  },
+
+  /**
+   * 分析同步狀態
+   * @param {object} syncData - 同步狀態資料
+   * @returns {object} - 分析後的同步狀態
+   */
+  analyzeSyncStatus(syncData) {
+    const { enabled, status, error, lastSync } = syncData;
     
     // 未啟用
     if (!enabled) {
       return {
-        shouldShow: true,
         type: 'disabled',
         message: '😢 同步未啟用'
       };
@@ -179,7 +276,6 @@ const StatusMonitor = {
     // 有錯誤
     if (error) {
       return {
-        shouldShow: true,
         type: 'error',
         message: '⚠️ 同步錯誤'
       };
@@ -188,7 +284,6 @@ const StatusMonitor = {
     // 狀態為錯誤
     if (status === 'error') {
       return {
-        shouldShow: true,
         type: 'error',
         message: '⚠️ 同步失敗'
       };
@@ -197,15 +292,51 @@ const StatusMonitor = {
     // 長時間未同步（超過1小時）
     if (lastSync && (Date.now() - lastSync) > 60 * 60 * 1000) {
       return {
-        shouldShow: true,
         type: 'warning',
         message: '⚠️ 同步過時'
       };
     }
     
-    // 正常狀態 - 不顯示
+    // 正常狀態
     return {
-      shouldShow: false,
+      type: 'normal'
+    };
+  },
+
+  /**
+   * 分析自動爬取狀態
+   * @param {object} crawlerData - 自動爬取狀態資料
+   * @returns {object} - 分析後的自動爬取狀態
+   */
+  analyzeCrawlerStatus(crawlerData) {
+    const { isRunning, isScheduled, intervalMinutes } = crawlerData;
+    
+    // 如果沒有狀態資料，可能是通信錯誤
+    if (!crawlerData || Object.keys(crawlerData).length === 0) {
+      return {
+        type: 'error',
+        message: '⚠️ 爬取狀態未知'
+      };
+    }
+    
+    // 自動爬取未啟用
+    if (!isScheduled) {
+      return {
+        type: 'disabled',
+        message: '😢 自動爬取未啟用'
+      };
+    }
+    
+    // 檢查間隔時間是否異常
+    if (intervalMinutes && (intervalMinutes < 0.1 || intervalMinutes > 9999)) {
+      return {
+        type: 'error',
+        message: '⚠️ 爬取間隔異常'
+      };
+    }
+    
+    // 正常狀態
+    return {
       type: 'normal'
     };
   },
@@ -244,8 +375,6 @@ const StatusMonitor = {
       message: '⚠️ 同步失敗'
     });
   },
-
-
 
   /**
    * 銷毀管理器（清理資源）
