@@ -11,14 +11,15 @@
  * 
  * 依賴：
  * - GlobalSettings：全局設定管理
- * - CustomModelManager：自定義模型管理
+ * - ModelManager：自定義模型管理（來自 settings/model-manager.js）
  * - StockManager：股票功能管理（來自 popup/stock-controller.js）
  * - AutoReplaceManager：自動替換管理
  * - Chrome Extensions API：storage, tabs, runtime
  * 
  * 模組化設計：
  * - 股票相關功能已獨立為 popup/stock-controller.js
- * - 通過 StockManager 接口與股票控制器交互
+ * - 自定義模型管理功能已移至 settings/model-manager.js
+ * - 通過 StockManager 和 ModelManager 接口與相關控制器交互
  * - 保持功能完整性和代碼關聯性
  */
 
@@ -842,276 +843,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
   });
 
-  // 自定義模型管理
-  const CustomModelManager = {
-    autoDetectDebounceTimer: null,
-    
-    init() {
-      this.bindEvents();
-      this.updateCustomModelsList();
-    },
-
-    bindEvents() {
-      if (addCustomModelBtn) {
-        addCustomModelBtn.addEventListener('click', () => {
-          this.addCustomModel();
-        });
-      }
-      
-      if (customModelNameInput && customModelDisplayInput && customModelTypeSelect) {
-        customModelNameInput.addEventListener('input', (e) => {
-          this.debouncedAutoDetect(e.target.value.trim(), customModelTypeSelect, 'modelName');
-        });
-        
-        customModelNameInput.addEventListener('blur', (e) => {
-          this.autoDetectApiType(e.target.value.trim(), customModelTypeSelect, 'modelName');
-        });
-
-        customModelDisplayInput.addEventListener('input', (e) => {
-          this.debouncedAutoDetect(e.target.value.trim(), customModelTypeSelect, 'displayName');
-        });
-        
-        customModelDisplayInput.addEventListener('blur', (e) => {
-          this.autoDetectApiType(e.target.value.trim(), customModelTypeSelect, 'displayName');
-        });
-      }
-    },
-
-    debouncedAutoDetect(modelName, customModelTypeSelect, type) {
-      if (this.autoDetectDebounceTimer) {
-        clearTimeout(this.autoDetectDebounceTimer);
-      }
-      
-      this.autoDetectDebounceTimer = setTimeout(() => {
-        this.autoDetectApiType(modelName, customModelTypeSelect, type);
-      }, 300);
-    },
-
-    autoDetectApiType(inputText, customModelTypeSelect, type = 'modelName') {
-      if (!customModelTypeSelect) {
-        customModelTypeSelect = document.getElementById('custom-model-type');
-      }
-      
-      if (!inputText || !customModelTypeSelect) return;
-      
-      let detectedType = 'gemini';
-      let textToAnalyze = inputText.toLowerCase();
-      
-      if (type === 'displayName') {
-        textToAnalyze = textToAnalyze
-          .replace(/\s*(api|模型|model|版本|version|最新|latest|pro|advanced|mini|小型|大型|智能|ai)\s*/g, ' ')
-          .replace(/\s+/g, ' ')
-          .trim();
-      }
-      
-      const openaiPatterns = [
-        /gpt[\s\-]?4/, /gpt[\s\-]?3\.?5?/, /gpt[\s\-]?o/, /\bgpt\b/,
-        /text[\s\-]?davinci/, /davinci/, /curie/, /babbage/, /ada\b/,
-        /o1[\s\-]?(preview|mini)?/, /o3[\s\-]/,
-        /code[\s\-]?davinci/, /codex/,
-        /openai/, /chatgpt/,
-        /turbo\b/, /instruct\b/, /\bmini\b.*gpt/, /\bpro\b.*gpt/
-      ];
-      
-      const geminiPatterns = [
-        /gemini/, /palm[\s\-]?2?/, /bard/, /google/, /claude/,
-        /lamda/, /minerva/, /pathways/, /flash\b/,
-        /\bpro\b.*gemini/, /gemini.*\bpro\b/
-      ];
-      
-      if (openaiPatterns.some(pattern => pattern.test(textToAnalyze))) {
-        detectedType = 'openai';
-      } else if (geminiPatterns.some(pattern => pattern.test(textToAnalyze))) {
-        detectedType = 'gemini';
-      }
-      
-      if (customModelTypeSelect.value !== detectedType) {
-        customModelTypeSelect.value = detectedType;
-        customModelTypeSelect.classList.add('auto-detected', detectedType, 'auto-detect-pulse');
-        setTimeout(() => {
-          customModelTypeSelect.classList.remove('auto-detected', 'gemini', 'openai', 'auto-detect-pulse');
-        }, 1200);
-      }
-    },
-
-    async addCustomModel() {
-      try {
-        if (!customModelNameInput || !customModelDisplayInput || !customModelTypeSelect) {
-          LogUtils.error('找不到必要的表單元素');
-          alert('找不到必要的表單元素，請重新載入頁面');
-          return;
-        }
-        
-        const modelName = customModelNameInput.value.trim();
-        const displayName = customModelDisplayInput.value.trim();
-        const apiType = customModelTypeSelect.value;
-
-        if (!modelName || !displayName) {
-          alert('請填寫模型名稱和顯示名稱');
-          return;
-        }
-
-        if (!apiType) {
-          alert('請選擇 API 類型');
-          return;
-        }
-
-        if (!/^[a-z0-9-_.]+$/i.test(modelName)) {
-          alert('模型名稱只能包含字母、數字、連字號、底線和點');
-          return;
-        }
-
-        await GlobalSettings.addCustomModel(modelName, displayName, apiType);
-        
-        customModelNameInput.value = '';
-        customModelDisplayInput.value = '';
-        customModelTypeSelect.value = '';
-
-        this.updateCustomModelsList();
-        this.updateAllModelSelects();
-
-        alert('模型新增成功！');
-      } catch (error) {
-        LogUtils.error('新增模型錯誤:', error);
-        alert('新增模型失敗：' + error.message);
-      }
-    },
-
-    async removeCustomModel(modelName) {
-      if (!modelName) {
-        alert('模型名稱無效');
-        return;
-      }
-      
-      if (confirm(`確定要刪除模型 "${modelName}" 嗎？這將同時移除相關的 API 金鑰。`)) {
-        try {
-          await GlobalSettings.removeCustomModel(modelName);
-          this.updateCustomModelsList();
-          this.updateAllModelSelects();
-
-          if (modelSelect.value === modelName) {
-            modelSelect.selectedIndex = 0;
-            updateApiKeyInput();
-          }
-
-          alert('模型刪除成功！');
-        } catch (error) {
-          LogUtils.error(`刪除模型失敗:`, error);
-          alert('刪除模型失敗：' + error.message);
-        }
-      }
-    },
-
-    updateCustomModelsList() {
-      if (!customModelsContainer) {
-        LogUtils.error('找不到 customModelsContainer 元素');
-        return;
-      }
-
-      const customModels = GlobalSettings.getCustomModels();
-      
-      if (Object.keys(customModels).length === 0) {
-        customModelsContainer.innerHTML = '<p style="color: #6c757d; font-size: 12px; margin: 0;">尚未新增任何自定義模型</p>';
-        return;
-      }
-
-      customModelsContainer.innerHTML = '';
-      
-      Object.entries(customModels).forEach(([key, model]) => {
-        const modelItem = document.createElement('div');
-        modelItem.className = 'custom-model-item';
-        
-        modelItem.innerHTML = `
-          <div class="custom-model-info">
-            <div class="custom-model-name">${key}</div>
-            <div class="custom-model-details">${model.displayName}</div>
-            <div class="custom-model-api-type">${model.apiType === 'gemini' ? 'Gemini API' : 'OpenAI API'}</div>
-          </div>
-          <div class="custom-model-actions">
-            <button class="delete-model-button" data-model-key="${key}">刪除</button>
-          </div>
-        `;
-        
-        const deleteButton = modelItem.querySelector('.delete-model-button');
-        deleteButton.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          this.removeCustomModel(key);
-        });
-        
-        customModelsContainer.appendChild(modelItem);
-      });
-    },
-
-    updateAllModelSelects() {
-      const allModels = GlobalSettings.getAllAvailableModels();
-      
-      const apiProviders = {
-        'gemini': 'Gemini',
-        'openai': 'OpenAI', 
-        'google-translate': 'Google 翻譯'
-      };
-      
-      const modelSelectors = [
-        fullRewriteModelSelect, shortRewriteModelSelect, autoRewriteModelSelect,
-        translateModelSelect, generateModelSelect, reflect1ModelSelect,
-        generationOptimize_1_ModelSelect, reflect2ModelSelect, generationOptimize_2_ModelSelect,
-        reflect3ModelSelect, generationOptimize_3_ModelSelect, summaryModelSelect,
-        codeCheckModelSelect, reflectModelSelect, optimizeModelSelect
-      ];
-
-      if (modelSelect) {
-        const currentValue = modelSelect.value;
-        modelSelect.innerHTML = '';
-        
-        Object.entries(apiProviders).forEach(([key, displayName]) => {
-          const option = document.createElement('option');
-          option.value = key;
-          option.textContent = displayName;
-          modelSelect.appendChild(option);
-        });
-        
-        if (apiProviders[currentValue]) {
-          modelSelect.value = currentValue;
-        }
-      }
-
-      modelSelectors.forEach(selector => {
-        if (!selector) return;
-        
-        const currentValue = selector.value;
-        selector.innerHTML = '';
-        
-        const availableModels = Object.entries(allModels).filter(([key]) => key !== 'google-translate');
-        
-        if (availableModels.length === 0) {
-          const option = document.createElement('option');
-          option.value = '';
-          option.textContent = '請先新增模型';
-          option.disabled = true;
-          selector.appendChild(option);
-          selector.disabled = true;
-        } else {
-          selector.disabled = false;
-          
-          availableModels.forEach(([key, displayName]) => {
-            const option = document.createElement('option');
-            option.value = key;
-            option.textContent = displayName;
-            selector.appendChild(option);
-          });
-          
-          if (currentValue && allModels[currentValue]) {
-            selector.value = currentValue;
-          } else {
-            selector.value = '';
-          }
-        }
-      });
-    }
-  };
-
-  window.CustomModelManager = CustomModelManager;
+  // 自定義模型管理功能已移至 settings/model-manager.js
   
   // 初始化自動替換組（在popup環境中）
   const autoReplaceContainer = document.querySelector('#auto-replace-tab .auto-replace-container');
@@ -1483,15 +1215,18 @@ document.addEventListener('DOMContentLoaded', async function() {
   // 初始化同步功能
   initializeSyncFeatures();
 
-  // 初始化 CustomModelManager 和 StockCrawlerController
+  // 初始化 ModelManager 和 StockCrawlerController
   setTimeout(async () => {
     try {
-      CustomModelManager.init();
-      CustomModelManager.updateAllModelSelects();
-      
-      // 初始化 ModelManager 的 UI 功能（自動填入）
-      if (typeof ModelManager !== 'undefined' && ModelManager.initializeUI) {
-        ModelManager.initializeUI();
+      // 初始化 ModelManager 的完整 UI 功能
+      if (typeof ModelManager !== 'undefined') {
+        ModelManager.initializeCustomModelUI();
+        ModelManager.updateAllModelSelects();
+        
+        // 初始化自動填入功能
+        if (ModelManager.initializeUI) {
+          ModelManager.initializeUI();
+        }
       }
       
       // 重新載入設定以恢復用戶的模型選擇
@@ -1522,7 +1257,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
       });
     } catch (error) {
-      LogUtils.error('初始化 CustomModelManager 時發生錯誤:', error);
+      LogUtils.error('初始化 ModelManager 時發生錯誤:', error);
     }
     
     // 初始化股票爬蟲控制器

@@ -273,16 +273,6 @@ class BackgroundSyncManager {
 
 // === 配置常數 ===
 const BACKGROUND_CONSTANTS = {
-  LOG_PREFIXES: {
-    SYNC: '[BackgroundSync]',
-    CRAWLER: '[BackgroundStockCrawlerManager]'
-  },
-  DELAYS: {
-    STATUS_UPDATE: 100,
-    REINIT_DELAY: 150,
-    UI_REFRESH_DELAY: 200,
-    SYNC_RESET_DELAY: 100
-  },
   STATUS_TYPES: {
     RUNNING: 'running',
     COMPLETED: 'completed',
@@ -292,10 +282,7 @@ const BACKGROUND_CONSTANTS = {
     WARNING: 'warning'
   },
   MESSAGES: {
-    SETTINGS_IO_NOT_INIT: 'SettingsIO 實例未初始化',
-    UNKNOWN_COMMAND: '未知命令',
-    SYNC_IN_PROGRESS: '同步正在進行中',
-    AUTH_FAILED: '認證失敗，跳過'
+    SETTINGS_IO_NOT_INIT: 'SettingsIO 實例未初始化'
   },
   LOG_STYLES: {
     '#4CAF50': 'color: #2E7D32',

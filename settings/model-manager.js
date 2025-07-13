@@ -1,19 +1,25 @@
 /**
  * model-manager.js - 自定義模型管理器
- * 功能：專門負責自定義模型的管理，包含新增、刪除、查詢等功能
+ * 功能：專門負責自定義模型的管理，包含新增、刪除、查詢、UI 管理等功能
  * 職責：
  * - 管理自定義模型的增刪改查
- * - 模型 API 類型判斷
+ * - 模型 API 類型判斷和自動檢測
  * - 模型顯示名稱處理
  * - API 金鑰名稱匹配
  * - 預設模型選擇邏輯
+ * - 自定義模型的 UI 管理和事件處理
+ * - 模型列表的 DOM 操作和更新
  * 
  * 依賴：
  * - Chrome Extensions API (storage)
  * - GlobalSettings (透過 window.GlobalSettings)
+ * - DOM 元素（用於 UI 管理功能）
  */
 
 const ModelManager = {
+  // 防抖計時器
+  autoDetectDebounceTimer: null,
+
   /**
    * 新增自定義模型
    * @param {string} modelName - 模型名稱
@@ -381,6 +387,345 @@ const ModelManager = {
     });
     
     LogUtils.log('模型管理器 UI 事件綁定完成');
+  },
+
+  /**
+   * 初始化自定義模型管理的完整 UI 功能
+   * 包含事件綁定、自動檢測、列表管理等
+   */
+  initializeCustomModelUI() {
+    LogUtils.log('初始化自定義模型管理 UI 功能');
+    
+    // 綁定事件
+    this.bindCustomModelEvents();
+    
+    // 更新模型列表
+    this.updateCustomModelsList();
+    
+    LogUtils.log('自定義模型管理 UI 初始化完成');
+  },
+
+  /**
+   * 綁定自定義模型相關的事件
+   */
+  bindCustomModelEvents() {
+    // 獲取 DOM 元素
+    const addCustomModelBtn = document.getElementById('add-custom-model');
+    const customModelNameInput = document.getElementById('custom-model-name');
+    const customModelDisplayInput = document.getElementById('custom-model-display');
+    const customModelTypeSelect = document.getElementById('custom-model-type');
+    
+    // 綁定新增按鈕事件
+    if (addCustomModelBtn) {
+      addCustomModelBtn.addEventListener('click', () => {
+        this.handleAddCustomModel();
+      });
+    }
+    
+    // 綁定自動檢測事件
+    if (customModelNameInput && customModelDisplayInput && customModelTypeSelect) {
+      customModelNameInput.addEventListener('input', (e) => {
+        this.debouncedAutoDetect(e.target.value.trim(), customModelTypeSelect, 'modelName');
+      });
+      
+      customModelNameInput.addEventListener('blur', (e) => {
+        this.autoDetectApiType(e.target.value.trim(), customModelTypeSelect, 'modelName');
+      });
+
+      customModelDisplayInput.addEventListener('input', (e) => {
+        this.debouncedAutoDetect(e.target.value.trim(), customModelTypeSelect, 'displayName');
+      });
+      
+      customModelDisplayInput.addEventListener('blur', (e) => {
+        this.autoDetectApiType(e.target.value.trim(), customModelTypeSelect, 'displayName');
+      });
+    }
+  },
+
+  /**
+   * 防抖的自動檢測
+   * @param {string} inputText - 輸入的文本
+   * @param {HTMLElement} customModelTypeSelect - API類型選擇器
+   * @param {string} type - 輸入類型 ('modelName' 或 'displayName')
+   */
+  debouncedAutoDetect(inputText, customModelTypeSelect, type) {
+    if (this.autoDetectDebounceTimer) {
+      clearTimeout(this.autoDetectDebounceTimer);
+    }
+    
+    this.autoDetectDebounceTimer = setTimeout(() => {
+      this.autoDetectApiType(inputText, customModelTypeSelect, type);
+    }, 300);
+  },
+
+  /**
+   * 自動檢測 API 類型
+   * @param {string} inputText - 輸入的文本
+   * @param {HTMLElement} customModelTypeSelect - API類型選擇器
+   * @param {string} type - 輸入類型 ('modelName' 或 'displayName')
+   */
+  autoDetectApiType(inputText, customModelTypeSelect, type = 'modelName') {
+    if (!customModelTypeSelect) {
+      customModelTypeSelect = document.getElementById('custom-model-type');
+    }
+    
+    if (!inputText || !customModelTypeSelect) return;
+    
+    let detectedType = 'gemini';
+    let textToAnalyze = inputText.toLowerCase();
+    
+    // 如果是顯示名稱，先清理不相關的詞語
+    if (type === 'displayName') {
+      textToAnalyze = textToAnalyze
+        .replace(/\s*(api|模型|model|版本|version|最新|latest|pro|advanced|mini|小型|大型|智能|ai)\s*/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+    
+    // OpenAI 模型的特徵模式
+    const openaiPatterns = [
+      /gpt[\s\-]?4/, /gpt[\s\-]?3\.?5?/, /gpt[\s\-]?o/, /\bgpt\b/,
+      /text[\s\-]?davinci/, /davinci/, /curie/, /babbage/, /ada\b/,
+      /o1[\s\-]?(preview|mini)?/, /o3[\s\-]/,
+      /code[\s\-]?davinci/, /codex/,
+      /openai/, /chatgpt/,
+      /turbo\b/, /instruct\b/, /\bmini\b.*gpt/, /\bpro\b.*gpt/
+    ];
+    
+    // Gemini 模型的特徵模式
+    const geminiPatterns = [
+      /gemini/, /palm[\s\-]?2?/, /bard/, /google/, /claude/,
+      /lamda/, /minerva/, /pathways/, /flash\b/,
+      /\bpro\b.*gemini/, /gemini.*\bpro\b/
+    ];
+    
+    // 檢測 API 類型
+    if (openaiPatterns.some(pattern => pattern.test(textToAnalyze))) {
+      detectedType = 'openai';
+    } else if (geminiPatterns.some(pattern => pattern.test(textToAnalyze))) {
+      detectedType = 'gemini';
+    }
+    
+    // 如果檢測到不同的類型，則更新選擇器並添加視覺效果
+    if (customModelTypeSelect.value !== detectedType) {
+      customModelTypeSelect.value = detectedType;
+      customModelTypeSelect.classList.add('auto-detected', detectedType, 'auto-detect-pulse');
+      setTimeout(() => {
+        customModelTypeSelect.classList.remove('auto-detected', 'gemini', 'openai', 'auto-detect-pulse');
+      }, 1200);
+    }
+  },
+
+  /**
+   * 處理新增自定義模型的 UI 操作
+   */
+  async handleAddCustomModel() {
+    try {
+      const customModelNameInput = document.getElementById('custom-model-name');
+      const customModelDisplayInput = document.getElementById('custom-model-display');
+      const customModelTypeSelect = document.getElementById('custom-model-type');
+      
+      if (!customModelNameInput || !customModelDisplayInput || !customModelTypeSelect) {
+        LogUtils.error('找不到必要的表單元素');
+        alert('找不到必要的表單元素，請重新載入頁面');
+        return;
+      }
+      
+      const modelName = customModelNameInput.value.trim();
+      const displayName = customModelDisplayInput.value.trim();
+      const apiType = customModelTypeSelect.value;
+
+      // 驗證輸入
+      if (!modelName || !displayName) {
+        alert('請填寫模型名稱和顯示名稱');
+        return;
+      }
+
+      if (!apiType) {
+        alert('請選擇 API 類型');
+        return;
+      }
+
+      if (!/^[a-z0-9-_.]+$/i.test(modelName)) {
+        alert('模型名稱只能包含字母、數字、連字號、底線和點');
+        return;
+      }
+
+      // 呼叫核心新增方法
+      await this.addCustomModel(modelName, displayName, apiType);
+      
+      // 清空表單
+      customModelNameInput.value = '';
+      customModelDisplayInput.value = '';
+      customModelTypeSelect.value = '';
+
+      // 更新 UI
+      this.updateCustomModelsList();
+      this.updateAllModelSelects();
+    } catch (error) {
+      LogUtils.error('新增模型錯誤:', error);
+      alert('新增模型失敗：' + error.message);
+    }
+  },
+
+  /**
+   * 處理移除自定義模型的 UI 操作
+   * @param {string} modelName - 模型名稱
+   */
+  async handleRemoveCustomModel(modelName) {
+    if (!modelName) {
+      alert('模型名稱無效');
+      return;
+    }
+    
+    if (confirm(`確定要刪除模型 "${modelName}" 嗎？這將同時移除相關的 API 金鑰。`)) {
+      try {
+        await this.removeCustomModel(modelName);
+        this.updateCustomModelsList();
+        this.updateAllModelSelects();
+
+        // 如果當前選擇的是被刪除的模型，重置選擇
+        const modelSelect = document.getElementById('model-select');
+        if (modelSelect && modelSelect.value === modelName) {
+          modelSelect.selectedIndex = 0;
+          // 觸發更新 API 金鑰輸入框的事件
+          const event = new Event('change');
+          modelSelect.dispatchEvent(event);
+        }
+      } catch (error) {
+        LogUtils.error(`刪除模型失敗:`, error);
+        alert('刪除模型失敗：' + error.message);
+      }
+    }
+  },
+
+  /**
+   * 更新自定義模型列表的 DOM 顯示
+   */
+  updateCustomModelsList() {
+    const customModelsContainer = document.getElementById('custom-models-container');
+    if (!customModelsContainer) {
+      LogUtils.error('找不到 customModelsContainer 元素');
+      return;
+    }
+
+    const customModels = this.getCustomModels();
+    
+    // 如果沒有自定義模型，顯示提示信息
+    if (Object.keys(customModels).length === 0) {
+      customModelsContainer.innerHTML = '<p style="color: #6c757d; font-size: 12px; margin: 0;">尚未新增任何自定義模型</p>';
+      return;
+    }
+
+    // 清空容器
+    customModelsContainer.innerHTML = '';
+    
+    // 為每個自定義模型創建 DOM 元素
+    Object.entries(customModels).forEach(([key, model]) => {
+      const modelItem = document.createElement('div');
+      modelItem.className = 'custom-model-item';
+      
+      modelItem.innerHTML = `
+        <div class="custom-model-info">
+          <div class="custom-model-name">${key}</div>
+          <div class="custom-model-details">${model.displayName}</div>
+          <div class="custom-model-api-type">${model.apiType === 'gemini' ? 'Gemini API' : 'OpenAI API'}</div>
+        </div>
+        <div class="custom-model-actions">
+          <button class="delete-model-button" data-model-key="${key}">刪除</button>
+        </div>
+      `;
+      
+      // 綁定刪除按鈕事件
+      const deleteButton = modelItem.querySelector('.delete-model-button');
+      deleteButton.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.handleRemoveCustomModel(key);
+      });
+      
+      customModelsContainer.appendChild(modelItem);
+    });
+  },
+
+  /**
+   * 更新所有模型選擇器的選項
+   */
+  updateAllModelSelects() {
+    const allModels = this.getAllAvailableModels();
+    
+    // API 提供者映射
+    const apiProviders = {
+      'gemini': 'Gemini',
+      'openai': 'OpenAI', 
+      'google-translate': 'Google 翻譯'
+    };
+    
+    // 需要更新的模型選擇器元素
+    const modelSelectorsIds = [
+      'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel',
+      'translateModel', 'generateModel', 'reflect1Model',
+      'generationOptimize_1_Model', 'reflect2Model', 'generationOptimize_2_Model',
+      'reflect3Model', 'generationOptimize_3_Model', 'summaryModel',
+      'codeCheckModel', 'reflectModel', 'optimizeModel'
+    ];
+
+    // 更新主要的模型選擇器（API 提供者）
+    const modelSelect = document.getElementById('model-select');
+    if (modelSelect) {
+      const currentValue = modelSelect.value;
+      modelSelect.innerHTML = '';
+      
+      Object.entries(apiProviders).forEach(([key, displayName]) => {
+        const option = document.createElement('option');
+        option.value = key;
+        option.textContent = displayName;
+        modelSelect.appendChild(option);
+      });
+      
+      if (apiProviders[currentValue]) {
+        modelSelect.value = currentValue;
+      }
+    }
+
+    // 更新其他所有模型選擇器
+    modelSelectorsIds.forEach(selectorId => {
+      const selector = document.getElementById(selectorId);
+      if (!selector) return;
+      
+      const currentValue = selector.value;
+      selector.innerHTML = '';
+      
+      // 過濾掉 google-translate，因為它不適用於其他功能
+      const availableModels = Object.entries(allModels).filter(([key]) => key !== 'google-translate');
+      
+      if (availableModels.length === 0) {
+        // 如果沒有可用模型，顯示提示並禁用選擇器
+        const option = document.createElement('option');
+        option.value = '';
+        option.textContent = '請先新增模型';
+        option.disabled = true;
+        selector.appendChild(option);
+        selector.disabled = true;
+      } else {
+        selector.disabled = false;
+        
+        // 添加所有可用模型
+        availableModels.forEach(([key, displayName]) => {
+          const option = document.createElement('option');
+          option.value = key;
+          option.textContent = displayName;
+          selector.appendChild(option);
+        });
+        
+        // 恢復之前選擇的值
+        if (currentValue && allModels[currentValue]) {
+          selector.value = currentValue;
+        } else {
+          selector.value = '';
+        }
+      }
+    });
   },
 
   /**
