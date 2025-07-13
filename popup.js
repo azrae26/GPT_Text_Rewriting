@@ -684,14 +684,38 @@ document.addEventListener('DOMContentLoaded', async function() {
   const colorBoxes = document.querySelectorAll('.color-box');
   colorBoxes.forEach(box => {
     const color = box.dataset.color;
-    box.style.backgroundColor = color;
+    const style = box.dataset.style;
+    
+    // 設置顏色方塊的顯示樣式
+    if (style === 'border') {
+      // 外框式：設置文字顏色，通過currentColor讓偽元素繼承
+      box.classList.add('border-box');
+      box.style.color = color;
+    } else {
+      // 背景式：設置背景顏色
+      box.style.backgroundColor = color;
+    }
     
     box.addEventListener('click', () => {
       if (selectedLine >= 0) {
         const words = highlightWordsInput.value.split('\n');
         const word = words[selectedLine];
         if (word) {
-          wordColors[word] = color;
+          // 清除所有顏色方塊的選中狀態
+          document.querySelectorAll('.color-box').forEach(cb => {
+            cb.classList.remove('selected');
+          });
+          
+          // 為當前點擊的方塊添加選中狀態
+          box.classList.add('selected');
+          
+          // 根據樣式類型設置顏色值
+          if (style === 'border') {
+            wordColors[word] = `border:${color}`;
+          } else {
+            wordColors[word] = color;
+          }
+          
           chrome.storage.sync.set({ highlightColors: wordColors });
           updatePreview();
           
@@ -715,7 +739,46 @@ document.addEventListener('DOMContentLoaded', async function() {
     const start = this.selectionStart;
     const lines = text.substr(0, start).split('\n');
     selectedLine = lines.length - 1;
+    
+    // 更新顏色選擇器的選中狀態
+    updateColorBoxSelection();
   });
+
+  // 更新顏色選擇器選中狀態的函數
+  function updateColorBoxSelection() {
+    // 清除所有選中狀態
+    document.querySelectorAll('.color-box').forEach(cb => {
+      cb.classList.remove('selected');
+    });
+    
+    if (selectedLine >= 0) {
+      const words = highlightWordsInput.value.split('\n');
+      const word = words[selectedLine];
+      if (word && wordColors[word]) {
+        const currentColor = wordColors[word];
+        
+        // 找到匹配的顏色方塊並標記為選中
+        document.querySelectorAll('.color-box').forEach(box => {
+          const boxColor = box.dataset.color;
+          const boxStyle = box.dataset.style;
+          
+          let matches = false;
+          if (currentColor.startsWith('border:')) {
+            // 外框式顏色
+            const colorValue = currentColor.substring(7);
+            matches = (boxStyle === 'border' && boxColor === colorValue);
+          } else {
+            // 背景式顏色
+            matches = (boxStyle === 'background' && boxColor === currentColor);
+          }
+          
+          if (matches) {
+            box.classList.add('selected');
+          }
+        });
+      }
+    }
+  }
 
   // 監聽文字變更以更新預覽
   highlightWordsInput.addEventListener('input', function() {
@@ -788,7 +851,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         return;
     }
     
-    const oldPreviews = document.querySelectorAll('.highlight-preview');
+    // 清除所有類型的預覽元素
+    const oldPreviews = document.querySelectorAll('.highlight-preview, .highlight-preview-border');
     oldPreviews.forEach(p => p.remove());
 
     const textarea = highlightWordsInput;
@@ -841,13 +905,32 @@ document.addEventListener('DOMContentLoaded', async function() {
         for (let i = 0; i < rects.length; i++) {
           const rect = rects[i];
           const preview = document.createElement('div');
-          preview.className = 'highlight-preview';
+          
+          // 解析顏色和樣式
+          const colorValue = wordColors[line] || 'rgba(50, 205, 50, 0.3)';
+          let color, isBorder = false;
+          
+          if (colorValue.startsWith('border:')) {
+            isBorder = true;
+            color = colorValue.substring(7); // 移除 'border:' 前綴
+            preview.className = 'highlight-preview-border';
+          } else {
+            color = colorValue;
+            preview.className = 'highlight-preview';
+          }
           
           preview.style.top = `${rect.top - divRectBase.top + paddingTop}px`;
           preview.style.left = `${rect.left - divRectBase.left + paddingLeft}px`;
           preview.style.width = `${rect.width}px`;
           preview.style.height = `${lineHeight > rect.height ? lineHeight : rect.height}px`; 
-          preview.style.backgroundColor = wordColors[line] || 'rgba(50, 205, 50, 0.3)';
+          
+          if (isBorder) {
+            preview.style.borderColor = color;
+            preview.style.background = 'none';
+          } else {
+            preview.style.backgroundColor = color;
+          }
+          
           preview.dataset.originalTop = rect.top - divRectBase.top + paddingTop;
           overlay.appendChild(preview);
         }

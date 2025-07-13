@@ -256,12 +256,24 @@ const TextHighlight = {
         visibleTop,
         visibleBottom,
         scrollTop,
-        createHighlight: (pos) => TextHighlight.Renderer.createHighlight(
-          pos.position,
-          pos.position.width,
-          pos.lineHeight || this.getTextAreaStyles(textArea).lineHeight,
-          pos.color
-        ),
+        createHighlight: (pos) => {
+          // 根據樣式類型選擇不同的創建方法
+          if (pos.style === 'border') {
+            return TextHighlight.Renderer.createBorderHighlight(
+              pos.position,
+              pos.position.width,
+              pos.lineHeight || this.getTextAreaStyles(textArea).lineHeight,
+              pos.color
+            );
+          } else {
+            return TextHighlight.Renderer.createHighlight(
+              pos.position,
+              pos.position.width,
+              pos.lineHeight || this.getTextAreaStyles(textArea).lineHeight,
+              pos.color
+            );
+          }
+        },
         container,
         highlightClass: 'text-highlight'
       });
@@ -915,9 +927,22 @@ const TextHighlight = {
     this.updateHighlights();
   },
 
-  // 修改取得顏色的方法
+  // 修改取得顏色和樣式的方法
   getColorForWord(word) {
-    return this.wordColors[word] || this.CONFIG.DEFAULT_COLOR;
+    const colorValue = this.wordColors[word] || this.CONFIG.DEFAULT_COLOR;
+    
+    // 解析顏色值，支援外框式樣式
+    if (typeof colorValue === 'string' && colorValue.startsWith('border:')) {
+      return {
+        color: colorValue.substring(7), // 移除 'border:' 前綴
+        style: 'border'
+      };
+    } else {
+      return {
+        color: colorValue,
+        style: 'background'
+      };
+    }
   },
 
   /**
@@ -1013,6 +1038,33 @@ const TextHighlight = {
         'replace-preview-highlight', 
         customStyles
       );
+    },
+
+    /**
+     * 創建外框式高亮元素（用於外框式文字高亮）
+     * @param {Object} position 位置信息
+     * @param {number} width 寬度
+     * @param {number} lineHeight 行高
+     * @param {string} color 邊框顏色
+     * @returns {HTMLElement} 外框式高亮元素
+     */
+    createBorderHighlight(position, width, lineHeight, color) {
+      const customStyles = {
+        border: `0px solid ${color}`,  // 設置0像素邊框但有顏色，供偽元素繼承
+        borderRadius: '2px',
+        background: 'none',
+        zIndex: '1000',
+        transform: `translate3d(0, ${position.top}px, 0)`
+      };
+      
+      return this.createHighlight(
+        position,
+        width, 
+        lineHeight,
+        'transparent', 
+        'text-highlight-border', 
+        customStyles
+      );
     }
   },
 
@@ -1082,9 +1134,11 @@ const TextHighlight = {
               
               if (positions) {
                 positions.forEach(position => {
+                  const colorInfo = this.getColorForWord(targetWord);
                   allPositions.push({
                     position,
-                    color: this.getColorForWord(targetWord),
+                    color: colorInfo.color,
+                    style: colorInfo.style,
                     targetWord,
                     lineHeight: styles.lineHeight
                   });
@@ -1108,9 +1162,11 @@ const TextHighlight = {
             
             if (positions) {
               positions.forEach(position => {
+                const colorInfo = this.getColorForWord(targetWord);
                 allPositions.push({
                   position,
-                  color: this.getColorForWord(targetWord),
+                  color: colorInfo.color,
+                  style: colorInfo.style,
                   targetWord,
                   lineHeight: styles.lineHeight
                 });
@@ -1195,7 +1251,10 @@ const TextHighlight = {
         } else {
           // 創建新元素時已經應用了 GPU 加速
           highlight = createHighlight(pos);
-          highlight.className = highlightClass;
+          // 只有在元素沒有className時才設置默認class，避免覆蓋邊框式高亮的class
+          if (!highlight.className) {
+            highlight.className = highlightClass;
+          }
           // 直接設置正確的 transform
           highlight.style.transform = `translate3d(0, ${finalTop}px, 0)`;
           container.appendChild(highlight);
@@ -1277,7 +1336,10 @@ const TextHighlight = {
           } else {
             // 創建新元素
             highlight = createHighlight(pos);
-            highlight.className = highlightClass;
+            // 只有在元素沒有className時才設置默認class，避免覆蓋邊框式高亮的class
+            if (!highlight.className) {
+              highlight.className = highlightClass;
+            }
             highlight.style.transform = `translate3d(0, ${top - scrollTop}px, 0)`;
             highlight.dataset.groupIndex = groupIndex;
             newElements.push(highlight);
