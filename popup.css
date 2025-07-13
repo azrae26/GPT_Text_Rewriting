@@ -400,7 +400,7 @@ input[type="checkbox"] {
   position: relative;
   color: #333;  /* 預設顏色，會被 JavaScript 覆蓋 */
   box-sizing: border-box;  /* 邊框包含在設定尺寸內 */
-  box-shadow: 0 0px 3px color-mix(in srgb, currentColor 50%, transparent);  /* 同色陰影，往外擴張，內部看不到 */
+  box-shadow: 0 0px 4px 1px color-mix(in srgb, currentColor 40%, transparent);  /* 同色陰影，往外擴張，內部看不到 */
 }
 
 /* 顏色方塊選中狀態 */
@@ -1275,41 +1275,10 @@ input.form-input {
   height: 21px;
   left: 8px;
   right: 8px;
-  border: 1px solid;
+  border: 2px solid currentColor;
   border-radius: 2px;
-  background: none;
-  box-sizing: border-box; /* 邊框包含在設定尺寸內 */
-}
-
-/* 外框式高亮預覽的內邊框 */
-.highlight-preview-border::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  border: 1px solid;
-  border-color: inherit;
-  border-radius: 1px;
-  z-index: 1;
+  background: #fff !important;
   box-sizing: border-box;
-}
-
-/* 外框式高亮預覽的外部光暈 */
-.highlight-preview-border::after {
-  content: '';
-  position: absolute;
-  top: -1px;
-  left: -1px;
-  right: -1px;
-  bottom: -1px;
-  border: 1px solid;
-  border-color: inherit;
-  border-radius: 3px;
-  filter: blur(1px);
-  opacity: 0.4;
-  z-index: 0;
-  box-sizing: border-box;
+  box-shadow: 0 0px 4px 1px color-mix(in srgb, currentColor 40%, transparent);
 }
   

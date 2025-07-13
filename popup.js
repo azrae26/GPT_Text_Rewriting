@@ -930,8 +930,7 @@ document.addEventListener('DOMContentLoaded', async function() {
           preview.style.height = `${lineHeight > rect.height ? lineHeight : rect.height}px`; 
           
           if (isBorder) {
-            preview.style.borderColor = color;
-            preview.style.background = 'none';
+            preview.style.color = color; // 設置 color 屬性讓 currentColor 生效
           } else {
             preview.style.backgroundColor = color;
           }
@@ -951,7 +950,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     const textarea = highlightWordsInput;
     const scrollTop = textarea.scrollTop;
 
-    const previews = document.querySelectorAll('.highlight-preview');
+    // 處理底色式和外框式高亮預覽
+    const previews = document.querySelectorAll('.highlight-preview, .highlight-preview-border');
     previews.forEach(preview => {
       const originalTop = parseFloat(preview.dataset.originalTop);
       preview.style.display = 'block';

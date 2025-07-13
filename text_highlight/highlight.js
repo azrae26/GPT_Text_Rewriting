@@ -192,8 +192,8 @@ const TextHighlight = {
       outerContainer.style.cssText = `
         position: absolute;
         top: ${containerTop}px;
-        left: ${containerLeft}px;
-        width: ${textArea.offsetWidth}px;
+        left: ${containerLeft - 4}px;
+        width: ${textArea.offsetWidth + 4}px;
         height: ${textArea.offsetHeight}px;
         pointer-events: none;
         z-index: 1;
@@ -204,7 +204,7 @@ const TextHighlight = {
       container.style.cssText = `
         position: absolute;
         top: 0;
-        left: 0;
+        left: 4px;
         width: 100%;
         height: 100%;
         max-height: ${textArea.offsetHeight}px;
@@ -731,8 +731,8 @@ const TextHighlight = {
           
           // 更新位置和尺寸
           outerContainer.style.top = `${containerTop}px`;
-          outerContainer.style.left = `${containerLeft}px`;
-          outerContainer.style.width = `${offsetWidth}px`;
+          outerContainer.style.left = `${containerLeft - 4}px`;
+          outerContainer.style.width = `${offsetWidth + 4}px`;
           outerContainer.style.height = `${offsetHeight}px`;
         }
         
@@ -1027,14 +1027,12 @@ const TextHighlight = {
       // 創建帶左偏移的位置對象
       const adjustedPosition = {
         ...position,
-        left: position.left - 1.5, // 向左偏移 1.5px
+        left: position.left + 2.5, // 補償容器4px左移：-1.5 + 4 = +2.5px
         top: 0 // top 設為 0，完全由 transform 控制
       };
       
       const customStyles = {
-        border: `0px solid ${color}`,
-        borderRadius: '2px',
-        background: 'none',
+        color: color, // 設置 color 屬性，讓 currentColor 和 color-mix 生效
         zIndex: '1001',
         // 修復高亮偏上問題：減少垂直偏移
         transform: `translate3d(0, ${position.top}px, 0)`
@@ -1060,9 +1058,7 @@ const TextHighlight = {
      */
     createBorderHighlight(position, width, lineHeight, color) {
       const customStyles = {
-        border: `0px solid ${color}`,  // 設置0像素邊框但有顏色，供偽元素繼承
-        borderRadius: '2px',
-        background: 'none',
+        color: color, // 設置 color 屬性，讓 currentColor 和 color-mix 生效
         zIndex: '1000',
         transform: `translate3d(0, ${position.top}px, 0)`
       };
@@ -1267,21 +1263,23 @@ const TextHighlight = {
           
           if (isCurrentBorderStyle && !isBorderElement) {
             // 需要從背景式改為邊框式
-            highlight.style.backgroundColor = 'transparent';
-            highlight.style.border = `0px solid ${currentColor}`;
-            highlight.style.borderRadius = '2px';
-            highlight.style.background = 'none';
+            highlight.style.backgroundColor = '';
+            highlight.style.border = '';
+            highlight.style.borderRadius = '';
+            highlight.style.background = '';
+            highlight.style.color = currentColor; // 設置 color 讓 currentColor 生效
             highlight.className = highlight.className.replace('text-highlight', 'text-highlight-border');
           } else if (!isCurrentBorderStyle && isBorderElement) {
             // 需要從邊框式改為背景式
             highlight.style.backgroundColor = currentColor;
-            highlight.style.border = 'none';
+            highlight.style.border = '';
             highlight.style.borderRadius = '';
             highlight.style.background = '';
+            highlight.style.color = '';
             highlight.className = highlight.className.replace('text-highlight-border', 'text-highlight');
           } else if (isCurrentBorderStyle) {
-            // 都是邊框式，更新邊框顏色
-            highlight.style.border = `0px solid ${currentColor}`;
+            // 都是邊框式，更新顏色
+            highlight.style.color = currentColor; // 設置 color 讓 currentColor 生效
           } else {
             // 都是背景式，更新背景顏色
             highlight.style.backgroundColor = currentColor;

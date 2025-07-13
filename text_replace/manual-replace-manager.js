@@ -507,8 +507,8 @@ const ManualReplaceManager = {
       this.container.style.cssText = `
         position: absolute;
         top: ${containerTop}px;
-        left: ${containerLeft}px;
-        width: ${textArea.offsetWidth}px;
+        left: ${containerLeft - 4}px;
+        width: ${textArea.offsetWidth + 4}px;
         height: ${textArea.offsetHeight}px;
         pointer-events: none;
         z-index: 1001;
@@ -549,8 +549,8 @@ const ManualReplaceManager = {
         
         // 更新容器位置和尺寸
         this.container.style.top = `${containerTop}px`;
-        this.container.style.left = `${containerLeft}px`;
-        this.container.style.width = `${offsetWidth}px`;
+        this.container.style.left = `${containerLeft - 4}px`;
+        this.container.style.width = `${offsetWidth + 4}px`;
         this.container.style.height = `${offsetHeight}px`;
         
         // 清除所有現有的高亮
