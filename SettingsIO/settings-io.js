@@ -8,9 +8,15 @@
  *       2025-06-09 修復時序同步問題：上傳成功後同步本地時間戳至雲端檔案時間，避免誤判為雲端更新
  *       修復上傳內容時間戳不一致問題：確保上傳的設定內容包含正確的時間戳，避免下載時發現差異
  *       修復雙重時間戳問題：統一使用檔案元數據時間戳進行比較，避免內容時間戳與檔案時間戳不一致
+ *       2025-07-14 🔧 重大修復：實現真正的單例模式，解決多實例重複執行問題
+ *       修復多個環境創建重複實例導致的4倍重複執行、重複上傳、重複訊號處理問題
  */
 
 class SettingsIO {
+  // 靜態屬性用於單例模式
+  static _instance = null;
+  static _isCreating = false;
+
   static CONSTANTS = {
     DRIVE_API_BASE: 'https://www.googleapis.com/drive/v3',
     UPLOAD_API_BASE: 'https://www.googleapis.com/upload/drive/v3',
@@ -40,7 +46,55 @@ class SettingsIO {
     }
   };
 
+  /**
+   * 單例模式：獲取或創建 SettingsIO 實例
+   * @returns {SettingsIO} 唯一的 SettingsIO 實例
+   */
+  static getInstance() {
+    if (SettingsIO._instance) {
+      return SettingsIO._instance;
+    }
+    
+    // 防止重複創建
+    if (SettingsIO._isCreating) {
+      LogUtils.warn('⚠️ 檢測到重複創建實例的嘗試，返回現有實例');
+      return SettingsIO._instance;
+    }
+    
+    SettingsIO._isCreating = true;
+    SettingsIO._instance = new SettingsIO();
+    SettingsIO._isCreating = false;
+    
+    LogUtils.important('✅ 創建唯一的 SettingsIO 實例');
+    return SettingsIO._instance;
+  }
+
+  /**
+   * 檢查是否已有實例存在
+   * @returns {boolean}
+   */
+  static hasInstance() {
+    return SettingsIO._instance !== null;
+  }
+
+  /**
+   * 重置實例（主要用於測試）
+   */
+  static resetInstance() {
+    if (SettingsIO._instance) {
+      LogUtils.warn('🔄 重置 SettingsIO 實例');
+      SettingsIO._instance = null;
+    }
+  }
+
   constructor() {
+    // 單例模式：防止直接實例化
+    if (SettingsIO._instance && !SettingsIO._isCreating) {
+      LogUtils.warn('⚠️ 嘗試直接創建 SettingsIO 實例，返回現有單例實例');
+      return SettingsIO._instance;
+    }
+    
+    // 首次創建或通過 getInstance 創建
     this.syncInProgress = false;
     this.uploadInProgress = false;
     this.tokenManager = new TokenManager();
@@ -56,6 +110,30 @@ class SettingsIO {
     this.handleStorageChange = this.handleStorageChange.bind(this);
     this.performSync = this.performSync.bind(this);
     this.updateLastModifiedDebounced = this.updateLastModifiedDebounced.bind(this);
+
+    // 記錄實例環境信息
+    const environment = this._detectEnvironment();
+    LogUtils.important(`🏗️ SettingsIO 實例初始化 (環境: ${environment})`);
+  }
+
+  /**
+   * 檢測當前運行環境
+   * @private
+   */
+  _detectEnvironment() {
+    if (typeof window !== 'undefined') {
+      if (window.location && window.location.href.includes('popup.html')) {
+        return 'popup';
+      } else if (window.location && window.location.href.includes('chrome-extension://')) {
+        return 'extension-page';
+      } else {
+        return 'content-script';
+      }
+    } else if (typeof self !== 'undefined') {
+      return 'service-worker';
+    } else {
+      return 'unknown';
+    }
   }
 
   async init() {

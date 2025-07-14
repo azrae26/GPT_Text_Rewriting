@@ -53,13 +53,14 @@ window.PopupSyncManager = {
   },
 
   /**
-   * 初始化 SettingsIO 實例
+   * 初始化 SettingsIO 實例（單例模式）
    */
   initializeSettingsIO() {
     if (typeof SettingsIO !== 'undefined') {
-      this.settingsIO = new SettingsIO();
+      // 使用單例模式獲取實例
+      this.settingsIO = SettingsIO.getInstance();
       window.settingsIO = this.settingsIO; // 暴露到全局，供 settings-manager.js 使用
-      LogUtils.log('SettingsIO 實例已初始化並暴露到 window');
+      LogUtils.log('✅ 使用 SettingsIO 單例實例並暴露到 window');
     } else {
       LogUtils.warn('SettingsIO 類別未載入');
     }
@@ -88,7 +89,9 @@ window.PopupSyncManager = {
       const manager = window.PopupSyncManager;
       if (!manager.settingsIO) {
         if (typeof SettingsIO !== 'undefined') {
-          manager.settingsIO = new SettingsIO();
+          // 🔧 修復：使用單例實例，不創建新實例
+          manager.settingsIO = SettingsIO.getInstance();
+          LogUtils.log('✅ 認證操作使用 SettingsIO 單例實例');
         } else {
           throw new Error('SettingsIO 未載入');
         }

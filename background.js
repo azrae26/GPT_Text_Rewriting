@@ -60,9 +60,17 @@ class BackgroundSyncManager {
     LogUtils.important('🔧 初始化背景同步管理器...');
     
     try {
-      // 創建 SettingsIO 實例（真實或備用）
+      // 獲取或創建 SettingsIO 單例實例
       const SettingsIOClass = this.loadSettingsIO();
-      this.settingsIO = new SettingsIOClass();
+      if (SettingsIOClass.getInstance) {
+        // 使用單例模式
+        this.settingsIO = SettingsIOClass.getInstance();
+        LogUtils.log('✅ 使用 SettingsIO 單例實例');
+      } else {
+        // 備用實現不支援單例模式
+        this.settingsIO = new SettingsIOClass();
+        LogUtils.warn('⚠️ 使用備用 SettingsIO 實例（不支援單例）');
+      }
       await this.settingsIO.init();
       
       // 檢查是否使用的是真實或備用實現

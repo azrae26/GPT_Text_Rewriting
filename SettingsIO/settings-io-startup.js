@@ -67,15 +67,14 @@ class StartupSyncManager {
   }
 
   /**
-   * 初始化 SettingsIO 實例
+   * 獲取現有的 SettingsIO 實例（不創建新實例）
    * @private
    */
   async _initializeSettingsIO() {
-    // 在不同環境中尋找 SettingsIO 實例
-    if (typeof SettingsIO !== 'undefined') {
-      this.settingsIO = new SettingsIO();
-      await this.settingsIO.init();
-      LogUtils.log('[StartupSyncManager] 使用全局 SettingsIO 實例');
+    // 🔧 修復：優先使用單例實例，不創建新實例
+    if (typeof SettingsIO !== 'undefined' && SettingsIO.hasInstance && SettingsIO.hasInstance()) {
+      this.settingsIO = SettingsIO.getInstance();
+      LogUtils.log('[StartupSyncManager] ✅ 使用現有的 SettingsIO 單例實例');
       return;
     }
 
@@ -95,7 +94,10 @@ class StartupSyncManager {
       return;
     }
 
-    LogUtils.warn('[StartupSyncManager] 未找到可用的 SettingsIO 實例');
+    // 🚨 重要：StartupSyncManager 不應該創建新的 SettingsIO 實例
+    // 如果沒有找到現有實例，說明主實例還未初始化，應該等待或通過消息請求
+    LogUtils.warn('[StartupSyncManager] ⚠️ 未找到現有的 SettingsIO 實例，避免創建重複實例');
+    LogUtils.log('[StartupSyncManager] 💡 建議：應該由 Background Script 首先初始化主實例');
   }
 
   /**
