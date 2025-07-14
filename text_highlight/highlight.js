@@ -1251,8 +1251,9 @@ const TextHighlight = {
         const color = pos.color || 'rgba(50, 205, 50, 0.3)';
         const style = pos.style || 'background';
         
-        // 🔧 修復：在 key 中包含樣式信息，避免相同位置不同樣式的元素衝突
-        const key = `${top}-${left}-${text}-${style}`;
+        // 🔧 修復：在 key 中包含樣式信息和唯一標識符，避免相同位置不同樣式的元素衝突
+        const targetWord = pos.targetWord || '';
+        const key = `${top}-${left}-${text}-${style}-${targetWord}-${index}`;
         let highlight = existingHighlights.get(key);
 
         // 計算最終渲染位置（滾動補償）
@@ -1344,14 +1345,15 @@ const TextHighlight = {
         });
 
         // 更新或創建可見範圍內的高亮
-        visiblePositions.forEach(pos => {
+        visiblePositions.forEach((pos, posIndex) => {
           const top = pos.position ? pos.position.top : pos.top;
           const left = pos.position ? pos.position.left : pos.left;
           const text = pos.position ? pos.position.text : pos.text;
           const style = pos.style || 'background';
           
-          // 🔧 修復：在 key 中包含樣式信息，避免相同位置不同樣式的元素衝突
-          const key = `${top}-${left}-${text}-${style}`;
+          // 🔧 修復：在 key 中包含樣式信息和唯一標識符，避免相同位置不同樣式的元素衝突
+          const targetWord = pos.targetWord || '';
+          const key = `${top}-${left}-${text}-${style}-${targetWord}-${groupIndex}-${posIndex}`;
           let highlight = existingHighlights.get(key);
 
           if (highlight) {
