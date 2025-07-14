@@ -1129,6 +1129,7 @@ function loadDependencies() {
     importScripts('settings/storage-manager.js');
     importScripts('settings/model-manager.js');
     importScripts('SettingsIO/settings-io.js');
+    importScripts('SettingsIO/settings-io-startup.js');
     
     // 檢查是否成功載入
     if (typeof SettingsIO === 'undefined') {
@@ -1151,6 +1152,21 @@ async function initializeBackgroundServices() {
     
     // 初始化背景同步功能
     await initializeBackgroundSync();
+    
+    // 觸發啟動時同步檢查
+    setTimeout(async () => {
+      try {
+        LogUtils.log('🚀 觸發背景啟動同步檢查...');
+        const result = await performBackgroundStartupSync();
+        if (result.success) {
+          LogUtils.log(`✅ 背景啟動同步檢查完成: ${result.reason || 'executed'}`);
+        } else {
+          LogUtils.warn(`⚠️ 背景啟動同步檢查失敗: ${result.error}`);
+        }
+      } catch (error) {
+        LogUtils.error('背景啟動同步檢查異常:', error);
+      }
+    }, 2000); // 延遲2秒執行，確保所有初始化完成
     
     LogUtils.important('✅ 背景服務初始化完成');
   } catch (error) {
@@ -1377,6 +1393,52 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     }
     
     return null;
+  }
+
+  // 處理啟動同步請求（來自 Content Script）
+  if (request.action === 'performStartupSync') {
+    LogUtils.log(`🚀 收到來自 ${request.source || 'unknown'} 的啟動同步請求`);
+    
+    const handleStartupSyncRequest = async () => {
+      try {
+        // 檢查背景同步是否已初始化
+        if (!backgroundSyncInitialized || !backgroundSettingsIO) {
+          LogUtils.warn('背景同步未初始化，嘗試重新初始化...');
+          await initializeBackgroundSync();
+          
+          if (!backgroundSettingsIO) {
+            return { success: false, error: '背景同步管理器初始化失敗' };
+          }
+        }
+        
+        // 使用全域函數直接執行背景啟動同步
+        if (typeof performBackgroundStartupSync === 'function') {
+          LogUtils.log('使用全域 performBackgroundStartupSync 函數');
+          const result = await performBackgroundStartupSync();
+          return result;
+        } else {
+          LogUtils.warn('performBackgroundStartupSync 函數不可用，使用手動同步');
+          const result = await backgroundSettingsIO.manualSync();
+          return { success: result.success, reason: 'manualSync' };
+        }
+        
+      } catch (error) {
+        LogUtils.error('處理啟動同步請求失敗:', error);
+        return { success: false, error: error.message };
+      }
+    };
+    
+    handleStartupSyncRequest()
+      .then(result => {
+        LogUtils.log('啟動同步請求處理完成:', result);
+        sendResponse(result);
+      })
+      .catch(error => {
+        LogUtils.error('啟動同步請求處理異常:', error);
+        sendResponse({ success: false, error: error.message });
+      });
+    
+    return true; // 保持連接等待異步響應
   }
 
   // 🐛 調試：處理來自 content script 的調試訊息

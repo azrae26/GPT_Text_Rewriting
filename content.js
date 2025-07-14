@@ -187,6 +187,21 @@ function initializeExtension() {
           isInitialized = true;   // 設置已初始化標記
           uiInitCompleteTime = Date.now(); // 🔧 記錄完成時間
           
+          // 觸發頁面載入時同步檢查
+          setTimeout(async () => {
+            try {
+              LogUtils.log('🚀 觸發內容腳本啟動同步檢查...');
+              const result = await performContentStartupSync();
+              if (result.success) {
+                LogUtils.log(`✅ 內容腳本啟動同步檢查完成: ${result.reason || 'executed'}`);
+              } else {
+                LogUtils.warn(`⚠️ 內容腳本啟動同步檢查失敗: ${result.error}`);
+              }
+            } catch (error) {
+              LogUtils.error('內容腳本啟動同步檢查異常:', error);
+            }
+          }, 1000); // 延遲1秒執行，確保UI初始化完成
+          
         } catch (error) {
           LogUtils.error('UI初始化失敗:', error);
         } finally {

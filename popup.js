@@ -911,6 +911,21 @@ document.addEventListener('DOMContentLoaded', async function() {
     } catch (error) {
       LogUtils.error('初始化 StockCrawlerController 時發生錯誤:', error);
     }
+    
+    // 觸發彈出視窗啟動同步檢查
+    setTimeout(async () => {
+      try {
+        LogUtils.log('🚀 觸發彈出視窗啟動同步檢查...');
+        const result = await performPopupStartupSync();
+        if (result.success) {
+          LogUtils.log(`✅ 彈出視窗啟動同步檢查完成: ${result.reason || 'executed'}`);
+        } else {
+          LogUtils.warn(`⚠️ 彈出視窗啟動同步檢查失敗: ${result.error}`);
+        }
+      } catch (error) {
+        LogUtils.error('彈出視窗啟動同步檢查異常:', error);
+      }
+    }, 500); // 延遲500ms執行，確保所有初始化完成
   }, 0);
 
 }); 

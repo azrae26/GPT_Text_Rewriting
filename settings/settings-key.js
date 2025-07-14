@@ -51,7 +51,10 @@ class KeyClassifier {
       'syncIntervalMigrated',  // 同步間隔遷移標記
       'cloudUpdateSignal',     // 雲端更新訊號（用於通知其他設備同步）
       'crawlerAutoEnabled',    // 爬蟲自動啟用狀態（sync storage 即時同步）
-      'crawlerInterval'        // 爬蟲間隔分鐘數（sync storage 即時同步）
+      'crawlerInterval',       // 爬蟲間隔分鐘數（sync storage 即時同步）
+      'lastStartupSyncTime',   // 最後啟動同步時間（防重複同步）
+      'startupSyncCount',      // 啟動同步計數（統計目的）
+      'lastInitialSync'        // 初始同步標記（舊版本相容性）
     ],
 
     // 用戶數據：替換規則、自定義模型、高亮設定等
