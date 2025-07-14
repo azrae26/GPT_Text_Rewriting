@@ -10,6 +10,13 @@
  * - 專業術語配置：翻譯功能的專業術語對照表
  * - 通用日誌工具：統一的 [FileName][Time] 格式日誌函數
  * 
+ * 日誌分組調試技巧：
+ * 可用縮排和樹狀符號模擬分組調試，例如：
+ *   LogUtils.important(' ═══ 開始取得 OAuth Token ═══');
+ *   LogUtils.log('  ├─ 發送取得 token 請求到 background');
+ *   LogUtils.log('  ├─ 處理授權回應');
+ *   LogUtils.important('  └─ 成功取得 token');
+ * 
  * 注意：
  * - 僅在首次安裝且無用戶設定時應用
  * - 模型欄位預設為空，等待用戶設定
