@@ -13,7 +13,7 @@
  * - Chrome Extensions API：storage
  * - LogUtils：日誌工具
  * 
- * 更新：2025-01-xx 初始版本 - 實現啟動時自動同步功能
+ * 更新：2025-07-14 初始版本 - 實現啟動時自動同步功能
  */
 
 class StartupSyncManager {

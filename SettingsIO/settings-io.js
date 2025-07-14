@@ -176,81 +176,20 @@ class SettingsIO {
     this.scheduleUpload();
   }
 
-  // 統一的排除邏輯判斷（使用新的 KeyClassifier，保持向後兼容）
+  // 統一的排除邏輯判斷（使用 KeyClassifier）
   shouldExcludeFromSync(key, context = 'comparison') {
-    // 使用新的統一分類器
-    if (typeof KeyClassifier !== 'undefined') {
-      const purposeMap = {
-        'cloud': 'cloudSync',
-        'comparison': 'comparison',
-        'export': 'export'
-      };
-      
-      const purpose = purposeMap[context] || 'comparison';
-      return KeyClassifier.shouldExclude(key, purpose);
-    }
+    const purposeMap = {
+      'cloud': 'cloudSync',
+      'comparison': 'comparison',
+      'export': 'export'
+    };
     
-    // 舊版本的後備邏輯（向後兼容）
-    const uiStateKeys = [
-      'lastMainTab', 'lastSubTab', 'windowState', 'selectedItem', 
-      'expandedSections', 'scrollPosition', 'dialogState', 'panelState',
-      'replacePosition', 'summaryPosition', 'summaryExpanded',
-      'isFirstTime', 'firstRun', 'autoExport'
-    ];
-    
-    const syncInternalKeys = [
-      SettingsIO.CONSTANTS.KEYS.LAST_SYNC,
-      SettingsIO.CONSTANTS.KEYS.SYNC_STATUS,
-      SettingsIO.CONSTANTS.KEYS.SETTINGS_HASH,
-      SettingsIO.CONSTANTS.KEYS.SYNC_ERROR,
-      SettingsIO.CONSTANTS.KEYS.DRIVE_FILE_ID,
-      'syncDebugLogs', 'stockCrawlerState'
-    ];
-
-    const cloudExcludeKeys = [
-      ...syncInternalKeys,
-      SettingsIO.CONSTANTS.KEYS.SYNC_ENABLED
-    ];
-
-    switch (context) {
-      case 'cloud':
-        return cloudExcludeKeys.includes(key) || uiStateKeys.includes(key);
-      case 'comparison':
-        return uiStateKeys.includes(key);
-      default:
-        return syncInternalKeys.includes(key) || uiStateKeys.includes(key);
-    }
+    const purpose = purposeMap[context] || 'comparison';
+    return KeyClassifier.shouldExclude(key, purpose);
   }
 
   isSettingsKey(key) {
-    // 使用新的統一分類器
-    if (typeof KeyClassifier !== 'undefined') {
-      return KeyClassifier.isSettingsKey(key);
-    }
-    
-    // 舊版本的後備邏輯（向後兼容）
-    const settingsKeys = [
-      'apiKeys', 'instruction', 'shortInstruction', 'autoRewritePatterns',
-      'translateInstruction', 'summaryInstruction', 'zhEnMapping',
-      'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel',
-      'translateModel', 'summaryModel', 'reflectModel', 'optimizeModel',
-      'generateModel', 'reflect1Model', 'generationOptimize_1_Model',
-      'reflect2Model', 'generationOptimize_2_Model', 'reflect3Model',
-      'generationOptimize_3_Model', 'generateInstruction', 'reflect1Instruction',
-      'generationOptimize_1_Instruction', 'reflect2Instruction',
-      'generationOptimize_2_Instruction', 'reflect3Instruction',
-      'generationOptimize_3_Instruction', 'backgroundKnowledge',
-      'reflectInstruction', 'optimizeInstruction', 'stockList',
-      'crawlerInterval', 'highlightWords', 'highlightColors',
-      'generationSettingsGroups', 'currentGenerationSettings',
-      'customModels', 'removeHash', 'removeStar',
-      'autoReplaceRules', 'manualReplaceRules'
-      // 注意：syncInterval 已移除 - 使用 Chrome sync storage 即時同步，不需要 SettingsIO 處理
-    ];
-    
-    return settingsKeys.includes(key) || 
-           key.startsWith('generation_settings_') ||
-           key.startsWith('replace_');
+    return KeyClassifier.isSettingsKey(key);
   }
 
   async updateLastModifiedTime() {
@@ -663,22 +602,7 @@ class SettingsIO {
 
   // 過濾設定用於比較（移除時間戳和不會被同步的內容）
   filterSettingsForComparison(settings) {
-    // 使用新的統一分類器
-    if (typeof KeyClassifier !== 'undefined') {
-      return KeyClassifier.filterSettings(settings, 'comparison');
-    }
-    
-    // 舊版本的後備邏輯（向後兼容）
-    const filtered = { ...settings };
-    delete filtered.lastModified;
-    
-    Object.keys(filtered).forEach(key => {
-      if (this.shouldExcludeFromSync(key, 'cloud')) {
-        delete filtered[key];
-      }
-    });
-    
-    return filtered;
+    return KeyClassifier.filterSettings(settings, 'comparison');
   }
 
   // 簡化的調試信息發送（已停用）
@@ -767,33 +691,7 @@ class SettingsIO {
 
   // 清理設定用於雲端上傳
   cleanSettingsForUpload(settings) {
-    // 使用新的統一分類器
-    if (typeof KeyClassifier !== 'undefined') {
-      return KeyClassifier.filterSettings(settings, 'cloudSync');
-    }
-    
-    // 舊版本的後備邏輯（向後兼容）
-    const cleaned = {};
-    
-    const legacyReplaceKeys = [
-      'autoReplaceRules', 'manualReplaceRules', 'replaceContent',
-      'manualReplaceValues_0', 'manualReplaceValues_1', 'manualReplaceValues_2'
-    ];
-    
-    Object.entries(settings).forEach(([key, value]) => {
-      if (this.shouldExcludeFromSync(key, 'cloud')) {
-        return;
-      }
-      
-      if (legacyReplaceKeys.includes(key)) {
-        LogUtils.log(`排除舊格式替換規則: ${key}`);
-        return;
-      }
-      
-      cleaned[key] = value;
-    });
-    
-    return cleaned;
+    return KeyClassifier.filterSettings(settings, 'cloudSync');
   }
 
   async getOrCreateDriveFile(token) {
@@ -811,7 +709,6 @@ class SettingsIO {
     }
 
     // 如果本地沒有檔案ID，直接搜尋現有檔案
-
     // 如果還是沒有檔案ID，搜尋現有檔案
     try {
       LogUtils.log('開始搜尋現有雲端檔案...');
