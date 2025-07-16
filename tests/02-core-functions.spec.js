@@ -199,7 +199,8 @@ test.describe('核心功能測試', () => {
       instruction: '改寫測試指令',
       translateInstruction: '翻譯測試指令',
       shortInstruction: '短文本改寫指令',
-      reflectInstruction: '反思測試指令'
+      reflectInstruction: '反思測試指令',
+      codeCheckInstruction: '代號檢查測試指令'
     };
     
     // 設定各種指令 - 需要正確切換分頁
@@ -209,6 +210,10 @@ test.describe('核心功能測試', () => {
     // 切換到短文本改寫分頁
     await page.click('.tab[data-tab="short"]');
     await page.fill('#shortInstruction', testSettings.shortInstruction);
+    
+    // 切換到代號檢查分頁
+    await page.click('.tab[data-tab="code-check"]');
+    await page.fill('#codeCheckInstruction', testSettings.codeCheckInstruction);
     
     // 切換到翻譯分頁
     await page.click('[data-tab="translate"]');
@@ -228,7 +233,8 @@ test.describe('核心功能測試', () => {
           'instruction',
           'translateInstruction',
           'shortInstruction',
-          'reflectInstruction'
+          'reflectInstruction',
+          'codeCheckInstruction'
         ], resolve);
       });
     });
@@ -237,6 +243,7 @@ test.describe('核心功能測試', () => {
     expect(storageValues.translateInstruction).toBe(testSettings.translateInstruction);
     expect(storageValues.shortInstruction).toBe(testSettings.shortInstruction);
     expect(storageValues.reflectInstruction).toBe(testSettings.reflectInstruction);
+    expect(storageValues.codeCheckInstruction).toBe(testSettings.codeCheckInstruction);
     
     console.log('✅ 儲存機制完整性測試通過');
   });
