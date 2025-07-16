@@ -3,12 +3,15 @@ const { test, expect } = require('@playwright/test');
 const ExtensionHelper = require('./helpers/extension-helper');
 
 test.describe('高級AI功能測試', () => {
+  // 配置並行模式
+  test.describe.configure({ mode: 'parallel' });
+  
   let context;
   let page;
   let helper;
 
   test.beforeAll(async () => {
-    // 建立共享的瀏覽器上下文
+    // 建立共享的瀏覽器上下文（共享插件存儲）
     context = await ExtensionHelper.createExtensionContext();
   });
 
@@ -18,11 +21,23 @@ test.describe('高級AI功能測試', () => {
   });
 
   test.beforeEach(async () => {
-    // 獲取共享頁面並設定基本配置
-    page = await ExtensionHelper.getSharedPage();
+    // 每個測試使用獨立頁面（支援並行但共享存儲）
+    page = await context.newPage();
     helper = new ExtensionHelper(page);
+    
+    console.log('📄 新頁面已建立');
+    
+    // 清理儲存並設定基本配置
     await helper.clearExtensionStorage();
     await helper.setApiKey();
+  });
+
+  test.afterEach(async () => {
+    // 清理頁面資源
+    if (page && !page.isClosed()) {
+      await page.close();
+      console.log('🧹 頁面已清理');
+    }
   });
 
   test('🔄 多階段翻譯流程測試', async () => {

@@ -3,12 +3,15 @@ const { test, expect } = require('@playwright/test');
 const ExtensionHelper = require('./helpers/extension-helper');
 
 test.describe('關鍵設定功能測試', () => {
+  // 配置並行模式
+  test.describe.configure({ mode: 'parallel' });
+  
   let context;
   let page;
   let helper;
 
   test.beforeAll(async () => {
-    // 建立共享的瀏覽器上下文
+    // 建立共享的瀏覽器上下文（共享插件存儲）
     context = await ExtensionHelper.createExtensionContext();
   });
 
@@ -18,13 +21,23 @@ test.describe('關鍵設定功能測試', () => {
   });
 
   test.beforeEach(async () => {
-    // 獲取共享頁面
-    page = await ExtensionHelper.getSharedPage();
+    // 每個測試使用獨立頁面（支援並行但共享存儲）
+    page = await context.newPage();
     helper = new ExtensionHelper(page);
+    
+    console.log('📄 新頁面已建立');
     
     // 清理儲存並等待
     await helper.clearExtensionStorage();
-    await page.waitForTimeout(500); // 減少等待時間
+    await page.waitForTimeout(500);
+  });
+
+  test.afterEach(async () => {
+    // 清理頁面資源
+    if (page && !page.isClosed()) {
+      await page.close();
+      console.log('🧹 頁面已清理');
+    }
   });
 
   test('🚨 POP頁關閉後內容不消失測試', async () => {

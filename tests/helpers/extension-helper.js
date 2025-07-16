@@ -12,7 +12,43 @@ class ExtensionHelper {
   }
 
   /**
-   * 建立或重用共享的插件瀏覽器上下文
+   * 建立獨立的插件瀏覽器上下文（用於並行測試）
+   */
+  static async createIndependentContext() {
+    const extensionPath = path.join(__dirname, '..', '..');
+    
+    // 使用唯一的臨時目錄但共享擴展狀態
+    const fs = require('fs');
+    const os = require('os');
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chrome-test-'));
+    
+    const context = await chromium.launchPersistentContext(tempDir, {
+      headless: false,
+      args: [
+        `--disable-extensions-except=${extensionPath}`,
+        `--load-extension=${extensionPath}`,
+        '--no-sandbox',
+        '--disable-web-security',
+        // 並行優化參數
+        '--disable-background-timer-throttling',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-sync',
+        '--disable-translate',
+        '--no-first-run',
+        '--disable-default-apps',
+        // 插件儲存優化
+        '--disable-features=VizDisplayCompositor',
+        '--enable-automation',
+        '--disable-infobars'
+      ]
+    });
+    
+    console.log('✅ 新瀏覽器上下文已建立');
+    return context;
+  }
+
+  /**
+   * 建立或重用共享的插件瀏覽器上下文（向後相容）
    */
   static async createExtensionContext() {
     // 如果已有共享上下文且仍然活躍，重用它
@@ -182,98 +218,37 @@ class ExtensionHelper {
     
     await this.openPopup();
     await this.page.click('[data-tab="settings"]');
+    await this.page.waitForTimeout(500);
     
-    // 等待頁面完全載入
-    await this.page.waitForTimeout(1000);
+    const testModels = ['gemini-1.5-pro', 'gpt-4o'];
     
-    // 測試用模型配置
-    const testModels = [
-      {
-        name: 'gemini-1.5-pro',
-        display: 'Gemini 1.5 Pro (測試)',
-        apiType: 'gemini'
-      },
-      {
-        name: 'gemini-1.5-flash',
-        display: 'Gemini 1.5 Flash (測試)',
-        apiType: 'gemini'
-      },
-      {
-        name: 'gpt-4o',
-        display: 'GPT-4o (測試)',
-        apiType: 'openai'
-      }
-    ];
-    
-    // 新增每個測試模型
-    for (const model of testModels) {
+    for (const modelName of testModels) {
       try {
         // 檢查模型是否已存在
-        const modelExists = await this.page.evaluate((modelName) => {
-          return window.GlobalSettings && 
-                 window.GlobalSettings.customModels && 
-                 window.GlobalSettings.customModels[modelName];
-        }, model.name);
+        const modelExists = await this.page.evaluate((name) => {
+          return window.GlobalSettings?.customModels?.[name];
+        }, modelName);
         
         if (modelExists) {
-          console.log(`⏭️ 模型 ${model.name} 已存在，跳過`);
+          console.log(`⏭️ 模型 ${modelName} 已存在，跳過`);
           continue;
         }
         
-        // 🔧 修復：避免自動填入機制衝突
-        // 先選擇 API 類型，避免自動檢測覆蓋
-        await this.page.selectOption('#custom-model-type', model.apiType);
-        await this.page.waitForTimeout(100);
+        // 輸入模型名稱，觸發自動填入
+        await this.page.fill('#custom-model-name', modelName);
+        await this.page.waitForTimeout(500); // 等待自動填入完成
         
-        // 再填入顯示名稱，避免自動填入覆蓋
-        await this.page.fill('#custom-model-display', model.display);
-        await this.page.waitForTimeout(100);
-        
-        // 最後填入模型名稱，但要等待自動填入完成
-        await this.page.fill('#custom-model-name', model.name);
-        
-        // 🕒 等待自動填入機制完成（300ms防抖 + 緩衝時間）
-        await this.page.waitForTimeout(500);
-        
-        // 🔄 確保值沒有被自動填入覆蓋，必要時重新設置
-        await this.page.evaluate(({ name, display, apiType }) => {
-          const nameInput = document.getElementById('custom-model-name');
-          const displayInput = document.getElementById('custom-model-display');
-          const typeSelect = document.getElementById('custom-model-type');
-          
-          if (nameInput && nameInput.value !== name) {
-            nameInput.value = name;
-          }
-          if (displayInput && displayInput.value !== display) {
-            displayInput.value = display;
-          }
-          if (typeSelect && typeSelect.value !== apiType) {
-            typeSelect.value = apiType;
-          }
-        }, model);
-        
-        // 點擊新增按鈕
+        // 直接點擊新增按鈕
         await this.page.click('#add-custom-model');
+        await this.page.waitForTimeout(300);
         
-        // 等待新增完成
-        await this.page.waitForTimeout(500);
-        
-        console.log(`✅ 已新增測試模型: ${model.name}`);
+        console.log(`✅ 已新增測試模型: ${modelName}`);
         
       } catch (error) {
-        console.log(`⚠️ 新增模型 ${model.name} 失敗:`, error.message);
+        console.log(`⚠️ 新增模型 ${modelName} 失敗:`, error.message);
       }
     }
     
-    // 驗證模型是否成功新增
-    const availableModels = await this.page.evaluate(() => {
-      if (!window.GlobalSettings || !window.GlobalSettings.customModels) {
-        return {};
-      }
-      return window.GlobalSettings.customModels;
-    });
-    
-    console.log('🔍 當前可用的自定義模型:', Object.keys(availableModels));
     console.log('✅ 測試模型設置完成');
   }
 
@@ -658,4 +633,4 @@ class ExtensionHelper {
   }
 }
 
-module.exports = ExtensionHelper; 
+module.exports = ExtensionHelper;
