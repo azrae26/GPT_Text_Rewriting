@@ -308,7 +308,8 @@ class ExtensionHelper {
   async waitForExtensionReady() {
     // 檢查當前 URL 是否符合插件啟用條件
     const currentUrl = await this.page.url();
-    const isTargetSite = currentUrl.includes('data.uanalyze.twobitto.com/research-reports/');
+    const isTargetSite = currentUrl.includes('data.uanalyze.twobitto.com/research-reports/') || 
+                         currentUrl.includes('data.uanalyze.twobitto.com/ai/assistants');
     
     if (isTargetSite) {
       // 對於目標網站，等待插件自然初始化

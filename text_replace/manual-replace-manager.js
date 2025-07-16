@@ -74,7 +74,8 @@ const ManualReplaceManager = {
 
   /** 重新渲染所有extra組 */
   _rerenderExtraGroups() {
-    const textArea = document.querySelector('textarea[name="content"]');
+          // 使用統一的檢測工具
+      const textArea = window.TextAreaDetector.getTextArea();
     const manualContainer = document.querySelector('.manual-replace-container');
     if (!textArea || !manualContainer) return;
 
@@ -936,7 +937,7 @@ const ManualReplaceManager = {
 
   /** 預覽更新方法 */
   _updatePreviews() {
-    const textArea = document.querySelector('textarea[name="content"]');
+    const textArea = window.TextAreaDetector.getTextArea();
     if (!textArea) return;
 
     // 直接觸發虛擬滾動更新，這會一次性處理所有組的預覽
@@ -1102,7 +1103,7 @@ const ManualReplaceManager = {
 
   /** 檢查並強制更新高亮 */
   checkAndForceUpdateHighlights() {
-    const textArea = document.querySelector('textarea[name="content"]');
+    const textArea = window.TextAreaDetector.getTextArea();
     
     // 🆕 檢查文本有效性，避免在無效文本時進行無意義的處理
     if (!textArea || !textArea.value || typeof textArea.value !== 'string' || textArea.value.length === 0) {
@@ -1201,7 +1202,7 @@ const ManualReplaceManager = {
     this._refreshInProgress = true;
     LogUtils.log(`從存儲刷新替換組UI`);
     
-    const textArea = document.querySelector('textarea[name="content"]');
+    const textArea = window.TextAreaDetector.getTextArea();
     const manualContainer = document.querySelector('.manual-replace-container');
     
     if (!textArea || !manualContainer) {

@@ -274,13 +274,13 @@ const UIManager = {
 
     // 監聽URL變化
     let lastUrl = location.href;
-    new MutationObserver(() => {
+    new MutationObserver(async () => {
       const url = location.href;
       if (url !== lastUrl) {
         lastUrl = url;
         LogUtils.log('URL變化檢測到，重新檢查是否需要初始化UI');
         if (window.shouldEnableFeatures()) {
-          this.initializeAllUI();
+          await this.initializeAllUI();
         } else {
           this.removeAllUI();
         }
@@ -397,7 +397,7 @@ const UIManager = {
   },
 
   /** 初始化所有UI元素 */
-  initializeAllUI() {
+  async initializeAllUI() {
     if (!window.shouldEnableFeatures()) {
       LogUtils.log('不符合啟用功能條件，移除所有UI元素');
       this.removeAllUI();
@@ -407,7 +407,7 @@ const UIManager = {
     LogUtils.log('初始化所有UI元素');
     this.addRewriteButton();
     this.initializeStockCodeFeature();
-    window.ReplaceManager.initializeReplaceUI();
+    await window.ReplaceManager.initializeReplaceUI();
     
     // 初始化各 Manager 的非按鈕元素
     if (window.TranslateManager) {

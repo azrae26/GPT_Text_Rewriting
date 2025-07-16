@@ -36,7 +36,7 @@ let uiInitCompleteTime = null; // 記錄 UI 初始化完成時間
  */
 function shouldEnableFeatures() {
   const currentUrl = window.location.href;
-  const pattern = /^https:\/\/data\.uanalyze\.twobitto\.com\/research-reports\/(?:\d+\/edit|create)(?:\?.*)?$/;
+  const pattern = /^https:\/\/data\.uanalyze\.twobitto\.com\/(?:research-reports\/(?:\d+\/edit|create)|ai\/assistants.*)(?:\?.*)?$/;
   const result = pattern.test(currentUrl);
   LogUtils.log('當前URL:', currentUrl);
   LogUtils.log('是否啟用功能:', result);
@@ -267,7 +267,7 @@ function initializeExtension() {
     try {
       await window.GlobalSettings.loadSettings();
       
-      window.UIManager.initializeAllUI();
+      await window.UIManager.initializeAllUI();
       
       // 在這裡也初始化高亮功能
       initHighlight();
@@ -279,6 +279,12 @@ function initializeExtension() {
       } else {
         LogUtils.warn('StatusMonitor 未載入');
       }
+
+      // 🆕 啟用全域動態 textarea 檢測
+      if (window.ReplaceManager) {
+        window.ReplaceManager.setupGlobalTextAreaObserver();
+        LogUtils.log('全域動態 textarea 檢測已啟用');
+      }
       
     } catch (error) {
       LogUtils.error('初始化UI元素時發生錯誤:', error);
@@ -287,6 +293,12 @@ function initializeExtension() {
 
   // 立即開始初始化高亮功能
   initHighlight();
+
+  // 🆕 立即啟動全域動態 textarea 檢測（即使在初始化之前）
+  if (window.ReplaceManager && window.shouldEnableFeatures()) {
+    window.ReplaceManager.setupGlobalTextAreaObserver();
+    LogUtils.log('✅ 頁面載入時立即啟動全域動態 textarea 檢測');
+  }
   
   // 開始第一次URL檢查
   checkAndInitialize();

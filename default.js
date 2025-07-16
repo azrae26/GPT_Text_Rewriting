@@ -362,17 +362,70 @@ Auras=雙鴻
   zhEnMapping: '1101,台泥',
 };
 
-// 將 DefaultSettings 和 LogUtils 暴露到適當的全域物件
+/**
+ * 文本區域檢測工具
+ * 支援多種頁面的 textarea 元素檢測
+ */
+const TextAreaDetector = {
+  /**
+   * 檢測並返回當前頁面的主要文本區域元素
+   * @returns {HTMLTextAreaElement|null} 找到的 textarea 元素
+   */
+  getTextArea: function() {
+    // 1. 原有的 research-reports 頁面
+    let textArea = document.querySelector('textarea[name="content"]');
+    
+    if (!textArea) {
+      // 2. ai/assistants 頁面的 Material-UI textarea 元素
+      textArea = document.querySelector('textarea.MuiInputBase-input.MuiOutlinedInput-input.MuiInputBase-inputMultiline');
+    }
+    
+    return textArea;
+  },
+
+  /**
+   * 等待文本區域元素出現
+   * @param {number} timeout - 超時時間（毫秒）
+   * @returns {Promise<HTMLTextAreaElement>} Promise 返回找到的元素
+   */
+  waitForTextArea: function(timeout = 5000) {
+    return new Promise((resolve, reject) => {
+      const startTime = Date.now();
+      
+      const check = () => {
+        const textArea = this.getTextArea();
+        if (textArea) {
+          resolve(textArea);
+          return;
+        }
+        
+        if (Date.now() - startTime > timeout) {
+          reject(new Error('找不到文本區域元素：超時'));
+          return;
+        }
+        
+        setTimeout(check, 100);
+      };
+      
+      check();
+    });
+  }
+};
+
+// 將 DefaultSettings、LogUtils 和 TextAreaDetector 暴露到適當的全域物件
 if (typeof window !== 'undefined') {
   // 瀏覽器環境
   window.DefaultSettings = DefaultSettings;
   window.LogUtils = LogUtils;
+  window.TextAreaDetector = TextAreaDetector;
 } else if (typeof self !== 'undefined') {
   // Service Worker 環境
   self.DefaultSettings = DefaultSettings;
   self.LogUtils = LogUtils;
+  self.TextAreaDetector = TextAreaDetector;
 } else if (typeof global !== 'undefined') {
   // Node.js 環境
   global.DefaultSettings = DefaultSettings;
   global.LogUtils = LogUtils;
+  global.TextAreaDetector = TextAreaDetector;
 }

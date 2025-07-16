@@ -32,7 +32,7 @@ const ReplaceManager = {
   },
 
   /** 初始化替換介面 */
-  initializeReplaceUI() {
+  async initializeReplaceUI() {
     try {
       // 先檢查是否應該啟用功能
       if (!window.shouldEnableFeatures()) {
@@ -44,10 +44,20 @@ const ReplaceManager = {
       // 先移除所有現有的UI元素
       this.removeReplaceUI();
 
-      const textArea = document.querySelector('textarea[name="content"]');
+      // 使用統一的檢測工具
+      const textArea = window.TextAreaDetector.getTextArea();
       if (!textArea) {
-        LogUtils.error('找不到文本區域元素');
-        return;
+        // 🆕 如果找不到元素，嘗試等待動態元素出現
+        LogUtils.log('未找到 textarea 元素，嘗試等待動態元素...');
+        try {
+          const foundTextArea = await window.TextAreaDetector.waitForTextArea(3000);
+          LogUtils.important('🎯 等待成功，找到動態 textarea 元素');
+          // 找到元素後，遞迴調用自己來完成初始化
+          return this.initializeReplaceUI();
+        } catch (error) {
+          LogUtils.error('等待文本區域元素超時:', error.message);
+          return;
+        }
       }
 
       // 創建主組容器（第一組）
@@ -167,7 +177,7 @@ const ReplaceManager = {
         if (mutation.type === 'childList' && Array.from(mutation.removedNodes).includes(textArea)) {
           LogUtils.log('文本區域被移除，重新初始化替換介面');
           // 延遲執行以確保新的文本區域已經添加到頁面
-          setTimeout(() => this.initializeReplaceUI(), 500);
+          setTimeout(async () => await this.initializeReplaceUI(), 500);
           observer.disconnect();
           break;
         }
@@ -181,6 +191,52 @@ const ReplaceManager = {
         subtree: true 
       });
     }
+  },
+
+  /** 設置全域動態元素觀察器 */
+  setupGlobalTextAreaObserver() {
+    // 避免重複創建觀察器
+    if (this.globalObserver) {
+      return;
+    }
+
+    LogUtils.log('設置全域 textarea 動態檢測觀察器');
+    
+    this.globalObserver = new MutationObserver((mutations) => {
+      // 防抖處理，避免過於頻繁的檢查
+      if (this.globalObserverTimeout) {
+        clearTimeout(this.globalObserverTimeout);
+      }
+      
+      this.globalObserverTimeout = setTimeout(async () => {
+        // 檢查是否應該啟用功能
+        if (!window.shouldEnableFeatures()) {
+          return;
+        }
+
+        // 檢查是否已有替換介面
+        const existingUI = document.getElementById('text-replace-main');
+        if (existingUI) {
+          return; // UI 已存在，無需重新初始化
+        }
+
+        // 檢查是否有可檢測的 textarea 元素
+        const textArea = window.TextAreaDetector.getTextArea();
+        if (textArea) {
+          LogUtils.important('🎯 檢測到新的 textarea 元素，初始化替換介面');
+          await this.initializeReplaceUI();
+        }
+      }, 300); // 300ms 防抖
+    });
+
+    // 監聽整個 document 的變化
+    this.globalObserver.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: false // 只監聽 DOM 結構變化，不監聽屬性變化
+    });
+
+    LogUtils.log('全域 textarea 動態檢測觀察器設置完成');
   },
 
   /** 初始化拖動功能 */
@@ -502,7 +558,7 @@ const ReplaceManager = {
 
     // 清理預覽相關資源
     if (this.manualReplaceManager) {
-      const textArea = document.querySelector('textarea[name="content"]');
+      const textArea = window.TextAreaDetector.getTextArea();
       if (textArea) {
         this.manualReplaceManager.cleanup(textArea);
       }
