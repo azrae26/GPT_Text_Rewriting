@@ -5,18 +5,18 @@ module.exports = defineConfig({
   // 測試檔案位置
   testDir: './tests',
   
-  // 單個測試超時時間（25秒，稍微減少）
-  timeout: 25000,
+  // 🚀 優化超時設定（進一步縮短）
+  timeout: 20000, // 減少到20秒
   
   expect: {
-    timeout: 4000 // 減少期望等待時間
+    timeout: 2000 // 減少期望等待時間到2秒
   },
   
   forbidOnly: !!process.env.CI,
   
   retries: process.env.CI ? 2 : 0, // 本地開發不重試
   
-  workers: 4, // 增加到4個 worker，最大化並行性
+  workers: 3, // 🏃‍♂️ 回滾到3個 worker，6個會造成資源競爭
   
   // 測試報告
   reporter: [
@@ -39,8 +39,8 @@ module.exports = defineConfig({
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     trace: 'retain-on-failure',
-    actionTimeout: 8000, // 減少動作等待時間
-    navigationTimeout: 25000 // 減少導航等待時間
+    actionTimeout: 4000, // 減少動作等待時間到4秒
+    navigationTimeout: 15000 // 減少導航等待時間到15秒
   },
   
   // 測試專案配置
@@ -57,7 +57,7 @@ module.exports = defineConfig({
             '--no-sandbox',
             '--disable-web-security',
             
-            // 🚀 性能優化參數
+            // 🚀 真正並行優化參數（與 ExtensionHelper 同步）
             '--disable-background-timer-throttling',
             '--disable-backgrounding-occluded-windows',
             '--disable-features=VizDisplayCompositor',
@@ -70,7 +70,7 @@ module.exports = defineConfig({
             '--load-extension=' + require('path').resolve(__dirname),
             
             // 🎯 減少資源使用
-            '--max_old_space_size=4096',
+            '--max_old_space_size=2048', // 降低記憶體限制
             '--no-first-run',
             '--no-default-browser-check',
             '--disable-component-update',
@@ -83,7 +83,14 @@ module.exports = defineConfig({
             '--disable-hang-monitor',
             '--disable-prompt-on-repost',
             '--disable-domain-reliability',
-            '--disable-component-extensions-with-background-pages'
+            '--disable-component-extensions-with-background-pages',
+            '--memory-pressure-off',
+            
+            // ⚡ 進一步加速參數
+            '--disable-features=TranslateUI',
+            '--disable-ipc-flooding-protection',
+            '--disable-dev-shm-usage',
+            '--disable-renderer-backgrounding'
           ]
         }
       }

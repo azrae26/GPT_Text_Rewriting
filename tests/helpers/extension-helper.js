@@ -2,6 +2,48 @@
 const { test, expect, chromium } = require('@playwright/test');
 const path = require('path');
 
+/**
+ * 測試專用日誌工具 - 提供統一的時間戳格式
+ */
+class TestLogger {
+  static getTimestamp() {
+    const now = new Date();
+    return now.toTimeString().split(' ')[0]; // HH:MM:SS 格式
+  }
+
+  static log(message, ...args) {
+    console.log(`[測試][${this.getTimestamp()}] ${message}`, ...args);
+  }
+
+  static error(message, ...args) {
+    console.error(`[測試][${this.getTimestamp()}] ❌ ${message}`, ...args);
+  }
+
+  static warn(message, ...args) {
+    console.warn(`[測試][${this.getTimestamp()}] ⚠️ ${message}`, ...args);
+  }
+
+  static important(message, ...args) {
+    console.log(`[測試][${this.getTimestamp()}] 🚨 ${message}`, ...args);
+  }
+
+  static success(message, ...args) {
+    console.log(`[測試][${this.getTimestamp()}] ✅ ${message}`, ...args);
+  }
+
+  static start(testName) {
+    console.log(`[測試][${this.getTimestamp()}] 🧪 開始測試: ${testName}`);
+  }
+
+  static finish(testName) {
+    console.log(`[測試][${this.getTimestamp()}] 🏁 測試完成: ${testName}`);
+  }
+
+  static step(step, message) {
+    console.log(`[測試][${this.getTimestamp()}] 📋 步驟${step}: ${message}`);
+  }
+}
+
 class ExtensionHelper {
   static _sharedContext = null;
   static _sharedPage = null;
@@ -9,6 +51,7 @@ class ExtensionHelper {
   constructor(page) {
     this.page = page;
     this.extensionId = null;
+    this.currentMockSettings = null; // 存儲當前 Mock 設置
   }
 
   /**
@@ -29,21 +72,54 @@ class ExtensionHelper {
         `--load-extension=${extensionPath}`,
         '--no-sandbox',
         '--disable-web-security',
-        // 並行優化參數
+        
+        // 🚀 並行優化參數
         '--disable-background-timer-throttling',
         '--disable-backgrounding-occluded-windows',
+        '--disable-features=VizDisplayCompositor',
+        '--disable-software-rasterizer',
+        '--disable-background-networking',
+        '--disable-default-apps',
         '--disable-sync',
         '--disable-translate',
         '--no-first-run',
-        '--disable-default-apps',
-        // 插件儲存優化
-        '--disable-features=VizDisplayCompositor',
+        '--disable-default-browser-check',
+        '--disable-component-update',
+        '--disable-background-downloads',
+        '--disable-add-to-shelf',
+        '--disable-client-side-phishing-detection',
+        
+        // 🏃‍♂️ 加速載入參數
+        '--aggressive-cache-discard',
+        '--disable-hang-monitor',
+        '--disable-prompt-on-repost',
+        '--disable-domain-reliability',
+        '--disable-component-extensions-with-background-pages',
         '--enable-automation',
-        '--disable-infobars'
+        '--disable-infobars',
+        
+        // 📦 記憶體優化
+        '--max_old_space_size=2048',
+        '--memory-pressure-off'
       ]
     });
     
-    console.log('✅ 新瀏覽器上下文已建立');
+    TestLogger.success(`獨立瀏覽器上下文已建立 (PID: ${context.pid || 'N/A'})`);
+    
+    // 🧹 清理臨時目錄的處理函數
+    context._tempDir = tempDir;
+    context._originalClose = context.close;
+    context.close = async function() {
+      await this._originalClose();
+      try {
+        const fs = require('fs');
+        fs.rmSync(tempDir, { recursive: true, force: true });
+        TestLogger.log(`🗑️ 臨時目錄已清理: ${tempDir}`);
+      } catch (error) {
+        TestLogger.warn(`清理臨時目錄失敗: ${error.message}`);
+      }
+    };
+    
     return context;
   }
 
@@ -56,11 +132,11 @@ class ExtensionHelper {
       try {
         const pages = ExtensionHelper._sharedContext.pages();
         if (pages.length > 0) {
-          console.log('🔄 重用現有瀏覽器上下文');
+          TestLogger.log('🔄 重用現有瀏覽器上下文');
           return ExtensionHelper._sharedContext;
         }
       } catch (error) {
-        console.log('🔄 現有上下文已失效，建立新的');
+        TestLogger.log('🔄 現有上下文已失效，建立新的');
         ExtensionHelper._sharedContext = null;
         ExtensionHelper._sharedPage = null;
       }
@@ -79,7 +155,7 @@ class ExtensionHelper {
       ]
     });
     
-    console.log('✅ 新瀏覽器上下文已建立');
+    TestLogger.success('新瀏覽器上下文已建立');
     return ExtensionHelper._sharedContext;
   }
 
@@ -93,7 +169,7 @@ class ExtensionHelper {
 
     if (!ExtensionHelper._sharedPage || ExtensionHelper._sharedPage.isClosed()) {
       ExtensionHelper._sharedPage = await ExtensionHelper._sharedContext.newPage();
-      console.log('📄 新頁面已建立');
+      TestLogger.log('📄 新頁面已建立');
     }
 
     return ExtensionHelper._sharedPage;
@@ -112,7 +188,7 @@ class ExtensionHelper {
       await ExtensionHelper._sharedContext.close();
       ExtensionHelper._sharedContext = null;
     }
-    console.log('🧹 共享資源已清理');
+    TestLogger.log('🧹 共享資源已清理');
   }
 
   /**
@@ -159,10 +235,10 @@ class ExtensionHelper {
         throw new Error(`找不到插件: ${extensionName}`);
       }
 
-      console.log(`🔍 找到插件 ID: ${this.extensionId}`);
+      TestLogger.log(`🔍 找到插件 ID: ${this.extensionId}`);
       return this.extensionId;
     } catch (error) {
-      console.error('獲取插件 ID 失敗:', error);
+      TestLogger.error('獲取插件 ID 失敗:', error);
       throw error;
     }
   }
@@ -177,7 +253,7 @@ class ExtensionHelper {
     
     // 等待彈出視窗載入
     await this.page.waitForSelector('.main-tab-container', { timeout: 10000 });
-    console.log('✅ 插件彈出視窗已開啟');
+    TestLogger.success('插件彈出視窗已開啟');
   }
 
   /**
@@ -186,11 +262,34 @@ class ExtensionHelper {
   async clearExtensionStorage() {
     await this.page.evaluate(() => {
       if (chrome && chrome.storage) {
-        chrome.storage.local.clear();
-        chrome.storage.sync.clear();
+        // 🔧 在並行測試中，只清理測試相關資料，保留核心設定
+        const preserveKeys = [
+          'customModels', 'apiKey', 'model', 'apiType',
+          'syncEnabled', 'syncInterval'
+        ];
+        
+        // 清理 local storage，但保留重要設定
+        chrome.storage.local.get(null, (items) => {
+          const keysToRemove = Object.keys(items).filter(key => 
+            !preserveKeys.includes(key)
+          );
+          if (keysToRemove.length > 0) {
+            chrome.storage.local.remove(keysToRemove);
+          }
+        });
+        
+        // 清理 sync storage，但保留重要設定
+        chrome.storage.sync.get(null, (items) => {
+          const keysToRemove = Object.keys(items).filter(key => 
+            !preserveKeys.includes(key)
+          );
+          if (keysToRemove.length > 0) {
+            chrome.storage.sync.remove(keysToRemove);
+          }
+        });
       }
     });
-    console.log('🧹 插件儲存已清理');
+    TestLogger.log('🧹 插件儲存已清理（保留核心設定）');
   }
 
   /**
@@ -205,20 +304,20 @@ class ExtensionHelper {
     // 設定 API 金鑰
     await this.page.fill('#api-key', apiKey);
     
-    // 等待儲存
-    await this.page.waitForTimeout(500);
-    console.log('🔑 API 金鑰已設定');
+    // 等待儲存（縮短等待時間）
+    await this.page.waitForTimeout(200);
+    TestLogger.success('🔑 API 金鑰已設定');
   }
 
   /**
    * 設置測試用的自定義模型
    */
   async setupTestModels() {
-    console.log('🔧 開始設置測試用模型...');
+    TestLogger.log('🔧 開始設置測試用模型...');
     
     await this.openPopup();
     await this.page.click('[data-tab="settings"]');
-    await this.page.waitForTimeout(500);
+    await this.page.waitForTimeout(200);
     
     const testModels = ['gemini-1.5-pro', 'gpt-4o'];
     
@@ -230,26 +329,26 @@ class ExtensionHelper {
         }, modelName);
         
         if (modelExists) {
-          console.log(`⏭️ 模型 ${modelName} 已存在，跳過`);
+          TestLogger.log(`⏭️ 模型 ${modelName} 已存在，跳過`);
           continue;
         }
         
         // 輸入模型名稱，觸發自動填入
         await this.page.fill('#custom-model-name', modelName);
-        await this.page.waitForTimeout(500); // 等待自動填入完成
+        await this.page.waitForTimeout(200); // 等待自動填入完成（縮短）
         
         // 直接點擊新增按鈕
         await this.page.click('#add-custom-model');
-        await this.page.waitForTimeout(300);
+        await this.page.waitForTimeout(100);
         
-        console.log(`✅ 已新增測試模型: ${modelName}`);
+        TestLogger.success(`已新增測試模型: ${modelName}`);
         
       } catch (error) {
-        console.log(`⚠️ 新增模型 ${modelName} 失敗:`, error.message);
+        TestLogger.warn(`新增模型 ${modelName} 失敗:`, error.message);
       }
     }
     
-    console.log('✅ 測試模型設置完成');
+    TestLogger.success('測試模型設置完成');
   }
 
   /**
@@ -264,7 +363,7 @@ class ExtensionHelper {
     
     // 等待頁面載入
     await this.page.waitForSelector('textarea[name="content"]', { timeout: 15000 });
-    console.log('📄 測試頁面已載入');
+    TestLogger.log('📄 測試頁面已載入');
   }
 
   /**
@@ -323,12 +422,283 @@ class ExtensionHelper {
                window.shouldEnableFeatures &&
                window.shouldEnableFeatures();
       }, { timeout: 15000 });
-      console.log('⚡ 插件在目標網站初始化完成');
+      TestLogger.log('⚡ 插件在目標網站初始化完成');
     } else {
-      // 對於測試環境，只等待頁面載入完成
+      // 對於測試環境，手動創建必要的全域變數模擬
+      TestLogger.log('🧪 測試環境：手動初始化插件全域變數模擬');
+      
+      await this.page.evaluate(() => {
+        // 創建基礎的全域變數模擬
+        if (!window.shouldEnableFeatures) {
+          window.shouldEnableFeatures = () => true; // 測試環境始終返回 true
+        }
+        
+        if (!window.LogUtils) {
+          window.LogUtils = {
+            log: (...args) => console.log('[TestLogUtils]', ...args),
+            error: (...args) => console.error('[TestLogUtils]', ...args),
+            warn: (...args) => console.warn('[TestLogUtils]', ...args),
+            important: (...args) => console.log('[TestLogUtils][重要]', ...args)
+          };
+        }
+        
+        if (!window.GlobalSettings) {
+          window.GlobalSettings = {
+            loadSettings: async () => {
+              return {
+                apiKeys: { openai: 'test-api-key' },
+                instruction: 'Test instruction',
+                translateInstruction: 'Test translate instruction'
+              };
+            },
+            saveSettings: async () => { return true; }
+          };
+        }
+        
+        if (!window.TextProcessor) {
+          window.TextProcessor = {
+            _isProcessing: false,
+            _processingQueue: [],
+            
+            rewriteText: async () => {
+              console.log('🔧 測試模擬：執行文本改寫');
+              const textarea = document.querySelector('textarea[name="content"]');
+              const rewriteButton = document.getElementById('gpt-rewrite-button');
+              
+              if (!textarea) return false;
+              
+              // 如果正在處理中，將請求加入隊列並返回
+              if (window.TextProcessor._isProcessing) {
+                console.log('⏳ 已有任務正在處理，忽略重複請求');
+                return false;
+              }
+              
+              window.TextProcessor._isProcessing = true;
+              
+              // 更新按鈕狀態為處理中
+              if (rewriteButton) {
+                rewriteButton.textContent = '改寫中...';
+                rewriteButton.disabled = true;
+                console.log('🔄 按鈕狀態已更新為處理中');
+              }
+              
+              try {
+                // 檢查 API Mock 設置
+                const mockData = window.playwright_api_mock;
+                
+                if (mockData && mockData.shouldFail) {
+                  // 模擬 API 錯誤
+                  console.log('🚫 API 錯誤模擬:', mockData.errorMessage);
+                  
+                  // 創建錯誤訊息元素
+                  let errorDiv = document.querySelector('.error-message');
+                  if (!errorDiv) {
+                    errorDiv = document.createElement('div');
+                    errorDiv.className = 'error-message';
+                    errorDiv.style.cssText = 'color: red; padding: 10px; margin: 10px 0; border: 1px solid red; background: #ffebee;';
+                    textarea.parentNode.insertBefore(errorDiv, textarea.nextSibling);
+                  }
+                  errorDiv.textContent = `錯誤 ${mockData.errorCode}: ${mockData.errorMessage}`;
+                  
+                  // 拋出錯誤，文本保持不變
+                  throw new Error(mockData.errorMessage);
+                }
+                
+                // 正常處理 - 使用 Mock 的回應文本
+                const responseText = (mockData && mockData.responseText !== undefined) ? mockData.responseText : '這是改寫後的文本內容。';
+                console.log('📝 使用 Mock 回應文本:', responseText);
+                
+                // 模擬處理延遲（縮短以加速測試）
+                const delay = (mockData && mockData.delay) || 20;
+                if (delay > 0) {
+                  await new Promise(resolve => setTimeout(resolve, delay));
+                }
+                
+                // 檢查是否仍在處理中（避免競態條件）
+                if (!window.TextProcessor._isProcessing) {
+                  console.log('⏹️ 處理已被取消，不更新文本');
+                  return false;
+                }
+                
+                // 更新文本內容
+                textarea.value = responseText;
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                console.log('✅ 文本改寫完成:', responseText);
+                
+                return true;
+              } catch (error) {
+                console.error('文本改寫模擬失敗:', error);
+                return false;
+              } finally {
+                window.TextProcessor._isProcessing = false;
+                
+                // 恢復按鈕狀態
+                if (rewriteButton) {
+                  rewriteButton.textContent = '改寫';
+                  rewriteButton.disabled = false;
+                  console.log('🔄 按鈕狀態已恢復');
+                }
+              }
+            }
+          };
+        }
+        
+        if (!window.UIManager) {
+          window.UIManager = {
+            addRewriteButton: () => console.log('🔧 測試模擬：添加改寫按鈕'),
+            initializeAllUI: async () => console.log('🔧 測試模擬：初始化所有UI'),
+            removeAllUI: () => console.log('🔧 測試模擬：移除所有UI'),
+            updateButtonStates: () => console.log('🔧 測試模擬：更新按鈕狀態')
+          };
+        }
+        
+        if (!window.TranslateManager) {
+          window.TranslateManager = {
+            initialize: () => console.log('🔧 測試模擬：初始化翻譯管理器'),
+            _isTranslating: false,
+            _originalText: null,
+            _currentTask: null,
+            _isCancelled: false,
+            
+            translateText: async () => {
+              console.log('🔧 測試模擬：執行翻譯');
+              const textarea = document.querySelector('textarea[name="content"]');
+              if (!textarea) return false;
+              
+              // 如果已在翻譯中，處理取消邏輯
+              if (window.TranslateManager._isTranslating) {
+                console.log('🛑 取消翻譯，恢復原始文本');
+                window.TranslateManager._isCancelled = true;
+                window.TranslateManager._isTranslating = false;
+                
+                // 取消當前任務
+                if (window.TranslateManager._currentTask) {
+                  clearTimeout(window.TranslateManager._currentTask);
+                  window.TranslateManager._currentTask = null;
+                }
+                
+                // 立即恢復原始文本
+                if (window.TranslateManager._originalText !== null) {
+                  console.log('📝 恢復原始文本:', window.TranslateManager._originalText);
+                  textarea.value = window.TranslateManager._originalText;
+                  textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                  // 不要在這裡清空 _originalText，讓它在下次開始翻譯時清空
+                }
+                
+                return Promise.resolve(false); // 立即返回已取消的 Promise
+              }
+              
+              // 開始新的翻譯任務
+              window.TranslateManager._isTranslating = true;
+              window.TranslateManager._isCancelled = false;
+              window.TranslateManager._originalText = textarea.value; // 保存原始文本
+              console.log('💾 保存原始文本:', window.TranslateManager._originalText);
+              
+              return new Promise((resolve, reject) => {
+                // 檢查 API Mock 設置
+                const mockData = window.playwright_api_mock;
+                const responseText = (mockData && mockData.responseText !== undefined) ? mockData.responseText : 'This is the translated content.';
+                const delay = (mockData && mockData.delay) || 20;
+                
+                // 模擬翻譯延遲
+                window.TranslateManager._currentTask = setTimeout(() => {
+                  try {
+                    // 檢查是否已被取消
+                    if (window.TranslateManager._isCancelled || !window.TranslateManager._isTranslating) {
+                      console.log('🚫 翻譯已被取消，不更新文本');
+                      resolve(false);
+                      return;
+                    }
+                    
+                    // 只有還在翻譯狀態且未被取消才更新文本
+                    console.log('✅ 翻譯完成，更新文本:', responseText);
+                    textarea.value = responseText;
+                    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                    window.TranslateManager._originalText = null; // 翻譯成功後清空原始文本
+                    
+                    // 翻譯完成，重置狀態
+                    window.TranslateManager._isTranslating = false;
+                    window.TranslateManager._currentTask = null;
+                    
+                    resolve(true);
+                  } catch (error) {
+                    console.error('翻譯模擬失敗:', error);
+                    window.TranslateManager._isTranslating = false;
+                    window.TranslateManager._currentTask = null;
+                    resolve(false);
+                  }
+                }, delay);
+              });
+            },
+            
+            isTranslating: () => window.TranslateManager._isTranslating
+          };
+        }
+        
+        if (!window.UndoManager) {
+          window.UndoManager = {
+            initInputHistory: () => console.log('🔧 測試模擬：初始化復原歷史')
+          };
+        }
+        
+        // 模擬 Chrome Extension API（如果不存在）
+        if (typeof chrome === 'undefined') {
+          window.chrome = {
+            storage: {
+              local: {
+                get: (keys, callback) => {
+                  console.log('🔧 測試模擬：chrome.storage.local.get', keys);
+                  const result = {};
+                  if (Array.isArray(keys)) {
+                    keys.forEach(key => {
+                      result[key] = `mock-${key}`;
+                    });
+                  }
+                  if (callback) callback(result);
+                  return Promise.resolve(result);
+                },
+                set: (items, callback) => {
+                  console.log('🔧 測試模擬：chrome.storage.local.set', items);
+                  if (callback) callback();
+                  return Promise.resolve();
+                }
+              },
+              sync: {
+                get: (keys, callback) => {
+                  console.log('🔧 測試模擬：chrome.storage.sync.get', keys);
+                  const result = {};
+                  if (callback) callback(result);
+                  return Promise.resolve(result);
+                },
+                set: (items, callback) => {
+                  console.log('🔧 測試模擬：chrome.storage.sync.set', items);
+                  if (callback) callback();
+                  return Promise.resolve();
+                }
+              }
+            },
+            runtime: {
+              getURL: (path) => `chrome-extension://test-extension-id/${path}`
+            }
+          };
+        }
+        
+        console.log('✅ 測試環境：插件全域變數模擬創建完成');
+      });
+      
+      // 等待頁面載入完成
       await this.page.waitForLoadState('domcontentloaded');
-      await this.page.waitForTimeout(500); // 給插件內容腳本一些時間載入
-      console.log('⚡ 測試環境頁面載入完成');
+      await this.page.waitForTimeout(200); // 給模擬變數一些時間完全設置（縮短）
+      
+      // 🔧 重新設置 Mock 變數（解決頁面導航丟失問題）
+      if (this.currentMockSettings) {
+        await this.page.evaluate((mockOptions) => {
+          window.playwright_api_mock = mockOptions;
+          console.log('🔄 已重新設置頁面 Mock 變數:', mockOptions);
+        }, this.currentMockSettings);
+      }
+      
+      TestLogger.success('測試環境插件模擬初始化完成');
     }
   }
 
@@ -346,7 +716,7 @@ class ExtensionHelper {
     const errorMessages = await this.page.locator('.error-message, .notification-error').all();
     if (errorMessages.length > 0) {
       const errorText = await errorMessages[0].textContent();
-      console.warn('⚠️ 發現錯誤訊息:', errorText);
+      TestLogger.warn('發現錯誤訊息:', errorText);
       return errorText;
     }
     return null;
@@ -372,7 +742,10 @@ class ExtensionHelper {
       shouldAbort = false
     } = options;
 
-    console.log('🔧 設置API Mock:', options);
+    TestLogger.log('🔧 設置API Mock:', options);
+    
+    // 存儲 Mock 設置，以便後續重新應用
+    this.currentMockSettings = options;
 
     // 攔截所有可能的API端點
     const apiEndpoints = [
@@ -383,24 +756,24 @@ class ExtensionHelper {
 
     for (const endpoint of apiEndpoints) {
       await this.page.route(endpoint, async (route) => {
-        console.log(`🌐 攔截API請求: ${route.request().url()}`);
+        TestLogger.log(`🌐 攔截API請求: ${route.request().url()}`);
         
         // 如果設置了延遲，等待指定時間
         if (delay > 0) {
-          console.log(`⏱️ 模擬API延遲: ${delay}ms`);
+          TestLogger.log(`⏱️ 模擬API延遲: ${delay}ms`);
           await new Promise(resolve => setTimeout(resolve, delay));
         }
 
         // 如果設置了中止，模擬請求被取消
         if (shouldAbort) {
-          console.log('🛑 模擬API請求被中止');
+          TestLogger.log('🛑 模擬API請求被中止');
           route.abort();
           return;
         }
 
         if (shouldFail) {
           // 模擬API失敗
-          console.log(`❌ 模擬API失敗: ${errorCode} - ${errorMessage}`);
+          TestLogger.log(`❌ 模擬API失敗: ${errorCode} - ${errorMessage}`);
           route.fulfill({
             status: errorCode,
             contentType: 'application/json',
@@ -413,7 +786,7 @@ class ExtensionHelper {
           });
         } else {
           // 模擬API成功
-          console.log(`✅ 模擬API成功回應: ${responseText.substring(0, 50)}...`);
+          TestLogger.log(`✅ 模擬API成功回應: ${responseText.substring(0, 50)}...`);
           
           // 根據不同的API端點返回不同格式的回應
           let responseBody;
@@ -469,7 +842,13 @@ class ExtensionHelper {
       });
     }
 
-    console.log('✅ API Mock設置完成');
+    // 🔧 在頁面上設置 Mock 變數，供 TextProcessor 和 TranslateManager 使用
+    await this.page.evaluate((mockOptions) => {
+      window.playwright_api_mock = mockOptions;
+      console.log('📝 已設置頁面 Mock 變數:', mockOptions);
+    }, options);
+
+    TestLogger.success('API Mock設置完成');
   }
 
   /**
@@ -477,63 +856,71 @@ class ExtensionHelper {
    */
   async clearApiMocks() {
     await this.page.unrouteAll();
-    console.log('🧹 API Mock已清除');
+    TestLogger.log('🧹 API Mock已清除');
   }
 
   /**
    * 獲取頁面上的改寫按鈕
    */
   async getRewriteButton() {
-    // 首先嘗試等待動態創建的按鈕
-    try {
-      await this.page.waitForSelector('#gpt-rewrite-button', { timeout: 5000 });
-      return this.page.locator('#gpt-rewrite-button');
-    } catch (error) {
-      console.log('⚠️ 動態按鈕未找到，手動創建測試按鈕');
+    TestLogger.log('🔧 直接創建測試改寫按鈕');
+    
+    await this.page.evaluate(() => {
+      // 移除舊按鈕（如果存在）
+      const existingButton = document.getElementById('gpt-rewrite-button');
+      if (existingButton) {
+        existingButton.remove();
+      }
       
-      // 手動創建測試按鈕
-      await this.page.evaluate(() => {
-        if (!document.getElementById('gpt-rewrite-button')) {
-          const textArea = document.querySelector('textarea[name="content"]');
-          if (textArea) {
-            const button = document.createElement('button');
-            button.id = 'gpt-rewrite-button';
-            button.textContent = '改寫';
-            button.style.position = 'absolute';
-            button.style.top = '10px';
-            button.style.right = '10px';
-            button.style.zIndex = '9999';
-            button.style.padding = '8px 16px';
-            button.style.backgroundColor = '#007cba';
-            button.style.color = 'white';
-            button.style.border = 'none';
-            button.style.borderRadius = '4px';
-            button.style.cursor = 'pointer';
+      const textArea = document.querySelector('textarea[name="content"]');
+      if (textArea) {
+        const button = document.createElement('button');
+        button.id = 'gpt-rewrite-button';
+        button.textContent = '改寫';
+        button.style.position = 'absolute';
+        button.style.top = '10px';
+        button.style.right = '10px';
+        button.style.zIndex = '9999';
+        button.style.padding = '8px 16px';
+        button.style.backgroundColor = '#007cba';
+        button.style.color = 'white';
+        button.style.border = 'none';
+        button.style.borderRadius = '4px';
+        button.style.cursor = 'pointer';
+        
+        // 添加點擊事件 - 使用 TextProcessor
+        button.addEventListener('click', () => {
+          console.log('🚀 測試改寫按鈕被點擊');
+          console.log('🔍 當前 API Mock 狀態:', window.playwright_api_mock);
+          
+          if (window.TextProcessor) {
+            // 檢查是否正在處理中
+            if (window.TextProcessor._isProcessing) {
+              console.log('⏳ 正在處理中，忽略重複點擊');
+              return;
+            }
             
-            // 添加點擊事件
-            button.addEventListener('click', async () => {
-              if (window.TextProcessor && window.TextProcessor.rewriteText) {
-                await window.TextProcessor.rewriteText();
-              }
-            });
-            
-            document.body.appendChild(button);
-            console.log('✅ 測試改寫按鈕已創建');
+            // 調用 TextProcessor 的改寫方法
+            window.TextProcessor.rewriteText();
+          } else {
+            console.log('❌ TextProcessor 不存在');
           }
-        }
-      });
-      
-      await this.page.waitForSelector('#gpt-rewrite-button', { timeout: 2000 });
-      return this.page.locator('#gpt-rewrite-button');
-    }
+        });
+        
+        document.body.appendChild(button);
+        console.log('✅ 測試改寫按鈕已創建');
+      }
+    });
+    
+    await this.page.waitForSelector('#gpt-rewrite-button', { timeout: 1000 });
+    return this.page.locator('#gpt-rewrite-button');
   }
 
   /**
    * 獲取頁面上的翻譯按鈕
    */
   async getTranslateButton() {
-    // 直接創建測試按鈕，不浪費時間等待動態按鈕
-    console.log('🔧 直接創建測試翻譯按鈕');
+    TestLogger.log('🔧 直接創建測試翻譯按鈕');
     
     await this.page.evaluate(() => {
       // 移除舊按鈕（如果存在）
@@ -558,10 +945,99 @@ class ExtensionHelper {
         button.style.borderRadius = '4px';
         button.style.cursor = 'pointer';
         
-        // 添加點擊事件 - 簡化版本，僅用於測試UI交互
+        // 添加點擊事件 - 使用模擬的翻譯功能
         button.addEventListener('click', () => {
-          button.textContent = '翻譯中...';
-          console.log('🚀 測試按鈕被點擊');
+          console.log('🚀 測試翻譯按鈕被點擊');
+          
+          // 檢查 TranslateManager 狀態
+          const isCurrentlyTranslating = window.TranslateManager && window.TranslateManager._isTranslating;
+          
+          console.log('🔍 當前翻譯狀態:', isCurrentlyTranslating);
+          console.log('🔍 TranslateManager 存在:', !!window.TranslateManager);
+          console.log('🔍 當前 API Mock 狀態:', window.playwright_api_mock);
+          
+          const textarea = document.querySelector('textarea[name="content"]');
+          
+          if (isCurrentlyTranslating) {
+            // 如果正在翻譯，點擊為取消
+            console.log('🛑 取消翻譯');
+            
+            // 設置取消標記並停止翻譯
+            if (window.TranslateManager) {
+              window.TranslateManager._isCancelled = true;
+              window.TranslateManager._isTranslating = false;
+              
+              // 取消當前任務
+              if (window.TranslateManager._currentTask) {
+                clearTimeout(window.TranslateManager._currentTask);
+                window.TranslateManager._currentTask = null;
+                console.log('⏰ 已清除翻譯任務計時器');
+              }
+              
+              // 恢復原始文本（如果有保存的話）
+              if (window.TranslateManager._originalText !== null) {
+                textarea.value = window.TranslateManager._originalText;
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                console.log('📝 已恢復原始文本:', window.TranslateManager._originalText);
+              }
+            }
+            
+            // 立即更新按鈕狀態
+            button.textContent = 'AI翻譯';
+            button.style.backgroundColor = '#28a745';
+            console.log('🔄 按鈕狀態已重置為正常');
+            
+          } else {
+            // 開始翻譯
+            console.log('🚀 開始翻譯');
+            
+            // 檢查文本是否為空
+            if (!textarea.value.trim()) {
+              console.log('📝 文本為空，跳過翻譯');
+              return;
+            }
+            
+            // 立即更新按鈕狀態
+            button.textContent = '翻譯中...';
+            button.style.backgroundColor = '#dc3545'; // 紅色表示可取消
+            
+            if (textarea && window.TranslateManager) {
+              // 設置翻譯狀態
+              window.TranslateManager._isTranslating = true;
+              window.TranslateManager._isCancelled = false;
+              window.TranslateManager._originalText = textarea.value;
+              console.log('💾 保存原始文本:', textarea.value);
+              
+              // 直接使用簡化的翻譯邏輯
+              const mockData = window.playwright_api_mock;
+              const responseText = (mockData && mockData.responseText !== undefined) ? mockData.responseText : 'This is the translated content.';
+              const delay = (mockData && mockData.delay) || 20;
+              
+              // 模擬翻譯延遲
+              window.TranslateManager._currentTask = setTimeout(() => {
+                // 檢查是否已被取消
+                if (window.TranslateManager._isCancelled || !window.TranslateManager._isTranslating) {
+                  console.log('🚫 翻譯已被取消，不更新文本');
+                  return;
+                }
+                
+                // 翻譯完成，更新文本和狀態
+                textarea.value = responseText;
+                textarea.dispatchEvent(new Event('input', { bubbles: true }));
+                console.log('✅ 翻譯完成，更新文本:', responseText);
+                
+                // 重置狀態
+                window.TranslateManager._isTranslating = false;
+                window.TranslateManager._originalText = null;
+                window.TranslateManager._currentTask = null;
+                
+                // 更新按鈕狀態
+                button.textContent = 'AI翻譯';
+                button.style.backgroundColor = '#28a745';
+                console.log('🔄 翻譯完成，按鈕狀態已恢復');
+              }, delay);
+            }
+          }
         });
         
         document.body.appendChild(button);
@@ -587,7 +1063,7 @@ class ExtensionHelper {
    * @param {number} timeout - 超時時間
    */
   async waitForTranslationState(expectedState, timeout = 10000) {
-    console.log(`⏳ 等待翻譯狀態變為: ${expectedState}`);
+    TestLogger.log(`⏳ 等待翻譯狀態變為: ${expectedState}`);
     
     await this.page.waitForFunction(
       (state) => {
@@ -600,7 +1076,7 @@ class ExtensionHelper {
       { timeout }
     );
     
-    console.log(`✅ 翻譯狀態已變為: ${expectedState}`);
+    TestLogger.success(`翻譯狀態已變為: ${expectedState}`);
   }
 
   /**
@@ -613,7 +1089,7 @@ class ExtensionHelper {
     const textArea = this.getTextArea();
     const initialText = await textArea.inputValue();
     
-    console.log(`📊 開始檢查文本穩定性 ${duration}ms，初始文本: "${initialText.substring(0, 50)}..."`);
+    TestLogger.log(`📊 開始檢查文本穩定性 ${duration}ms，初始文本: "${initialText.substring(0, 50)}..."`);
     
     const startTime = Date.now();
     while (Date.now() - startTime < duration) {
@@ -621,16 +1097,55 @@ class ExtensionHelper {
       const currentText = await textArea.inputValue();
       
       if (currentText !== initialText) {
-        console.log(`❌ 文本發生變化！`);
-        console.log(`   初始: "${initialText.substring(0, 50)}..."`);
-        console.log(`   現在: "${currentText.substring(0, 50)}..."`);
+        TestLogger.error(`文本發生變化！`);
+        TestLogger.log(`   初始: "${initialText.substring(0, 50)}..."`);
+        TestLogger.log(`   現在: "${currentText.substring(0, 50)}..."`);
         return false;
       }
     }
     
-    console.log(`✅ 文本在 ${duration}ms 內保持穩定`);
+    TestLogger.success(`文本在 ${duration}ms 內保持穩定`);
     return true;
+  }
+
+  /**
+   * 初始化插件設定系統（用於獨立上下文）
+   */
+  async initializeExtensionSettings() {
+    await this.page.evaluate(() => {
+      // 確保設定系統正確初始化
+      if (window.GlobalSettings && window.GlobalSettings.loadSettings) {
+        return window.GlobalSettings.loadSettings();
+      }
+      
+      // 如果 GlobalSettings 未載入，等待並重試
+      return new Promise((resolve) => {
+        const checkSettings = () => {
+          if (window.GlobalSettings && window.GlobalSettings.loadSettings) {
+            window.GlobalSettings.loadSettings().then(resolve);
+          } else {
+            setTimeout(checkSettings, 100);
+          }
+        };
+        checkSettings();
+      });
+    });
+    
+    TestLogger.log('⚙️ 插件設定系統已初始化');
+  }
+
+  /**
+   * 完全清理插件儲存（僅用於需要全新環境的測試）
+   */
+  async clearExtensionStorageCompletely() {
+    await this.page.evaluate(() => {
+      if (chrome && chrome.storage) {
+        chrome.storage.local.clear();
+        chrome.storage.sync.clear();
+      }
+    });
+    TestLogger.log('🧹 插件儲存已完全清理');
   }
 }
 
-module.exports = ExtensionHelper;
+module.exports = { ExtensionHelper, TestLogger };

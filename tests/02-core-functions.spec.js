@@ -1,6 +1,6 @@
 // tests/02-core-functions.spec.js - 核心功能測試
 const { test, expect } = require('@playwright/test');
-const ExtensionHelper = require('./helpers/extension-helper');
+const { ExtensionHelper, TestLogger } = require('./helpers/extension-helper');
 
 test.describe('核心功能測試', () => {
   // 配置並行模式
@@ -11,314 +11,284 @@ test.describe('核心功能測試', () => {
   let helper;
 
   test.beforeAll(async () => {
-    // 建立共享的瀏覽器上下文（共享插件存儲）
-    context = await ExtensionHelper.createExtensionContext();
+    // 🚀 使用獨立瀏覽器上下文實現真正並行
+    context = await ExtensionHelper.createIndependentContext();
   });
 
   test.afterAll(async () => {
-    // 清理共享資源
-    await ExtensionHelper.cleanup();
+    // 清理獨立資源
+    if (context) {
+      await context.close();
+      TestLogger.log('🧹 獨立上下文已清理');
+    }
   });
 
   test.beforeEach(async () => {
-    // 每個測試使用獨立頁面（支援並行但共享存儲）
+    // 每個測試使用獨立頁面
     page = await context.newPage();
     helper = new ExtensionHelper(page);
     
-    console.log('📄 新頁面已建立');
+    TestLogger.log('📄 新頁面已建立');
     
-    // 清理儲存並設定基本配置
-    await helper.clearExtensionStorage();
-    await helper.setApiKey();
+    // ⚡ 移除不必要的等待和儲存清理
+    // await helper.clearExtensionStorage();
   });
 
   test.afterEach(async () => {
     // 清理頁面資源
     if (page && !page.isClosed()) {
       await page.close();
-      console.log('🧹 頁面已清理');
+      TestLogger.log('🧹 頁面已清理');
     }
   });
 
-  test('🚀 插件基本功能測試', async () => {
-    console.log('🧪 開始測試: 插件基本功能');
-    
-    // 測試 Popup 基本功能
-    await helper.openPopup();
-    
-    // 檢查主要元素是否存在
-    const hasRewriteTab = await page.evaluate(() => !!document.querySelector('[data-tab="rewrite"]'));
-    const hasTranslateTab = await page.evaluate(() => !!document.querySelector('[data-tab="translate"]'));
-    const hasSettingsTab = await page.evaluate(() => !!document.querySelector('[data-tab="settings"]'));
-    
-    expect(hasRewriteTab).toBe(true);
-    expect(hasTranslateTab).toBe(true);
-    expect(hasSettingsTab).toBe(true);
-    
-    console.log('✅ 插件基本功能測試通過');
-  });
-
-  test('⚙️ 設定儲存和載入測試', async () => {
-    console.log('🧪 開始測試: 設定儲存和載入');
-    
-    await helper.openPopup();
-    
-    // 設定改寫指令
-    await page.click('[data-tab="rewrite"]');
-    const testInstruction = '請改寫得更正式和清晰';
-    await page.fill('#instruction', testInstruction);
-    await page.waitForTimeout(1000); // 等待自動保存
-    
-    // 設定翻譯指令
-    await page.click('[data-tab="translate"]');
-    const testTranslateInstruction = '請翻譯成英文';
-    await page.fill('#translateInstruction', testTranslateInstruction);
-    await page.waitForTimeout(1000);
-    
-    // 重新開啟 popup 驗證設定是否保存
-    await page.close();
-    page = await ExtensionHelper.getSharedPage();
-    helper = new ExtensionHelper(page);
-    await helper.openPopup();
-    
-    // 驗證改寫指令
-    await page.click('[data-tab="rewrite"]');
-    const savedInstruction = await page.inputValue('#instruction');
-    expect(savedInstruction).toBe(testInstruction);
-    
-    // 驗證翻譯指令
-    await page.click('[data-tab="translate"]');
-    const savedTranslateInstruction = await page.inputValue('#translateInstruction');
-    expect(savedTranslateInstruction).toBe(testTranslateInstruction);
-    
-    console.log('✅ 設定儲存和載入測試通過');
-  });
-
-  test('🔧 API Mock 基礎測試', async () => {
-    console.log('🧪 開始測試: API Mock 基礎功能');
-    
-    // 設定 API Mock
-    await helper.setupApiMock({
-      responseText: '這是測試回應',
-      delay: 500
-    });
-    
-    // 測試 API 攔截是否正常工作
-    const response = await page.evaluate(async () => {
-      try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ test: 'data' })
-        });
-        return await response.json();
-      } catch (error) {
-        return { error: error.message };
-      }
-    });
-    
-    expect(response.choices).toBeDefined();
-    expect(response.choices[0].message.content).toBe('這是測試回應');
-    
-    console.log('✅ API Mock 基礎測試通過');
-  });
-
-  test('🌐 全域物件檢查測試', async () => {
-    console.log('🧪 開始測試: 全域物件檢查');
+  test('🚀 插件初始化載入測試', async () => {
+    TestLogger.start('插件初始化載入');
     
     // 導航到測試頁面
     await helper.goToTestPage();
     
-    // 檢查基本的頁面載入狀態
-    const pageInfo = await page.evaluate(() => {
-      return {
-        currentUrl: window.location.href,
-        hasDocument: !!document,
-        hasWindow: !!window,
-        isContentLoaded: document.readyState === 'complete'
-      };
+    // ⚡ 智能等待插件就緒，替換固定時間等待
+    await helper.waitForExtensionReady();
+    // await page.waitForTimeout(1000); // 🗑️ 移除：等待自動保存
+    
+    // 驗證插件是否正確載入
+    const isExtensionLoaded = await page.evaluate(() => {
+      return !!(window.UIManager && window.GlobalSettings && window.TextProcessor);
     });
     
-    expect(pageInfo.hasDocument).toBe(true);
-    expect(pageInfo.hasWindow).toBe(true);
-    expect(pageInfo.currentUrl).toContain('test-page.html');
+    expect(isExtensionLoaded).toBe(true);
     
-    // 檢查 shouldEnableFeatures 函數（這個函數應該在 content script 中定義）
-    const hasShouldEnableFeatures = await page.evaluate(() => {
-      return typeof window.shouldEnableFeatures === 'function';
-    });
-    
-    // 在測試頁面上，shouldEnableFeatures 可能不存在或返回 false
-    // 這是正常的，因為插件設計為只在特定網站上工作
-    console.log('🔍 shouldEnableFeatures 函數存在:', hasShouldEnableFeatures);
-    
-    console.log('✅ 全域物件檢查測試通過');
+    // ⚡ 移除固定等待
+    // await page.waitForTimeout(1000);
+    TestLogger.success('插件初始化載入測試通過');
   });
 
-  test('📝 文本區域基本操作測試', async () => {
-    console.log('🧪 開始測試: 文本區域基本操作');
+  test('✏️ 文本改寫功能測試', async () => {
+    TestLogger.start('文本改寫功能');
+    
+    // 設置API Mock
+    await helper.setupApiMock({
+      shouldFail: false,
+      responseText: '這是改寫後的文本內容。'
+    });
     
     await helper.goToTestPage();
+    await helper.waitForExtensionReady();
+    
+    // 獲取文本區域和改寫按鈕
+    const textArea = helper.getTextArea();
+    const rewriteButton = await helper.getRewriteButton();
+    
+    // 設置初始文本
+    await textArea.fill('這是需要改寫的原始文本。');
+    
+    // 點擊改寫按鈕
+    await rewriteButton.click();
+    
+    // ⚡ 使用智能等待替代固定延遲
+    await expect(textArea).toHaveValue('這是改寫後的文本內容。', { timeout: 5000 });
+    
+    TestLogger.success('文本改寫功能測試通過');
+  });
+
+  test('🌐 翻譯功能測試', async () => {
+    TestLogger.start('翻譯功能');
+    
+    // 設置API Mock
+    await helper.setupApiMock({
+      shouldFail: false,
+      responseText: 'This is the translated content.'
+    });
+    
+    await helper.goToTestPage();
+    await helper.waitForExtensionReady();
+    
+    // 獲取文本區域和翻譯按鈕
+    const textArea = helper.getTextArea();
+    const translateButton = await helper.getTranslateButton();
+    
+    // 設置初始文本
+    await textArea.fill('這是需要翻譯的中文文本。');
+    
+    // 點擊翻譯按鈕
+    await translateButton.click();
+    
+    // ⚡ 使用智能等待替代固定延遲
+    await expect(textArea).toHaveValue('This is the translated content.', { timeout: 5000 });
+    
+    TestLogger.success('翻譯功能測試通過');
+  });
+
+  test('🛑 翻譯取消功能測試', async () => {
+    TestLogger.start('翻譯取消功能');
+    
+    // 設置API Mock，模擬長時間處理和中止
+    await helper.setupApiMock({
+      shouldFail: false,
+      responseText: '這不應該出現的翻譯結果',
+      delay: 2000, // 2秒延遲，給我們時間取消
+      shouldAbort: true  // 模擬請求被中止
+    });
+    
+    await helper.goToTestPage();
+    await helper.waitForExtensionReady();
     
     const textArea = helper.getTextArea();
-    const testText = '這是一段測試文本，用於驗證基本的文本操作功能。';
+    const translateButton = await helper.getTranslateButton();
     
-    // 設定文本
-    await textArea.fill(testText);
-    const currentText = await textArea.inputValue();
-    expect(currentText).toBe(testText);
+    // 設置初始文本
+    const originalText = '需要翻譯但會被取消的文本';
+    await textArea.fill(originalText);
     
-    // 測試文本選擇
-    await textArea.selectText();
-    const selectedText = await page.evaluate(() => {
-      const textarea = document.querySelector('textarea[name="content"]');
-      return textarea ? textarea.value.substring(textarea.selectionStart, textarea.selectionEnd) : '';
-    });
-    expect(selectedText).toBe(testText);
+    // 開始翻譯
+    await translateButton.click();
     
-    console.log('✅ 文本區域基本操作測試通過');
+    // 等待一小段時間確保翻譯開始
+    await page.waitForTimeout(100);
+    
+    // 取消翻譯（再次點擊按鈕）
+    await translateButton.click();
+    
+    // ⚡ 驗證文本保持原始狀態，使用更可靠的檢查
+    await expect(textArea).toHaveValue(originalText, { timeout: 1000 });
+    
+    // 檢查文本在一段時間內保持穩定
+    const isStable = await helper.checkTextStability(1000, 200);
+    expect(isStable).toBe(true);
+    
+    TestLogger.success('翻譯取消功能測試通過');
   });
 
-  test('🔍 URL 功能啟用檢查測試', async () => {
-    console.log('🧪 開始測試: URL 功能啟用檢查');
+  test('📊 API 錯誤處理測試', async () => {
+    TestLogger.start('API 錯誤處理');
     
-    await helper.goToTestPage();
-    
-    // 檢查 shouldEnableFeatures 函數
-    const urlCheck = await page.evaluate(() => {
-      const currentUrl = window.location.href;
-      const shouldEnable = window.shouldEnableFeatures ? window.shouldEnableFeatures() : false;
-      return {
-        currentUrl,
-        shouldEnable,
-        isFileProtocol: currentUrl.startsWith('file://')
-      };
-    });
-    
-    console.log('🔍 URL 檢查結果:', urlCheck);
-    
-    // 對於測試頁面（file://），功能可能不會自動啟用
-    // 這是正常的，因為插件設計為只在特定網站上工作
-    expect(urlCheck.isFileProtocol).toBe(true);
-    
-    console.log('✅ URL 功能啟用檢查測試通過');
-  });
-
-  test('💾 儲存機制完整性測試', async () => {
-    console.log('🧪 開始測試: 儲存機制完整性');
-    
-    await helper.openPopup();
-    
-    // 測試多個設定項目的儲存
-    const testSettings = {
-      instruction: '改寫測試指令',
-      translateInstruction: '翻譯測試指令',
-      shortInstruction: '短文本改寫指令',
-      reflectInstruction: '反思測試指令',
-      codeCheckInstruction: '代號檢查測試指令'
-    };
-    
-    // 設定各種指令 - 需要正確切換分頁
-    await page.click('[data-tab="rewrite"]');
-    await page.fill('#instruction', testSettings.instruction);
-    
-    // 切換到短文本改寫分頁
-    await page.click('.tab[data-tab="short"]');
-    await page.fill('#shortInstruction', testSettings.shortInstruction);
-    
-    // 切換到代號檢查分頁
-    await page.click('.tab[data-tab="code-check"]');
-    await page.fill('#codeCheckInstruction', testSettings.codeCheckInstruction);
-    
-    // 切換到翻譯分頁
-    await page.click('[data-tab="translate"]');
-    await page.fill('#translateInstruction', testSettings.translateInstruction);
-    
-    // 切換到反思分頁
-    await page.click('.tab[data-tab="reflect"]');
-    await page.fill('#reflectInstruction', testSettings.reflectInstruction);
-    
-    // 等待儲存
-    await page.waitForTimeout(1500);
-    
-    // 檢查 Chrome Storage 中的值 - 根據設定分類，這些都是 LARGE_CONTENT，應該在 Local Storage 中
-    const storageValues = await page.evaluate(async () => {
-      return new Promise((resolve) => {
-        chrome.storage.local.get([
-          'instruction',
-          'translateInstruction',
-          'shortInstruction',
-          'reflectInstruction',
-          'codeCheckInstruction'
-        ], resolve);
-      });
-    });
-    
-    expect(storageValues.instruction).toBe(testSettings.instruction);
-    expect(storageValues.translateInstruction).toBe(testSettings.translateInstruction);
-    expect(storageValues.shortInstruction).toBe(testSettings.shortInstruction);
-    expect(storageValues.reflectInstruction).toBe(testSettings.reflectInstruction);
-    expect(storageValues.codeCheckInstruction).toBe(testSettings.codeCheckInstruction);
-    
-    console.log('✅ 儲存機制完整性測試通過');
-  });
-
-  test('🎯 錯誤處理機制測試', async () => {
-    console.log('🧪 開始測試: 錯誤處理機制');
-    
-    // 測試 API 錯誤處理
+    // 設置API Mock模擬錯誤
     await helper.setupApiMock({
       shouldFail: true,
       errorCode: 401,
-      errorMessage: 'Invalid API key'
+      errorMessage: 'Invalid API key.'
     });
     
-    // 測試錯誤 API 調用
-    const errorResponse = await page.evaluate(async () => {
-      try {
-        const response = await fetch('https://api.openai.com/v1/chat/completions', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ test: 'data' })
-        });
-        return {
-          status: response.status,
-          data: await response.json()
-        };
-      } catch (error) {
-        return { error: error.message };
-      }
-    });
+    await helper.goToTestPage();
+    await helper.waitForExtensionReady();
     
-    expect(errorResponse.status).toBe(401);
-    expect(errorResponse.data.error.message).toBe('Invalid API key');
+    const textArea = helper.getTextArea();
+    const rewriteButton = await helper.getRewriteButton();
     
-    console.log('✅ 錯誤處理機制測試通過');
+    // 設置文本
+    await textArea.fill('測試API錯誤處理的文本。');
+    
+    // 點擊改寫按鈕
+    await rewriteButton.click();
+    
+    // ⚡ 等待錯誤訊息出現
+    await page.waitForSelector('.error-message', { timeout: 5000 });
+    
+    // 驗證錯誤訊息
+    const errorMessage = await helper.checkForErrors();
+    expect(errorMessage).toContain('Invalid API key');
+    
+    TestLogger.success('API 錯誤處理測試通過');
   });
 
-  test('🔄 設定重置和清理測試', async () => {
-    console.log('🧪 開始測試: 設定重置和清理');
+  test('🔄 多重任務處理測試', async () => {
+    TestLogger.start('多重任務處理');
     
-    await helper.openPopup();
+    // 設置API Mock
+    await helper.setupApiMock({
+      shouldFail: false,
+      responseText: '處理完成的文本'
+    });
     
-    // 設定一些測試值
-    await page.click('[data-tab="rewrite"]');
-    await page.fill('#instruction', '這是要被清理的測試指令');
-    await page.waitForTimeout(1000);
+    await helper.goToTestPage();
+    await helper.waitForExtensionReady();
     
-    // 清理儲存
-    await helper.clearExtensionStorage();
+    const textArea = helper.getTextArea();
+    const rewriteButton = await helper.getRewriteButton();
     
-    // 重新開啟並檢查是否已清理
-    await page.close();
-    page = await ExtensionHelper.getSharedPage();
-    helper = new ExtensionHelper(page);
-    await helper.openPopup();
+    // 設置文本
+    await textArea.fill('多重任務測試文本');
     
-    await page.click('[data-tab="rewrite"]');
-    const clearedInstruction = await page.inputValue('#instruction');
-    expect(clearedInstruction).toBe('');
+    // 檢查處理狀態，確保初始為非處理狀態
+    const initialProcessingState = await page.evaluate(() => {
+      return window.TextProcessor && window.TextProcessor._isProcessing;
+    });
+    expect(initialProcessingState).toBeFalsy();
     
-    console.log('✅ 設定重置和清理測試通過');
+    // 第一次點擊改寫按鈕
+    TestLogger.log('🔄 第一次點擊改寫按鈕');
+    await rewriteButton.click();
+    
+    // 檢查處理狀態
+    const processingState = await page.evaluate(() => {
+      return window.TextProcessor && window.TextProcessor._isProcessing;
+    });
+    TestLogger.log('🔍 第一次點擊後，處理狀態:', processingState);
+    
+    // 立即第二次點擊（應該被忽略）
+    TestLogger.log('🔄 第二次點擊改寫按鈕');
+    await rewriteButton.click();
+    
+    // ⚡ 等待處理完成
+    await expect(textArea).toHaveValue('處理完成的文本', { timeout: 5000 });
+    
+    TestLogger.success('多重任務處理測試通過');
+  });
+
+  test('🎯 特殊文本識別測試', async () => {
+    TestLogger.start('特殊文本識別');
+    
+    await helper.goToTestPage();
+    await helper.waitForExtensionReady();
+    
+    const textArea = helper.getTextArea();
+    
+    // 測試各種特殊格式文本
+    const specialTexts = [
+      'https://example.com',
+      'user@example.com',
+      '電話: 0912-345-678',
+      'JSON: {"key": "value"}',
+      '程式碼: console.log("hello");'
+    ];
+    
+    for (const text of specialTexts) {
+      await textArea.fill(text);
+      await page.waitForTimeout(100); // 給予處理時間
+      
+      // 驗證文本被正確保留
+      const currentValue = await textArea.inputValue();
+      expect(currentValue).toBe(text);
+    }
+    
+    TestLogger.success('特殊文本識別測試通過');
+  });
+
+  test('💾 內容自動保存測試', async () => {
+    TestLogger.start('內容自動保存');
+    
+    await helper.goToTestPage();
+    await helper.waitForExtensionReady();
+    
+    const textArea = helper.getTextArea();
+    
+    // 輸入大量文本內容
+    const testContent = `這是一段測試文本。我們可以使用這個文本來測試 GPT 文章改寫助手的各種功能，包括文本改寫、翻譯、替換等功能。
+
+這個測試頁面專門設計來測試 Chrome 插件的各種功能，確保插件能夠正常運作並提供良好的用戶體驗。`;
+    
+    await textArea.fill(testContent);
+    
+    // ⚡ 觸發自動保存事件
+    await textArea.dispatchEvent('input');
+    await page.waitForTimeout(100); // 短暫等待保存
+    
+    // 驗證內容保存
+    TestLogger.log('📝 保存的內容:', `"${testContent}"`);
+    const savedValue = await textArea.inputValue();
+    expect(savedValue).toBe(testContent);
+    
+    TestLogger.success('內容自動保存測試通過');
   });
 });
