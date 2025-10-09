@@ -14,13 +14,22 @@ const path = require('path');
   console.log('📁 插件路徑:', extensionPath);
   console.log('');
   
+  // 建立臨時用戶資料目錄
+  const fs = require('fs');
+  const os = require('os');
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'chrome-test-'));
+  
+  console.log('📁 臨時資料夾:', tempDir);
+  console.log('');
+  
   // 啟動瀏覽器並加載插件
-  const context = await chromium.launchPersistentContext('', {
+  const context = await chromium.launchPersistentContext(tempDir, {
     headless: false,
     args: [
       `--disable-extensions-except=${extensionPath}`,
       `--load-extension=${extensionPath}`,
-      '--no-sandbox'
+      '--no-sandbox',
+      '--disable-web-security'
     ]
   });
   
