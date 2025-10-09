@@ -1,5 +1,7 @@
 /**
- * 自動點擊管理器
+ * 自動點擊管理器 (已停用)
+ * 
+ * 注意：此功能已於 2025-01-02 停用，不再自動點擊小助理按鈕
  * 
  * 依賴模組：
  * 1. ua_assistant/key-points-summary.js
@@ -10,7 +12,7 @@
  *    - MutationObserver：監聽頁面變化
  *    - document.querySelector：查找 DOM 元素
  * 
- * 主要功能：
+ * 原主要功能（已停用）：
  * - 監控股票代碼變化
  * - 自動點擊"近況發展"按鈕
  * - 監控頁面狀態變化
@@ -27,8 +29,16 @@ const AutoClickManager = {
   
   /**
    * 初始化函數
+   * 注意：自動點擊功能已停用 (2025-01-02)
    */
   initialize() {
+    // 自動點擊功能已停用，直接返回
+    LogUtils.log('AutoClickManager 自動點擊功能已停用');
+    this.isInitialized = true;
+    return;
+    
+    // 以下代碼已停用，保留以備將來需要時重新啟用
+    /*
     // 檢查是否已經初始化
     if (this.isInitialized) {
       LogUtils.log('AutoClickManager 已經初始化，跳過');
@@ -80,6 +90,7 @@ const AutoClickManager = {
         this.checkButtonPeriodically();
       }
     });
+    */
   },
 
   /**

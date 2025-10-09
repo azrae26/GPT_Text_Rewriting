@@ -3,7 +3,7 @@
  * 
  * 依賴模組：
  * 1. ua_assistant/auto-click.js
- *    - AutoClickManager.initialize：初始化自動點擊功能
+ *    - AutoClickManager.initialize：初始化自動點擊功能 (已停用)
  *    - AutoClickManager.onStockChange：監聽股票變化
  * 
  * 2. settings/settings-manager.js
