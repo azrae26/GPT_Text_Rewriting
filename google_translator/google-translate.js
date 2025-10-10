@@ -15,6 +15,13 @@
  * - Chrome Storage API：儲存和讀取 API 憑證
  * - JWT Helper：生成 OAuth 2.0 認證令牌
  * - Notification：進度通知和狀態顯示
+ * 
+ * ⚙️ API 設定資訊 (2025-10-10)
+ * - Google 帳號：azrae26@gmail.com
+ * - 專案 ID：gen-lang-client-0507957210
+ * - 免費配額：500,000 字元/月
+ * - 每分鐘限制：3,000,000 字元
+ * - 計費警告：$10 USD
  */
 
 // 常數配置
@@ -509,6 +516,22 @@ window.GoogleTranslateManager = {
       }
       LogUtils.error(`批次 ${batchIndex + 1} Google 翻譯錯誤:`, error);
       this.pendingTranslations.delete(batchIndex);
+      
+      // ❌ 發生錯誤時，停止整個翻譯流程
+      clearTimeout(this.timeoutId);
+      
+      // 顯示錯誤通知
+      let errorMessage = 'Google 翻譯失敗';
+      if (error.message.includes('429') || error.message.includes('RESOURCE_EXHAUSTED')) {
+        errorMessage = 'Google 翻譯配額已用完\n請稍後再試或檢查配額設定';
+      } else if (error.message.includes('401') || error.message.includes('認證')) {
+        errorMessage = 'Google 翻譯認證失敗\n請檢查 API 金鑰設定';
+      }
+      
+      await window.Notification.showNotification(errorMessage, false);
+      
+      // 重置翻譯狀態和按鈕
+      this.resetTranslation();
     }
   },
 

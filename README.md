@@ -94,7 +94,61 @@ AI 文章改寫助手是一個 Chrome 擴展，專為提升文章寫作效率而
 - StockManager 和 StockCrawlerController 已暴露為全局變數
 - popup.html 已正確引入股票控制器腳本
 
-## 最新更新 (2025/06/08)
+## 最新更新 (2025/10/10)
+
+### Google Translation API 設定完成
+
+**API 設定資訊**：
+- **Google 帳號**：azrae26@gmail.com
+- **專案 ID**：gen-lang-client-0507957210
+- **專案編號**：862665835661
+- **免費配額**：500,000 字元/月
+- **每分鐘限制**：3,000,000 字元
+- **計費狀態**：已啟用（Mastercard •••• 3513）
+- **預算警告**：已設定 $100 USD 警告
+
+**設定步驟完成**：
+1. ✅ 啟用 Cloud Translation API
+2. ✅ 建立服務帳戶 (translation-service)
+3. ✅ 連結計費帳戶
+4. ✅ 設定預算警告
+5. ✅ 配額設定完成（每日無限制，每分鐘 300 萬字元）
+6. ✅ 測試翻譯成功
+
+**使用建議**：
+- 定期查看使用量：https://console.cloud.google.com/apis/api/translate.googleapis.com/metrics?project=gen-lang-client-0507957210
+- 定期查看費用：https://console.cloud.google.com/billing
+- 免費額度：每月前 50 萬字元免費
+- 超過後費用：$20 USD / 1 百萬字元
+
+---
+
+### 修復：Google 翻譯錯誤處理問題
+
+**問題描述**：
+- Google 翻譯 API 發生錯誤（如 429 配額超限）時，按鈕停留在「取消」狀態
+- 計時器繼續運行，用戶無法再次點擊按鈕
+- 沒有顯示友善的錯誤訊息
+
+**根本原因**：
+- `processNextBatch()` 的 catch 區塊只記錄錯誤，沒有完整清理翻譯狀態
+- 未清除計時器（timeoutId）
+- 未重置按鈕狀態和翻譯變數
+
+**解決方案**：
+- 在錯誤處理中添加 `clearTimeout(this.timeoutId)` 停止計時器
+- 根據錯誤類型（429配額/401認證/其他）顯示友善的錯誤訊息
+- 呼叫 `resetTranslation()` 完整重置翻譯狀態和按鈕
+- 確保用戶能夠在錯誤後繼續使用功能
+
+**影響範圍**：
+- 檔案：`google_translator/google-translate.js`
+- 方法：`processNextBatch()`
+- 改善使用者體驗，特別是在 API 配額用完時
+
+---
+
+## 歷史更新 (2025/06/08)
 
 ### 修復：Popup 關閉後同步停止問題
 
