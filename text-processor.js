@@ -166,7 +166,7 @@ const TextProcessor = {
   },
 
   /**
-   * 發送 API 請求
+   * 發送 API 請求（通過 Background Script 避免 CORS）
    * @param {string} endpoint - API 端點
    * @param {Object} body - 請求體
    * @param {string} apiKey - API 金鑰
@@ -189,7 +189,6 @@ const TextProcessor = {
     }
 
     const controller = new AbortController();
-    const signal = controller.signal;
 
     // 註冊到活動請求集合
     if ((isTranslation && window.TranslateManager?.activeRequests) || 
@@ -219,29 +218,28 @@ const TextProcessor = {
     }
 
     try {
-      LogUtils.log('開始發送 fetch 請求');
-      const response = await fetch(
-        isGemini ? `${endpoint}?key=${apiKey}` : endpoint,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(!isGemini ? {'Authorization': `Bearer ${apiKey}`} : {})
-          },
-          body: JSON.stringify(body),
-          signal: signal
-        }
-      );
+      LogUtils.log('🌐 透過 Background Script 發送 API 請求');
+      
+      // 🆕 通過 Background Script 發送請求（避免 CORS）
+      const response = await chrome.runtime.sendMessage({
+        action: 'apiRequest',
+        endpoint,
+        body,
+        apiKey,
+        isGemini
+      });
 
-      // 檢查API響應
-      LogUtils.log('收到 API 響應');
-      if (!response.ok) {
-        const errorData = await response.json();
-        LogUtils.error('API 錯誤響應:', errorData);
-        throw new Error(`HTTP error! status: ${response.status}, message: ${JSON.stringify(errorData)}`);
+      // 檢查 Background Script 的響應
+      if (!response) {
+        throw new Error('Background Script 無響應');
       }
 
-      const data = await response.json();
+      if (!response.success) {
+        LogUtils.error('API 錯誤響應:', response.errorData || response.error);
+        throw new Error(response.error || 'API 請求失敗');
+      }
+
+      const data = response.data;
       LogUtils.log('成功解析 API 響應:', data);
 
       // 處理 Gemini API 的安全限制回應

@@ -1449,6 +1449,60 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // 保持連接等待異步響應
   }
 
+  // 處理 API 請求（解決 CORS 問題）
+  if (request.action === 'apiRequest') {
+    const handleApiRequest = async () => {
+      try {
+        const { endpoint, body, apiKey, isGemini } = request;
+        
+        LogUtils.log('🌐 [Background] 處理 API 請求:', { 
+          endpoint: endpoint.substring(0, 50) + '...', 
+          isGemini,
+          bodySize: JSON.stringify(body).length 
+        });
+        
+        const fetchUrl = isGemini ? `${endpoint}?key=${apiKey}` : endpoint;
+        const headers = {
+          'Content-Type': 'application/json'
+        };
+        
+        if (!isGemini) {
+          headers['Authorization'] = `Bearer ${apiKey}`;
+        }
+        
+        const response = await fetch(fetchUrl, {
+          method: 'POST',
+          headers: headers,
+          body: JSON.stringify(body)
+        });
+        
+        LogUtils.log('📡 [Background] 收到 API 響應:', { status: response.status, ok: response.ok });
+        
+        if (!response.ok) {
+          const errorData = await response.json();
+          LogUtils.error('❌ [Background] API 錯誤響應:', errorData);
+          sendResponse({ 
+            success: false, 
+            error: `HTTP error! status: ${response.status}`, 
+            errorData 
+          });
+          return;
+        }
+        
+        const data = await response.json();
+        LogUtils.log('✅ [Background] API 請求成功');
+        sendResponse({ success: true, data });
+        
+      } catch (error) {
+        LogUtils.error('❌ [Background] API 請求失敗:', error);
+        sendResponse({ success: false, error: error.message });
+      }
+    };
+    
+    handleApiRequest();
+    return true; // 保持連接等待異步響應
+  }
+
   // 🐛 調試：處理來自 content script 的調試訊息
   if (request.action === 'debug') {
     handleDebugMessage(request, sender);
