@@ -313,6 +313,102 @@ const TextProcessor = {
   /**
    * 執行文字改寫 (修改後的版本)
    */
+  /**
+   * 重述文字（使用重述指令和模型）
+   * @param {string} textToRephrase - 要重述的文字（可選，預設使用textArea內容）
+   */
+  async rephraseText(textToRephrase) {
+    try {
+      LogUtils.log('開始 rephraseText 函數');
+      const settings = await window.GlobalSettings.loadSettings();
+      LogUtils.log('載入的設置:', settings);
+
+      const textArea = document.querySelector('textarea[name="content"]');
+      if (!textArea) throw new Error('找不到文本區域');
+
+      const originalTextToRephrase = textToRephrase || textArea.value;
+      if (!originalTextToRephrase || !originalTextToRephrase.trim()) {
+        throw new Error('找不到要重述的文字');
+      }
+
+      // 檢查重述指令
+      if (!settings.rephraseInstruction || !settings.rephraseInstruction.trim()) {
+        throw new Error('重述指令不能為空');
+      }
+
+      // 選擇模型
+      const model = settings.rephraseModel || window.GlobalSettings.getDefaultModel();
+      LogUtils.log('選擇的原始模型:', model);
+      
+      if (!model) {
+        throw new Error('沒有可用的模型，請先添加自定義模型或選擇重述模型');
+      }
+
+      // 檢查API金鑰
+      const isGemini = model.startsWith('gemini');
+      const apiType = window.GlobalSettings.getModelApiType(model);
+      LogUtils.log('API 類型:', apiType);
+      
+      const apiKeyName = window.GlobalSettings.getApiKeyNameForModel(model);
+      LogUtils.log('API 金鑰名稱:', apiKeyName);
+      
+      if (!apiKeyName) {
+        throw new Error(`無法為模型 ${model} 找到對應的 API 金鑰類型`);
+      }
+      
+      const apiKey = settings.apiKeys[apiKeyName];
+      LogUtils.log('找到的 API 金鑰:', apiKey ? `${apiKey.substring(0, 5)}...` : 'undefined');
+      
+      if (!apiKey || !apiKey.trim()) {
+        throw new Error(`未找到 ${apiType === 'gemini' ? 'Gemini' : apiType === 'openai' ? 'OpenAI' : apiType} 的 API 金鑰，請先設置對應的 API 金鑰`);
+      }
+
+      LogUtils.log('使用的 API 金鑰:', apiKey.substring(0, 5) + '...');
+
+      // 顯示通知
+      await window.Notification.showNotification(`
+        模型: ${window.GlobalSettings.getModelDisplayName(model)}<br>
+        API KEY: ${apiKey.substring(0, 5)}...<br>
+        正在重述文字
+      `, true);
+
+      // 準備API請求
+      const { endpoint, body } = this._prepareApiConfig(
+        model, 
+        originalTextToRephrase, 
+        settings.rephraseInstruction,
+        []
+      );
+      const rephrasedText = await this._sendRequest(endpoint, body, apiKey, isGemini, false, 'rephrase');
+
+      LogUtils.log('重述前文本:', originalTextToRephrase);
+      LogUtils.log('重述後的文本:', rephrasedText);
+
+      // 添加到歷史紀錄
+      window.UndoManager.addToHistory(textArea.value, textArea);
+
+      // 更新文本區域
+      LogUtils.log('更新前的文本區域值:', textArea.value);
+      textArea.value = rephrasedText.trim();
+      LogUtils.log('更新後的文本區域值:', textArea.value);
+      textArea.dispatchEvent(new Event('input', { bubbles: true }));
+      LogUtils.log('已觸發輸入事件');
+
+      // 更新通知
+      await window.Notification.showNotification(`
+        模型: ${window.GlobalSettings.getModelDisplayName(model)}<br>
+        API KEY: ${apiKey.substring(0, 5)}...<br>
+        重述完成
+      `, false);
+
+      return rephrasedText.trim();
+    } catch (error) {
+      LogUtils.error('rephraseText 函數出錯:', error);
+      await window.Notification.showNotification(`重述錯誤: ${error.message}`, false);
+      throw error;
+    }
+  },
+
   async rewriteText(textToRewrite, isAutoRewrite = false, context = []) {
     try {
       LogUtils.log('開始 rewriteText 函數');

@@ -624,7 +624,7 @@ const ModelManager = {
     // 需要更新的模型選擇器元素
     const modelSelectorsIds = [
       'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel',
-      'translateModel', 'generateModel', 'reflect1Model',
+      'rephraseModel', 'translateModel', 'generateModel', 'reflect1Model',
       'generationOptimize_1_Model', 'reflect2Model', 'generationOptimize_2_Model',
       'reflect3Model', 'generationOptimize_3_Model', 'summaryModel',
       'codeCheckModel', 'reflectModel', 'optimizeModel'

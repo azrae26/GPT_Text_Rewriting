@@ -78,6 +78,43 @@ const UIManager = {
 
     buttonContainer.appendChild(rewriteButton);
 
+    // 創建重述按鈕
+    const rephraseButton = document.createElement('button');
+    rephraseButton.id = 'gpt-rephrase-button';
+    rephraseButton.textContent = '重述';
+    rephraseButton.addEventListener('click', async function() {
+      try {
+        const textArea = document.querySelector('textarea[name="content"]');
+        if (!textArea || !textArea.value.trim()) {
+          alert('請先輸入要重述的內容');
+          return;
+        }
+
+        const settings = await window.GlobalSettings.loadSettings();
+        // 檢查是否有任何可用的 API 金鑰
+        const hasAnyApiKey = Object.values(settings.apiKeys || {}).some(key => key && key.trim());
+        if (!hasAnyApiKey) {
+          throw new Error('請先設置 API 金鑰');
+        }
+        if (!settings.rephraseInstruction || !settings.rephraseInstruction.trim()) {
+          alert('請設置重述要求');
+          return;
+        }
+        
+        this.disabled = true;
+        // 使用重述指令和模型
+        await window.TextProcessor.rephraseText();
+        LogUtils.log('重述完成');
+      } catch (error) {
+        LogUtils.error('重述錯誤:', error);
+        alert('重述錯誤: ' + error.message);
+      } finally {
+        this.disabled = false;
+      }
+    });
+
+    buttonContainer.appendChild(rephraseButton);
+
     // 創建翻譯按鈕
     if (window.TranslateManager) {
       const translateButton = document.createElement('button');
@@ -441,6 +478,7 @@ const UIManager = {
     // 更新所有功能按鈕的狀態
     const buttons = [
       'gpt-rewrite-button',
+      'gpt-rephrase-button',
       'ai-translate-button', 
       'google-translate-button',
       'gpt-generate-button'

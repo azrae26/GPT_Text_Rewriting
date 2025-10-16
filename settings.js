@@ -58,6 +58,10 @@ const GlobalSettings = {
   shortRewriteModel: '',
   /** 自動改寫模型名稱。 */
   autoRewriteModel: '',
+  /** 重述模型名稱。 */
+  rephraseModel: '',
+  /** 重述指令。 */
+  rephraseInstruction: '',
   /** 翻譯模型名稱。 */
   translateModel: '',
   /** 翻譯指令。 */
@@ -179,6 +183,7 @@ const GlobalSettings = {
             fullRewriteModel: this.fullRewriteModel,
             shortRewriteModel: this.shortRewriteModel,
             autoRewriteModel: this.autoRewriteModel,
+            rephraseModel: this.rephraseModel,
             translateModel: this.translateModel,
             reflectModel: this.reflectModel,
             optimizeModel: this.optimizeModel,
@@ -207,6 +212,7 @@ const GlobalSettings = {
             instruction: this.instruction,                          // 新增：全文改寫指令
             shortInstruction: this.shortInstruction,              // 新增：10字內改寫指令
             autoRewritePatterns: this.autoRewritePatterns,        // 新增：雙擊改寫匹配模式
+            rephraseInstruction: this.rephraseInstruction,        // 新增：重述指令
             translateInstruction: this.translateInstruction,
             reflectInstruction: this.reflectInstruction,
             optimizeInstruction: this.optimizeInstruction,

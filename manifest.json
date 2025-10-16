@@ -26,6 +26,9 @@
       "matches": [
         "https://data.uanalyze.twobitto.com/*"
       ],
+      "exclude_matches": [
+        "https://data.uanalyze.twobitto.com/ai/assistants/create"
+      ],
       "js": [
         "default.js",
         "regex_helper/regex-helper.js",

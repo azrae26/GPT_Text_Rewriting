@@ -26,6 +26,7 @@
     <div class="content">
       <div class="tab-container">
         <div class="tab active" data-tab="full">全文改寫</div>
+        <div class="tab" data-tab="rephrase">重述</div>
         <div class="tab" data-tab="short">10字內改寫</div>
         <div class="tab" data-tab="auto">雙擊改寫</div>
         <div class="tab" data-tab="summary">關鍵要點</div>
@@ -36,6 +37,12 @@
         <select id="fullRewriteModel" class="model-select">
         </select>
         <textarea id="instruction" placeholder="輸入全文改寫要求"></textarea>
+      </div>
+      
+      <div id="rephrase-tab" class="tab-content">
+        <select id="rephraseModel" class="model-select">
+        </select>
+        <textarea id="rephraseInstruction" placeholder="輸入重述要求"></textarea>
       </div>
       
       <div id="short-tab" class="tab-content">

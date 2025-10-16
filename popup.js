@@ -67,9 +67,11 @@ document.addEventListener('DOMContentLoaded', async function() {
   const instructionInput = document.getElementById('instruction');
   const shortInstructionInput = document.getElementById('shortInstruction');
   const autoRewritePatternsInput = document.getElementById('autoRewritePatterns');
+  const rephraseInstructionInput = document.getElementById('rephraseInstruction');
   const fullRewriteModelSelect = document.getElementById('fullRewriteModel');
   const shortRewriteModelSelect = document.getElementById('shortRewriteModel');
   const autoRewriteModelSelect = document.getElementById('autoRewriteModel');
+  const rephraseModelSelect = document.getElementById('rephraseModel');
   const rewriteButton = document.getElementById('rewrite');
   const translateModelSelect = document.getElementById('translateModel');
   const translateInstructionInput = document.getElementById('translateInstruction');
@@ -141,9 +143,11 @@ document.addEventListener('DOMContentLoaded', async function() {
   instructionInput.value = settings.instruction || '';
   shortInstructionInput.value = settings.shortInstruction || '';
   autoRewritePatternsInput.value = settings.autoRewritePatterns || '';
+  rephraseInstructionInput.value = settings.rephraseInstruction || '';
   fullRewriteModelSelect.value = settings.fullRewriteModel || '';
   shortRewriteModelSelect.value = settings.shortRewriteModel || '';
   autoRewriteModelSelect.value = settings.autoRewriteModel || '';
+  rephraseModelSelect.value = settings.rephraseModel || '';
   translateModelSelect.value = settings.translateModel || '';
   translateInstructionInput.value = settings.translateInstruction || '';
   removeHashCheckbox.checked = settings.removeHash !== undefined ? settings.removeHash : true;
@@ -313,6 +317,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         element: autoRewritePatternsInput,
         callback: sendAutoRewritePatternsUpdate 
       },
+      'rephraseInstruction': { type: 'input', element: rephraseInstructionInput },
       'translateInstruction': { type: 'input', element: translateInstructionInput },
       'summaryInstruction': { type: 'input', element: summaryInstructionInput },
       'codeCheckInstruction': { type: 'input', element: codeCheckInstructionInput },
@@ -337,6 +342,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       'fullRewriteModel': { type: 'model', element: fullRewriteModelSelect },
       'shortRewriteModel': { type: 'model', element: shortRewriteModelSelect },
       'autoRewriteModel': { type: 'model', element: autoRewriteModelSelect },
+      'rephraseModel': { type: 'model', element: rephraseModelSelect },
       'translateModel': { type: 'model', element: translateModelSelect },
       'summaryModel': { type: 'model', element: summaryModelSelect },
       'codeCheckModel': { type: 'model', element: codeCheckModelSelect },
@@ -880,6 +886,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         { setting: 'fullRewriteModel', element: fullRewriteModelSelect },
         { setting: 'shortRewriteModel', element: shortRewriteModelSelect },
         { setting: 'autoRewriteModel', element: autoRewriteModelSelect },
+        { setting: 'rephraseModel', element: rephraseModelSelect },
         { setting: 'translateModel', element: translateModelSelect },
         { setting: 'generateModel', element: generateModelSelect },
         { setting: 'reflect1Model', element: reflect1ModelSelect },

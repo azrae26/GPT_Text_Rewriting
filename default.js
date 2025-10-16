@@ -150,6 +150,7 @@ const DefaultSettings = {
   fullRewriteModel: '',          // 空字串，等待使用者設定
   shortRewriteModel: '',         // 空字串，等待使用者設定
   autoRewriteModel: '',          // 空字串，等待使用者設定
+  rephraseModel: '',             // 空字串，等待使用者設定
   translateModel: '',            // 空字串，等待使用者設定
   reflectModel: '',              // 空字串，等待使用者設定
   optimizeModel: '',             // 空字串，等待使用者設定
@@ -216,6 +217,19 @@ const DefaultSettings = {
 直接輸出結果，不要有其他廢話，只需改寫，也不要自己新增符號。避免輸出『改寫後：』。
 即使標題與內文一樣，也不要省略標題。
 文末若有2個句點改為1個。`,
+
+  // 重述預設設定
+  rephraseInstruction:
+`請優化這段文字的語意結構，保持原意但使其更清晰、更通順。
+
+要求：
+1. 保持原文的核心意思不變
+2. 優化句子結構，使邏輯更清晰
+3. 適當調整用詞，提升可讀性
+4. 避免改變專業術語和數據
+5. 直接輸出結果，不要有其他廢話
+
+避免輸出『改寫後：』或『重述結果：』等前綴。`,
 
   // 10字內改寫預設設定
   shortRewriteInstruction:

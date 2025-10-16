@@ -17,7 +17,7 @@ class KeyClassifier {
     // 核心設定：API 金鑰、模型選擇等基本配置
     CORE_SETTINGS: [
       'apiKeys', 'model', 'fullRewriteModel', 'shortRewriteModel', 
-      'autoRewriteModel', 'translateModel', 'reflectModel', 'optimizeModel',
+      'autoRewriteModel', 'rephraseModel', 'translateModel', 'reflectModel', 'optimizeModel',
       'generateModel', 'reflect1Model', 'generationOptimize_1_Model',
       'reflect2Model', 'generationOptimize_2_Model', 'reflect3Model',
       'generationOptimize_3_Model', 'summaryModel', 'confirmModel',
@@ -35,6 +35,7 @@ class KeyClassifier {
     // 大型內容：指令、背景知識等大型文本
     LARGE_CONTENT: [
       'instruction', 'shortInstruction', 'autoRewritePatterns',
+      'rephraseInstruction',
       'translateInstruction', 'summaryInstruction', 'codeCheckInstruction', 'codeCheckModel', 'zhEnMapping',
       'reflectInstruction', 'optimizeInstruction', 'generateInstruction',
       'reflect1Instruction', 'generationOptimize_1_Instruction',

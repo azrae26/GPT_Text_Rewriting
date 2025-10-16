@@ -128,6 +128,7 @@ window.SettingsLoader = {
           'instruction',          // 全文改寫指令
           'shortInstruction',     // 10字內改寫指令
           'autoRewritePatterns',  // 雙擊改寫匹配模式
+          'rephraseInstruction',  // 重述指令
           'translateInstruction', 
           'summaryInstruction',
           'codeCheckInstruction', // 代號檢查指令
@@ -234,7 +235,7 @@ window.SettingsLoader = {
     // 模型設定（同步儲存）
     const syncModelKeys = [
       'model', 'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel',
-      'translateModel', 'reflectModel', 'optimizeModel', 'generateModel',
+      'rephraseModel', 'translateModel', 'reflectModel', 'optimizeModel', 'generateModel',
       'reflect1Model', 'generationOptimize_1_Model', 'reflect2Model', 
       'generationOptimize_2_Model', 'reflect3Model', 'generationOptimize_3_Model', 
       'summaryModel'
@@ -246,7 +247,7 @@ window.SettingsLoader = {
 
     // 指令設定（本地儲存）
     const localInstructionKeys = [
-      'instruction', 'shortInstruction', 'translateInstruction', 'reflectInstruction',
+      'instruction', 'shortInstruction', 'rephraseInstruction', 'translateInstruction', 'reflectInstruction',
       'optimizeInstruction', 'generateInstruction', 'reflect1Instruction',
       'generationOptimize_1_Instruction', 'reflect2Instruction', 'generationOptimize_2_Instruction',
       'reflect3Instruction', 'generationOptimize_3_Instruction', 'backgroundKnowledge',
@@ -393,7 +394,7 @@ window.SettingsLoader = {
     
     const modelSettingKeys = [
       'model', 'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel',
-      'translateModel', 'reflectModel', 'optimizeModel', 'generateModel',
+      'rephraseModel', 'translateModel', 'reflectModel', 'optimizeModel', 'generateModel',
       'reflect1Model', 'generationOptimize_1_Model', 'reflect2Model', 
       'generationOptimize_2_Model', 'reflect3Model', 'generationOptimize_3_Model', 
       'summaryModel', 'codeCheckModel'
