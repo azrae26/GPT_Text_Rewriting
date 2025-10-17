@@ -21,7 +21,9 @@ class KeyClassifier {
       'generateModel', 'reflect1Model', 'generationOptimize_1_Model',
       'reflect2Model', 'generationOptimize_2_Model', 'reflect3Model',
       'generationOptimize_3_Model', 'summaryModel', 'confirmModel',
-      'removeHash', 'removeStar', 'firstRun', 'crawlerInterval'
+      'removeHash', 'removeStar', 'firstRun',
+      'crawlerAutoEnabled',    // 爬蟲自動啟用狀態（需要匯出/匯入）
+      'crawlerInterval'        // 爬蟲間隔分鐘數（需要匯出/匯入）
     ],
 
     // 界面狀態：分頁、位置、展開狀態等 UI 相關
@@ -51,8 +53,6 @@ class KeyClassifier {
       'authToken', 'tokenExpiry', 'exportToken', 'lastExportTime',
       'syncIntervalMigrated',  // 同步間隔遷移標記
       'cloudUpdateSignal',     // 雲端更新訊號（用於通知其他設備同步）
-      'crawlerAutoEnabled',    // 爬蟲自動啟用狀態（sync storage 即時同步）
-      'crawlerInterval',       // 爬蟲間隔分鐘數（sync storage 即時同步）
       'lastStartupSyncTime',   // 最後啟動同步時間（防重複同步）
       'startupSyncCount',      // 啟動同步計數（統計目的）
       'lastInitialSync'        // 初始同步標記（舊版本相容性）

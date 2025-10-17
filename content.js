@@ -36,8 +36,11 @@ let uiInitCompleteTime = null; // 記錄 UI 初始化完成時間
  */
 function shouldEnableFeatures() {
   const currentUrl = window.location.href;
+  // 排除 ai/assistants/create 和 ai/assistants/[數字]/edit 頁面
   const pattern = /^https:\/\/data\.uanalyze\.twobitto\.com\/(?:research-reports\/(?:\d+\/edit|create)|ai\/assistants.*)(?:\?.*)?$/;
-  const result = pattern.test(currentUrl);
+  const excludePattern = /^https:\/\/data\.uanalyze\.twobitto\.com\/ai\/assistants\/(?:create|\d+\/edit)(?:\?.*)?$/;
+  
+  const result = pattern.test(currentUrl) && !excludePattern.test(currentUrl);
   LogUtils.log('當前URL:', currentUrl);
   LogUtils.log('是否啟用功能:', result);
   return result;
