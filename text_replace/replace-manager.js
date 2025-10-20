@@ -31,13 +31,36 @@ const ReplaceManager = {
     STORAGE_KEY: 'replacePosition'
   },
 
+  // 🛡️ 防止重複初始化（SPA 頁面返回時防抖）
+  _isInitializing: false,
+  _initTimeout: null,
+
   /** 初始化替換介面 */
   async initializeReplaceUI() {
     try {
+      // ✨ 防抖：如果正在初始化，跳過重複調用
+      if (this._isInitializing) {
+        return;
+      }
+      
+      // 清除之前的計時器
+      if (this._initTimeout) {
+        clearTimeout(this._initTimeout);
+      }
+      
+      // 設置正在初始化標記
+      this._isInitializing = true;
+      
+      // 1000ms 後才允許下次初始化（避免 SPA 返回時的多次觸發）
+      this._initTimeout = setTimeout(() => {
+        this._isInitializing = false;
+      }, 1000);
+      
       // 先檢查是否應該啟用功能
       if (!window.shouldEnableFeatures()) {
         LogUtils.log('不在目標頁面，移除UI');
         this.removeReplaceUI();
+        this._isInitializing = false;
         return;
       }
 
@@ -52,10 +75,12 @@ const ReplaceManager = {
         try {
           const foundTextArea = await window.TextAreaDetector.waitForTextArea(3000);
           LogUtils.important('🎯 等待成功，找到動態 textarea 元素');
-          // 找到元素後，遞迴調用自己來完成初始化
+          // 解除鎖定後遞迴調用
+          this._isInitializing = false;
           return this.initializeReplaceUI();
         } catch (error) {
           LogUtils.error('等待文本區域元素超時:', error.message);
+          this._isInitializing = false;
           return;
         }
       }
@@ -69,6 +94,7 @@ const ReplaceManager = {
       const otherContainer = document.createElement('div');
       otherContainer.id = 'text-replace-container';
       otherContainer.className = 'replace-controls';
+
 
       // 載入儲存的位置，如果沒有則使用預設位置
       this._loadContainerPosition(otherContainer);
@@ -98,7 +124,7 @@ const ReplaceManager = {
       // 簡化的拖動功能
       this._initializeDragFeature(otherContainer);
 
-      LogUtils.important('🎛️ 替換介面初始化完成');
+      LogUtils.log('✅ 替換介面初始化完成');
       
       // 設置 MutationObserver 監控文本區域，處理動態變化
       this._setupTextAreaObserver(textArea);
@@ -108,6 +134,11 @@ const ReplaceManager = {
       LogUtils.error('初始化替換介面時出錯:', error);
       // 嘗試清理已創建的元素
       this.removeReplaceUI();
+      // 解除鎖定
+      this._isInitializing = false;
+      if (this._initTimeout) {
+        clearTimeout(this._initTimeout);
+      }
       return null;
     }
   },

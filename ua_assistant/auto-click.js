@@ -25,7 +25,7 @@ const AutoClickManager = {
   onStockChange: null,    // 股票變化回調函數
   isInTargetPage: false,  // 是否在目標頁面
   onPageStateChange: null,  // 添加頁面狀態變化回調
-  isInitialized: false,   // 添加初始化標記
+  isInitialized: false,   // 添加初始化標記。
   
   /**
    * 初始化函數
