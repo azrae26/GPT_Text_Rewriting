@@ -28,7 +28,8 @@
       ],
       "exclude_matches": [
         "https://data.uanalyze.twobitto.com/ai/assistants/create",
-        "https://data.uanalyze.twobitto.com/ai/assistants/*/edit"
+        "https://data.uanalyze.twobitto.com/ai/assistants/*/edit",
+        "https://data.uanalyze.twobitto.com/gpt/summaries*"
       ],
       "js": [
         "default.js",

@@ -116,6 +116,8 @@ const GlobalSettings = {
   zhEnMapping: '',
   /** 股票清單。 */
   stockList: '',
+  /** 股票變更記錄（近30日）。 */
+  stockChangeLog: '',
 
   /** 爬蟲間隔時間（分鐘）。 */
   crawlerInterval: 30,
@@ -219,6 +221,7 @@ const GlobalSettings = {
             summaryInstruction: this.summaryInstruction,
             zhEnMapping: this.zhEnMapping,  // 加入中英對照表到本地儲存
             stockList: this.stockList,  // 加入股票清單到本地儲存
+            stockChangeLog: this.stockChangeLog,  // 加入股票變更記錄到本地儲存
             generateInstruction: this.generateInstruction,
             reflect1Instruction: this.reflect1Instruction,
             generationOptimize_1_Instruction: this.generationOptimize_1_Instruction,

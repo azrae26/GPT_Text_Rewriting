@@ -145,6 +145,7 @@ window.SettingsLoader = {
           'generationOptimize_3_Instruction',
           'backgroundKnowledge',
           'stockList',
+          'stockChangeLog',       // 股票變更記錄
           'customModels'          // 新增：自定義模型 Local Storage 載入
         ];
         
@@ -251,7 +252,7 @@ window.SettingsLoader = {
       'optimizeInstruction', 'generateInstruction', 'reflect1Instruction',
       'generationOptimize_1_Instruction', 'reflect2Instruction', 'generationOptimize_2_Instruction',
       'reflect3Instruction', 'generationOptimize_3_Instruction', 'backgroundKnowledge',
-      'summaryInstruction', 'codeCheckInstruction', 'zhEnMapping', 'stockList'
+      'summaryInstruction', 'codeCheckInstruction', 'zhEnMapping', 'stockList', 'stockChangeLog'
     ];
     
     localInstructionKeys.forEach(key => {

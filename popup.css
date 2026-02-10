@@ -1057,9 +1057,19 @@ input.form-input {
 
 #stock-list-input {
   height: 390px;
-  border: 1px solid #ddd;
+  border-top: 1px solid #ddd;
   width: 100%;
   box-sizing: border-box;
+  display: block; /* 確保是塊級元素 */
+}
+
+#stock-change-log {
+  height: 390px;
+  border-top: 1px solid #ddd;
+  width: 100%;
+  box-sizing: border-box;
+  display: block; /* 確保是塊級元素 */
+  background-color: #fafafa; /* 只讀狀態稍微灰底 */
 }
 
 .copy-button {

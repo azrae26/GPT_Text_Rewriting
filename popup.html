@@ -343,15 +343,32 @@
   <!-- 股票 -->
   <div id="stock-tab" class="main-tab-content">
     <div class="content">
-      <div class="stock-input-container">
-        <textarea id="stock-list-input" placeholder="請輸入股票清單，格式如下：
+      <div class="tab-container">
+        <div class="tab active" data-tab="all-stocks">全部股票</div>
+        <div class="tab" data-tab="add-delete">新增/刪除記錄</div>
+      </div>
+      
+      <div id="all-stocks-tab" class="tab-content active">
+        <div class="stock-input-container">
+          <textarea id="stock-list-input" placeholder="請輸入股票清單，格式如下：
 代碼,公司名稱,匹配模式(可選)
 例如：
 1101,台泥
 1303,南亞,(?<!東)南亞"></textarea>
-        <button id="copy-stock-list" class="copy-button" title="複製股票清單">
-          <i class="fa-regular fa-copy"></i>
-        </button>
+          <button id="copy-stock-list" class="copy-button" title="複製股票清單">
+            <i class="fa-regular fa-copy"></i>
+          </button>
+        </div>
+      </div>
+      
+      <div id="add-delete-tab" class="tab-content">
+        <div class="stock-input-container">
+          <textarea id="stock-change-log" placeholder="近30日的股票增減記錄
+格式：日期,時間,操作,代碼,名稱
+例如：
+2026-01-06,15:30,新增,1101,台泥
+2026-01-06,15:40,刪除,2330,台積電" readonly></textarea>
+        </div>
       </div>
       
       <div class="stock-crawler-controls">

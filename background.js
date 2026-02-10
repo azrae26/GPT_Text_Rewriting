@@ -801,9 +801,10 @@ const BackgroundStockCrawlerManager = {
    */
   async _updateStockList(crawledStocks) {
     try {
-      // 獲取現有股票清單
-      const result = await chrome.storage.local.get(['stockList']);
+      // 獲取現有股票清單和變更記錄
+      const result = await chrome.storage.local.get(['stockList', 'stockChangeLog']);
       const currentStockList = result.stockList || '';
+      const currentChangeLog = result.stockChangeLog || '';
       
       // 解析現有清單
       const existingStocks = this._parseStockList(currentStockList);
@@ -873,8 +874,53 @@ const BackgroundStockCrawlerManager = {
         }
       }).join('\n');
       
-      // 儲存更新後的清單
-      await chrome.storage.local.set({ stockList: newStockListText });
+      // 記錄變更（只有通過安全檢查後才記錄）
+      const newChangeRecords = [];
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0]; // 2026-01-06
+      const timeStr = now.toTimeString().slice(0, 5);  // 15:30
+      
+      // 記錄新增的股票
+      crawledStocks.forEach((stock, code) => {
+        if (!existingStocks.has(code)) {
+          newChangeRecords.push(`${dateStr},${timeStr},新增,${code},${stock.name}`);
+        }
+      });
+      
+      // 記錄刪除的股票
+      existingStocks.forEach((existing, code) => {
+        if (!crawledStocks.has(code)) {
+          newChangeRecords.push(`${dateStr},${timeStr},刪除,${code},${existing.name}`);
+        }
+      });
+      
+      // 合併新舊記錄，並清理超過30天的記錄
+      let updatedChangeLog = currentChangeLog;
+      if (newChangeRecords.length > 0) {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split('T')[0];
+        
+        // 過濾舊記錄（保留30天內的）
+        const existingRecords = currentChangeLog
+          .split('\n')
+          .filter(line => {
+            if (!line.trim()) return false;
+            const recordDate = line.split(',')[0];
+            return recordDate >= thirtyDaysAgoStr;
+          });
+        
+        // 合併新記錄（新記錄放在前面）
+        updatedChangeLog = [...newChangeRecords, ...existingRecords].join('\n');
+        
+        LogUtils.log(`記錄了 ${newChangeRecords.length} 筆股票變更`);
+      }
+      
+      // 儲存更新後的清單和變更記錄
+      await chrome.storage.local.set({ 
+        stockList: newStockListText,
+        stockChangeLog: updatedChangeLog
+      });
       
       LogUtils.log(`股票清單更新完成: 新增 ${addedCount} 支，刪除 ${removedCount} 支`);
       

@@ -100,6 +100,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
   const highlightWordsInput = document.getElementById('highlight-words');
   const stockListInput = document.getElementById('stock-list-input');
+  const stockChangeLogInput = document.getElementById('stock-change-log');
   const reflectModelSelect = document.getElementById('reflectModel');
   const optimizeModelSelect = document.getElementById('optimizeModel');
   const reflectInstructionInput = document.getElementById('reflectInstruction');
@@ -177,6 +178,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   codeCheckInstructionInput.value = settings.codeCheckInstruction || '';
   zhEnMappingInput.value = settings.zhEnMapping || '';
   stockListInput.value = settings.stockList || '';
+  stockChangeLogInput.value = settings.stockChangeLog || '';
   
   const crawlerIntervalInput = document.getElementById('crawler-interval');
   if (crawlerIntervalInput) {
