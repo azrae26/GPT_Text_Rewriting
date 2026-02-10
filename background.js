@@ -328,8 +328,8 @@ const STOCK_CRAWLER_CONFIG = {
   // 安全保護閾值：要刪除的股票數量達到此值時將跳過更新
   SAFETY_DELETE_THRESHOLD: 5,
   
-  // 爬蟲間隔時間限制（分鐘）
-  MIN_CRAWL_INTERVAL: 0.1,
+  // 爬蟲間隔時間限制（分鐘）- chrome.alarms 最小值為 1 分鐘
+  MIN_CRAWL_INTERVAL: 1,
   
   // 網頁爬取間隔（毫秒）
   CRAWL_DELAY_MS: 300,
@@ -337,7 +337,10 @@ const STOCK_CRAWLER_CONFIG = {
   // 進度更新百分比
   PROGRESS_CRAWLING_MAX: 90,
   PROGRESS_UPDATING: 95,
-  PROGRESS_COMPLETED: 100
+  PROGRESS_COMPLETED: 100,
+  
+  // chrome.alarms 定時器名稱（持久化，不受 Service Worker 休眠影響）
+  ALARM_NAME: 'stockCrawlAlarm'
 };
 
 // 用於追踪每個標籤頁的內容腳本狀態
@@ -387,10 +390,10 @@ const BackgroundStockCrawlerManager = {
   /** 當前爬取進度 */
   currentProgress: 0,
   
-  /** 定時器 ID */
-  intervalTimer: null,
+  /** 是否已排程自動爬取（使用 chrome.alarms 持久化） */
+  isScheduled: false,
   
-  /** 爬取定時器 */
+  /** 爬取中的延遲定時器（頁面間等待用） */
   crawlTimer: null,
   
   /** 定時間隔（分鐘） */
@@ -444,10 +447,23 @@ const BackgroundStockCrawlerManager = {
       
       LogUtils.log('恢復的爬蟲狀態', state);
       
+      // 🔧 chrome.alarms 是持久化的，Service Worker 重啟時 alarm 仍然存在
+      // 只需恢復內部狀態變數，不需要重新建立 alarm
       if (state.isScheduled && state.intervalMinutes) {
-        LogUtils.log(`恢復定時爬取，間隔 ${state.intervalMinutes} 分鐘（來源：sync storage）`);
-        this.intervalMinutes = state.intervalMinutes; // 重要：先設置 intervalMinutes
-        await this._startScheduledCrawl(state.intervalMinutes, false); // false = 不立即執行
+        this.intervalMinutes = state.intervalMinutes;
+        this.isScheduled = true;
+        
+        // 驗證 alarm 是否確實存在（防禦性檢查）
+        const existingAlarm = await chrome.alarms.get(STOCK_CRAWLER_CONFIG.ALARM_NAME);
+        if (existingAlarm) {
+          LogUtils.log(`✅ chrome.alarms 定時器仍在運行，間隔 ${state.intervalMinutes} 分鐘，下次觸發: ${new Date(existingAlarm.scheduledTime).toLocaleString()}`);
+        } else {
+          // alarm 不存在（可能是瀏覽器重啟後丟失），重新建立
+          LogUtils.important(`⚠️ chrome.alarms 定時器不存在，重新建立，間隔 ${state.intervalMinutes} 分鐘`);
+          chrome.alarms.create(STOCK_CRAWLER_CONFIG.ALARM_NAME, {
+            periodInMinutes: state.intervalMinutes
+          });
+        }
       }
       
       // 🆕 監聽 sync storage 的變化，實現跨設備即時同步
@@ -529,19 +545,20 @@ const BackgroundStockCrawlerManager = {
     
     // 驗證參數
     if (!intervalMinutes || isNaN(intervalMinutes) || intervalMinutes < STOCK_CRAWLER_CONFIG.MIN_CRAWL_INTERVAL) {
-      throw new Error(`無效的間隔時間: ${intervalMinutes}`);
+      throw new Error(`無效的間隔時間: ${intervalMinutes}（最小 ${STOCK_CRAWLER_CONFIG.MIN_CRAWL_INTERVAL} 分鐘）`);
     }
     
-    // 防止重複設置：如果已經有相同間隔的定時器在運行，直接返回
-    if (this.intervalTimer && this.intervalMinutes === intervalMinutes) {
-      LogUtils.log(`已存在相同間隔 ${intervalMinutes} 分鐘的定時器，跳過重複設置`);
+    // 防止重複設置：如果已經是相同間隔的排程，直接返回
+    if (this.isScheduled && this.intervalMinutes === intervalMinutes) {
+      LogUtils.log(`已存在相同間隔 ${intervalMinutes} 分鐘的排程，跳過重複設置`);
       return;
     }
     
-    // 清除現有定時器
-    this._clearTimers();
+    // 清除現有的 alarm
+    await this._clearAlarm();
     
     this.intervalMinutes = intervalMinutes;
+    this.isScheduled = true;
     
     // 保存狀態
     await this._saveState({ 
@@ -555,14 +572,13 @@ const BackgroundStockCrawlerManager = {
       this.startCrawl();
     }
     
-    // 設置定時器
-    this.intervalTimer = setInterval(() => {
-      if (!this.running) {
-        this.startCrawl();
-      }
-    }, intervalMinutes * 60 * 1000);
+    // 🔧 使用 chrome.alarms 取代 setInterval
+    // chrome.alarms 是持久化的，不受 Service Worker 休眠影響
+    chrome.alarms.create(STOCK_CRAWLER_CONFIG.ALARM_NAME, {
+      periodInMinutes: intervalMinutes
+    });
     
-    LogUtils.log(`新定時器已設置，間隔 ${intervalMinutes} 分鐘 (${intervalMinutes * 60 * 1000}ms)，定時器ID ${this.intervalTimer}`);
+    LogUtils.log(`✅ chrome.alarms 定時器已設置，間隔 ${intervalMinutes} 分鐘，名稱: ${STOCK_CRAWLER_CONFIG.ALARM_NAME}`);
     
     this._updateStatus(BACKGROUND_CONSTANTS.STATUS_TYPES.SCHEDULED, `自動爬取已啟用，間隔 ${intervalMinutes} 分鐘`, { intervalMinutes });
   },
@@ -573,8 +589,10 @@ const BackgroundStockCrawlerManager = {
   async stopScheduledCrawl() {
     LogUtils.log('停止定時爬取');
     
-    this._clearTimers();
+    // 清除 chrome.alarms 定時器
+    await this._clearAlarm();
     this.intervalMinutes = 0;
+    this.isScheduled = false;
     
     // 保存狀態
     await this._saveState({ 
@@ -586,23 +604,26 @@ const BackgroundStockCrawlerManager = {
   },
 
   /**
-   * 清除所有定時器
+   * 清除 chrome.alarms 定時爬取
    */
-  _clearTimers() {
-    if (this.intervalTimer) {
-      LogUtils.log('清除現有的間隔定時器 (ID:', this.intervalTimer, ')');
-      clearInterval(this.intervalTimer);
-      this.intervalTimer = null;
-      LogUtils.log('間隔定時器已清除');
-    } else {
-      LogUtils.log('沒有需要清除的間隔定時器');
+  async _clearAlarm() {
+    try {
+      const wasCleared = await chrome.alarms.clear(STOCK_CRAWLER_CONFIG.ALARM_NAME);
+      if (wasCleared) {
+        LogUtils.log(`✅ chrome.alarms 定時器 "${STOCK_CRAWLER_CONFIG.ALARM_NAME}" 已清除`);
+      } else {
+        LogUtils.log('沒有需要清除的 chrome.alarms 定時器');
+      }
+    } catch (error) {
+      LogUtils.error('清除 chrome.alarms 定時器失敗', error);
     }
     
+    // 清除爬取中的延遲定時器（仍需要 setTimeout）
     if (this.crawlTimer) {
-      LogUtils.log('清除現有的爬取定時器 (ID:', this.crawlTimer, ')');
+      LogUtils.log('清除現有的爬取延遲定時器 (ID:', this.crawlTimer, ')');
       clearTimeout(this.crawlTimer);
       this.crawlTimer = null;
-      LogUtils.log('爬取定時器已清除');
+      LogUtils.log('爬取延遲定時器已清除');
     }
   },
 
@@ -1110,7 +1131,7 @@ const BackgroundStockCrawlerManager = {
       isRunning: this.running,
       progress: this.currentProgress,
       intervalMinutes: this.intervalMinutes,
-      isScheduled: this.intervalTimer !== null
+      isScheduled: this.isScheduled
     };
   },
 
@@ -1230,6 +1251,19 @@ async function initializeBackgroundServices() {
 
 // 啟動背景服務
 initializeBackgroundServices();
+
+// 🔧 chrome.alarms 定時爬取監聽器
+// 這是 Service Worker 被 alarm 喚醒時的入口點，必須在頂層註冊
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === STOCK_CRAWLER_CONFIG.ALARM_NAME) {
+    LogUtils.important(`⏰ chrome.alarms 觸發定時爬取: ${alarm.name}`);
+    if (!BackgroundStockCrawlerManager.running) {
+      BackgroundStockCrawlerManager.startCrawl();
+    } else {
+      LogUtils.log('爬蟲已在運行中，跳過此次 alarm 觸發');
+    }
+  }
+});
 
 // 處理來自 popup 的長連接
 chrome.runtime.onConnect.addListener((port) => {
