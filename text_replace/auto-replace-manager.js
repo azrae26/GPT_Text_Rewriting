@@ -34,6 +34,9 @@ const AutoReplaceManager = {
   // 添加一個屬性來存儲當前的規則
   _activeRules: [],
 
+  // 自動替換暫停狀態（true = 暫停中，不執行替換）
+  _paused: false,
+
   // 工具函數 - 節流函數，減少函數執行頻率
   throttle: function(fn, delay) {
     let lastCall = 0;
@@ -387,6 +390,9 @@ const AutoReplaceManager = {
 
   /** 執行自動替換 */
   async handleAutoReplace(textArea) {
+    // 暫停狀態下不執行替換
+    if (this._paused) return;
+
     // 如果在 popup 頁面中，發送消息到 content script
     if (window.location.pathname.endsWith('popup.html')) {
       this._sendMessageToContentScript();

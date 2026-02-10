@@ -127,7 +127,7 @@ window.GoogleTranslateManager = {
       const langName = languageNames[this.targetLanguage] || this.targetLanguage;
       const span = button.querySelector('span');
       if (span) {
-        span.textContent = `Google翻譯(${langName})`;
+        span.textContent = `G翻譯(${langName})`;
       }
     }
   },
@@ -316,13 +316,13 @@ window.GoogleTranslateManager = {
         
         // 恢復完整的HTML結構
         button.innerHTML = `
-          <span>Google翻譯(${langName})</span>
+          <span>G翻譯(${langName})</span>
           <span class="dropdown-arrow"></span>
         `;
       } else {
         // 沒有選中語言時，重置為原始結構
         button.innerHTML = `
-          <span>Google翻譯</span>
+          <span>G翻譯</span>
           <span class="dropdown-arrow"></span>
         `;
       }

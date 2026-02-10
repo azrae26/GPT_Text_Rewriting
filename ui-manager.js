@@ -150,7 +150,7 @@ const UIManager = {
       googleTranslateButton.id = 'google-translate-button';
       googleTranslateButton.className = 'google-translate-button-with-dropdown';
       googleTranslateButton.innerHTML = `
-        <span>Google翻譯(繁中)</span>
+        <span>G翻譯(繁中)</span>
         <span class="dropdown-arrow"></span>
       `;
       
@@ -193,7 +193,7 @@ const UIManager = {
             'ja': '日文'
           };
           const shortName = shortNames[lang.code] || lang.name;
-          googleTranslateButton.querySelector('span').textContent = `Google翻譯(${shortName})`;
+          googleTranslateButton.querySelector('span').textContent = `G翻譯(${shortName})`;
           
           // 隱藏下拉選單
           languageDropdown.style.display = 'none';
@@ -287,6 +287,20 @@ const UIManager = {
         window.GenerationManager.handleGenerateClick(generateButton);
       });
       buttonContainer.appendChild(generateButton);
+    }
+
+    // 創建自動替換暫停開關按鈕
+    if (window.AutoReplaceManager) {
+      const replaceToggleButton = document.createElement('button');
+      replaceToggleButton.id = 'auto-replace-toggle-button';
+      replaceToggleButton.textContent = '替換(開)';
+      replaceToggleButton.addEventListener('click', () => {
+        const paused = !window.AutoReplaceManager._paused;
+        window.AutoReplaceManager._paused = paused;
+        replaceToggleButton.textContent = paused ? '替換(關)' : '替換(開)';
+        replaceToggleButton.classList.toggle('paused', paused);
+      });
+      buttonContainer.appendChild(replaceToggleButton);
     }
 
     this._setupTextArea(textArea, buttonContainer);
