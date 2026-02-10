@@ -24,7 +24,7 @@ const ManualReplaceManager = {
   CONFIG: {
     MIN_WIDTH: 80,
     MAX_WIDTH: 600,
-    MAIN_GROUP_MAX_WIDTH: 330, // 主組輸入框最大寬度
+    MAIN_GROUP_MAX_WIDTH: 270, // 主組輸入框最大寬度
     PADDING: 24,
     MANUAL_REPLACE_KEY: 'manualReplaceRules',
     MAX_PREVIEWS: 1000, // 最大預覽數量
