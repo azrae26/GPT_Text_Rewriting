@@ -293,11 +293,10 @@ const UIManager = {
     if (window.AutoReplaceManager) {
       const replaceToggleButton = document.createElement('button');
       replaceToggleButton.id = 'auto-replace-toggle-button';
-      replaceToggleButton.textContent = '替換(開)';
+      replaceToggleButton.textContent = '替換';
       replaceToggleButton.addEventListener('click', () => {
         const paused = !window.AutoReplaceManager._paused;
         window.AutoReplaceManager._paused = paused;
-        replaceToggleButton.textContent = paused ? '替換(關)' : '替換(開)';
         replaceToggleButton.classList.toggle('paused', paused);
       });
       buttonContainer.appendChild(replaceToggleButton);
