@@ -105,7 +105,8 @@ class SettingsIO {
     this.isInitialized = false;
     this.localChangeDetected = false; // 本地修改保護標記
     this.isInternalSyncUpdate = false; // 同步系統內部更新標記
-    this.lastSentSignalTimestamp = null; // 記住自己發送的訊號時間戳
+    this.lastSentSignalTimestamp = null; // 記住自己發送的訊號時間戳（快速路徑）
+    this.deviceId = null; // 持久化的設備ID，用於可靠的自我訊號識別
     
     this.handleStorageChange = this.handleStorageChange.bind(this);
     this.performSync = this.performSync.bind(this);
@@ -136,12 +137,39 @@ class SettingsIO {
     }
   }
 
+  /**
+   * 初始化設備ID（持久化到 local storage）
+   * 解決 SW 重啟後 lastSentSignalTimestamp 丟失導致的自我訊號誤判問題
+   * @private
+   */
+  async _initDeviceId() {
+    try {
+      const result = await chrome.storage.local.get(['settingsIODeviceId']);
+      if (result.settingsIODeviceId) {
+        this.deviceId = result.settingsIODeviceId;
+      } else {
+        // 首次使用，生成唯一設備ID
+        this.deviceId = crypto.randomUUID();
+        await chrome.storage.local.set({ settingsIODeviceId: this.deviceId });
+        LogUtils.log(`🆔 生成新設備ID: ${this.deviceId}`);
+      }
+      LogUtils.log(`🆔 設備ID: ${this.deviceId}`);
+    } catch (error) {
+      // 備用方案：使用隨機ID（不持久化但至少本次 session 可用）
+      this.deviceId = `fallback-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
+      LogUtils.warn('⚠️ 無法持久化設備ID，使用臨時ID:', this.deviceId);
+    }
+  }
+
   async init() {
     if (this.isInitialized) return;
 
     LogUtils.log('初始化設定同步系統');
     
     try {
+      // 初始化設備ID（持久化到 local storage，SW 重啟不丟失）
+      await this._initDeviceId();
+      
       // 一次性遷移：將 local storage 中的 syncInterval 遷移到 sync storage
       await this.migrateSyncIntervalToSyncStorage();
       
@@ -1134,17 +1162,19 @@ class SettingsIO {
       const signalTimestamp = Date.now();
       const signal = {
         timestamp: signalTimestamp,
+        source: this.deviceId, // 標記訊號來源設備
         action: 'cloudUpdated'
       };
       
-      // 記住自己發送的訊號時間戳
+      // 記住自己發送的訊號時間戳（記憶體快速路徑，SW 未重啟時用）
       this.lastSentSignalTimestamp = signalTimestamp;
       
-      LogUtils.log('發送雲端更新訊號:', signal);
+      LogUtils.log(`📡 設備 ${this.deviceId} 發送雲端更新訊號:`, signal);
       
       // 發送調試信息到 background
       this._sendDebugToBackground('發送雲端更新訊號', {
         signal,
+        deviceId: this.deviceId,
         action: 'sendSignal'
       });
       
@@ -1218,19 +1248,28 @@ class SettingsIO {
 
     LogUtils.log('收到雲端更新訊號:', signal);
 
-    // 聰明跳過：檢查是否是自己發送的訊號
-    if (this.lastSentSignalTimestamp && signal.timestamp === this.lastSentSignalTimestamp) {
-      LogUtils.log(`跳過自己發送的訊號 (時間戳: ${signal.timestamp})`);
+    // 自我訊號檢測（雙重保險）：
+    // 1. 主要判斷：比較 deviceId（持久化，SW 重啟不丟失）
+    // 2. 快速路徑：比較時間戳（記憶體中，SW 未重啟時更快）
+    const isOwnSignalByDevice = signal.source && signal.source === this.deviceId;
+    const isOwnSignalByTimestamp = this.lastSentSignalTimestamp && signal.timestamp === this.lastSentSignalTimestamp;
+    
+    if (isOwnSignalByDevice || isOwnSignalByTimestamp) {
+      const reason = isOwnSignalByDevice ? `deviceId: ${this.deviceId}` : `timestamp: ${signal.timestamp}`;
+      LogUtils.log(`🔄 跳過自己發送的訊號 (${reason})`);
       this._sendDebugToBackground('跳過自己的訊號', {
         signal,
-        lastSentTimestamp: this.lastSentSignalTimestamp,
-        action: 'skipOwnSignal'
+        myDeviceId: this.deviceId,
+        matchedBy: isOwnSignalByDevice ? 'deviceId' : 'timestamp',
+        action: 'ignoreSelfSignal'
       });
       return;
     }
 
+    LogUtils.log(`📥 設備 ${this.deviceId} 收到來自 ${signal.source || 'unknown'} 的訊號`);
     this._sendDebugToBackground('收到其他設備訊號', {
         signal,
+        myDeviceId: this.deviceId,
         action: 'receiveSignal'
       });
 
