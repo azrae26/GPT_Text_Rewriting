@@ -43,7 +43,7 @@ class KeyClassifier {
       'reflect1Instruction', 'generationOptimize_1_Instruction',
       'reflect2Instruction', 'generationOptimize_2_Instruction',
       'reflect3Instruction', 'generationOptimize_3_Instruction',
-      'backgroundKnowledge', 'stockList', 'stockChangeLog'
+      'backgroundKnowledge', 'stockList', 'stockChangeLog', 'stockCrawlLog'
     ],
 
     // 內部系統狀態：同步狀態、錯誤信息等系統內部數據

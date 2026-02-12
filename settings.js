@@ -118,6 +118,8 @@ const GlobalSettings = {
   stockList: '',
   /** 股票變更記錄（近30日）。 */
   stockChangeLog: '',
+  /** 股票爬取執行記錄（近90日）。 */
+  stockCrawlLog: '',
 
   /** 爬蟲間隔時間（分鐘）。 */
   crawlerInterval: 30,

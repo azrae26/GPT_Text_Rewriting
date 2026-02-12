@@ -345,7 +345,8 @@
     <div class="content">
       <div class="tab-container">
         <div class="tab active" data-tab="all-stocks">全部股票</div>
-        <div class="tab" data-tab="add-delete">新增/刪除記錄</div>
+        <div class="tab" data-tab="add-delete">增減記錄</div>
+        <div class="tab" data-tab="crawl-log">爬取記錄</div>
       </div>
       
       <div id="all-stocks-tab" class="tab-content active">
@@ -368,6 +369,16 @@
 例如：
 2026-01-06,15:30,新增,1101,台泥
 2026-01-06,15:40,刪除,2330,台積電" readonly></textarea>
+        </div>
+      </div>
+      
+      <div id="crawl-log-tab" class="tab-content">
+        <div class="stock-input-container">
+          <textarea id="stock-crawl-log" placeholder="近90日的自動爬取記錄
+格式：日期,時間,觸發方式,狀態,爬取數,新增,刪除,總計,耗時秒,異動明細,備註
+例如：
+2026-02-13,14:30,定時,成功,2847,2,1,2848,45,台泥/1101/上市/新增;台積電/2330/上市/刪除,
+2026-02-12,14:30,定時,失敗,0,0,0,0,5,,HTTP 503" readonly></textarea>
         </div>
       </div>
       

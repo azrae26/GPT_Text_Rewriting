@@ -1063,7 +1063,8 @@ input.form-input {
   display: block; /* 確保是塊級元素 */
 }
 
-#stock-change-log {
+#stock-change-log,
+#stock-crawl-log {
   height: 390px;
   border-top: 1px solid #ddd;
   width: 100%;
