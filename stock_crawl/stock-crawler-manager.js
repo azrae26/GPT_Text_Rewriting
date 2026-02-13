@@ -617,14 +617,14 @@ const BackgroundStockCrawlerManager = {
       // 記錄新增的股票
       crawledStocks.forEach((stock, code) => {
         if (!existingStocks.has(code)) {
-          newChangeRecords.push(`${dateStr},${timeStr},新增,${code},${stock.name}`);
+          newChangeRecords.push(`${dateStr},${timeStr},新增,${stock.market || ''},${code},${stock.name}`);
         }
       });
       
-      // 記錄刪除的股票
+      // 記錄刪除的股票（被刪除的股票無法從本次爬取得知市場別）
       existingStocks.forEach((existing, code) => {
         if (!crawledStocks.has(code)) {
-          newChangeRecords.push(`${dateStr},${timeStr},刪除,${code},${existing.name}`);
+          newChangeRecords.push(`${dateStr},${timeStr},刪除,,${code},${existing.name}`);
         }
       });
       
