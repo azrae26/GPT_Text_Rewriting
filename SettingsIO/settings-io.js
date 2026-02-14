@@ -1,7 +1,7 @@
 /**
  * settings-io.js - 設定同步和雲端儲存管理
- * 功能：OAuth2 認證、Google Drive 同步、設定衝突處理、多分頁協調
- * 職責：管理雲端同步邏輯、處理本地時間戳記異常、固定檔名檔案發現
+ * 功能：OAuth2 認證、Google Drive 同步、設定衝突處理、多分頁協調、自動匯出排程
+ * 職責：管理雲端同步邏輯、處理本地時間戳記異常、固定檔名檔案發現、排程自動匯出 alarm
  * 依賴：Chrome Extensions API、Google Drive API v3、GlobalSettings
  * 更新：2025-06-08 修復時間戳同步問題、排除UI狀態避免不必要同步、移除過時的檔案ID共享機制
  *       修復內部更新檢測邏輯缺陷、修正時間戳優先級邏輯、解決同步循環問題
@@ -28,7 +28,7 @@ class SettingsIO {
       TOKEN_REFRESH_MARGIN: 600000,
       LOCAL_RECENT_THRESHOLD: 5000,
       COMPETITION_DELAY: 100,
-      AUTO_EXPORT_DELAY: 1800000,
+      AUTO_EXPORT_DELAY: 1*60*1000, // 1分鐘
       RETRY_DELAY: 1800000
     },
     
@@ -280,6 +280,9 @@ class SettingsIO {
     }
     
     this.scheduleUpload();
+    
+    // 排程自動匯出為本地檔案
+    this.scheduleAutoExport();
   }
 
   // 統一的排除邏輯判斷（使用 KeyClassifier）
@@ -323,6 +326,47 @@ class SettingsIO {
         await this.uploadSettings();
       }
     }, SettingsIO.CONSTANTS.TIMINGS.UPLOAD_DEBOUNCE);
+  }
+
+  /**
+   * 排程自動匯出為本地 JSON 檔案
+   * 每次偵測到設定變更時呼叫，重置 alarm 計時器
+   * alarm 觸發後由 background.js 執行 chrome.downloads 下載
+   * 
+   * 注意：Service Worker 中 chrome.runtime.sendMessage 不會觸發自己的 onMessage，
+   * 所以必須直接使用 chrome.alarms.create
+   */
+  scheduleAutoExport() {
+    const delayMinutes = SettingsIO.CONSTANTS.TIMINGS.AUTO_EXPORT_DELAY / 60000; // 毫秒轉分鐘
+    
+    LogUtils.log(`📁 排程自動匯出，將在 ${delayMinutes} 分鐘後執行`);
+    
+    // Service Worker / extension page 環境：直接設定 alarm
+    // Content script 環境：chrome.alarms 不可用，需透過消息轉發
+    if (typeof chrome.alarms !== 'undefined' && chrome.alarms.create) {
+      chrome.alarms.create('autoExportSettings', { delayInMinutes: delayMinutes });
+      LogUtils.log(`⏰ 已直接設定自動匯出 alarm`);
+    } else {
+      chrome.runtime.sendMessage({
+        action: 'setAutoExportAlarm',
+        delayMinutes: delayMinutes
+      }).catch(() => {});
+    }
+  }
+
+  /**
+   * 清除自動匯出 alarm
+   */
+  static clearAutoExportAlarm() {
+    LogUtils.log('📁 清除自動匯出 alarm');
+    
+    if (typeof chrome.alarms !== 'undefined' && chrome.alarms.clear) {
+      chrome.alarms.clear('autoExportSettings');
+    } else {
+      chrome.runtime.sendMessage({
+        action: 'clearAutoExportAlarm'
+      }).catch(() => {});
+    }
   }
 
   async authenticateWithGoogle(interactive = false) {

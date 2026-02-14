@@ -4,10 +4,12 @@
 // 2025/01/23 清理：移除過時代碼，簡化日誌輸出
 // 2026/02/13 重構：將股票爬蟲代碼拆分至 stock_crawl/ 資料夾
 // 2026/02/13 重構：將 BackgroundSyncManager 拆分至 SettingsIO/settings-io-background-sync.js
+// 2026/02/14 新增：自動匯出設定功能（設定變更後 30 分鐘自動下載 JSON 備份）
 // 
 // 功能：
 // - 股票爬蟲管理：背景運行股票清單爬取（代碼已移至 stock_crawl/）
 // - 雲端同步管理：整合 SettingsIO 的 Google Drive 同步（代碼已移至 SettingsIO/）
+// - 自動匯出管理：設定變更後延遲自動匯出為本地 JSON 檔案（chrome.downloads）
 // - 消息路由：處理來自 popup 和 content scripts 的消息
 // - 狀態持久化：維護爬蟲和同步狀態
 // 
@@ -177,7 +179,7 @@ async function initializeBackgroundServices() {
 // 啟動背景服務
 initializeBackgroundServices();
 
-// 🔧 chrome.alarms 定時爬取監聽器
+// 🔧 chrome.alarms 定時爬取 + 自動匯出監聽器
 // 這是 Service Worker 被 alarm 喚醒時的入口點，必須在頂層註冊
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === STOCK_CRAWLER_CONFIG.ALARM_NAME) {
@@ -187,6 +189,12 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     } else {
       LogUtils.log('爬蟲已在運行中，跳過此次 alarm 觸發');
     }
+  }
+  
+  // 📁 自動匯出設定 alarm
+  if (alarm.name === 'autoExportSettings') {
+    LogUtils.important('📁 自動匯出 alarm 觸發，開始匯出設定檔案');
+    autoExportSettings();
   }
 });
 
@@ -273,6 +281,22 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return command.keepConnection || false;
   }
   
+  // 處理自動匯出 alarm 設定/清除請求
+  if (request.action === 'setAutoExportAlarm') {
+    const delayMinutes = request.delayMinutes || 30;
+    chrome.alarms.create('autoExportSettings', { delayInMinutes: delayMinutes });
+    LogUtils.log(`⏰ 已設定自動匯出 alarm，${delayMinutes} 分鐘後執行`);
+    sendResponse({ success: true });
+    return false;
+  }
+  
+  if (request.action === 'clearAutoExportAlarm') {
+    chrome.alarms.clear('autoExportSettings');
+    LogUtils.log('📁 已清除自動匯出 alarm');
+    sendResponse({ success: true });
+    return false;
+  }
+
   // 處理設定同步相關請求
   if (request.action === 'settingsSync') {
     // 統一的同步命令配置
@@ -532,6 +556,70 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
         tabContentScriptStatus.set(tabId, false);
     }
 });
+
+// 📁 自動匯出設定為本地 JSON 檔案
+// 由 autoExportSettings alarm 觸發，使用 chrome.downloads API 下載
+async function autoExportSettings() {
+  try {
+    LogUtils.important('📁 開始自動匯出設定...');
+    
+    // 確保依賴已載入
+    loadDependencies();
+    
+    // 讀取所有設定
+    const [syncData, localData] = await Promise.all([
+      chrome.storage.sync.get(null),
+      chrome.storage.local.get(null)
+    ]);
+    
+    // 使用 KeyClassifier 過濾設定（只匯出有效設定，排除內部狀態）
+    const allData = { ...syncData, ...localData };
+    const filteredSettings = typeof KeyClassifier !== 'undefined' 
+      ? KeyClassifier.filterSettings(allData, 'export')
+      : allData;
+    
+    // 組合匯出資料（跟手動匯出格式一致）
+    const exportData = {
+      appName: 'GPT Text Rewriting',
+      version: '1.0',
+      exportType: 'auto',
+      exportTime: new Date().toISOString(),
+      settings: filteredSettings
+    };
+    
+    // 生成時間戳記檔名
+    const now = new Date();
+    const timestamp = now.getFullYear().toString().slice(-2) + 
+      String(now.getMonth() + 1).padStart(2, '0') + 
+      String(now.getDate()).padStart(2, '0') + '-' +
+      String(now.getHours()).padStart(2, '0') + 
+      String(now.getMinutes()).padStart(2, '0');
+    
+    const filename = `gpt-rewriter-settings_auto_${timestamp}.json`;
+    
+    // 使用 data URL + chrome.downloads 下載
+    const jsonString = JSON.stringify(exportData, null, 2);
+    const dataUrl = 'data:application/json;charset=utf-8,' + encodeURIComponent(jsonString);
+    
+    chrome.downloads.download({
+      url: dataUrl,
+      filename: filename,
+      saveAs: false
+    }, (downloadId) => {
+      if (chrome.runtime.lastError) {
+        LogUtils.error('📁 自動匯出下載失敗:', chrome.runtime.lastError.message);
+      } else {
+        LogUtils.important(`📁 自動匯出完成: ${filename} (downloadId: ${downloadId})`);
+      }
+    });
+    
+    // 清除 alarm，避免重複匯出
+    chrome.alarms.clear('autoExportSettings');
+    
+  } catch (error) {
+    LogUtils.error('📁 自動匯出失敗:', error);
+  }
+}
 
 // 🐛 簡化調試：處理來自 content script 的重要訊息
 function handleDebugMessage(message, sender) {
