@@ -634,6 +634,13 @@ const ManualReplaceManager = {
         this.cachedGroupPositions.set(groupIndex, positions);
       });
       
+      // 清理不再活躍的組的高亮元素（避免刪除組後高亮殘留）
+      this.groupHighlights.forEach((_, groupIndex) => {
+        if (!groupedPositions.has(groupIndex)) {
+          this.clearGroupHighlights(groupIndex);
+        }
+      });
+      
       // 更新虛擬滾動視圖
       try {
         TextHighlight.SharedVirtualScroll.updateMultiGroupVirtualView({
