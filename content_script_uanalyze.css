@@ -101,7 +101,7 @@ textarea[name="system_prompt"] {
 
 /* 改寫按鈕樣式 */
 #gpt-rewrite-button, #gpt-rephrase-button, #ai-translate-button, #gpt-generate-button {
-  padding: 4px 10px;
+  padding: 4px 8px;
   background-color: #5b8cdb;
   color: white;
   border: none;
@@ -118,7 +118,7 @@ textarea[name="system_prompt"] {
 
 /* 自動替換開關按鈕樣式 */
 #auto-replace-toggle-button {
-  padding: 4px 10px;
+  padding: 4px 8px;
   background-color: #4caf50;
   color: white;
   border: none;
@@ -320,7 +320,7 @@ textarea[name="content"] + div {
   display: flex;
   align-items: center;
   gap: 5px;
-  padding: 5px 10px;
+  padding: 5px 8px;
   background-color: #5b8cdb;
   color: white;
   border: none;
@@ -401,7 +401,7 @@ textarea[name="content"] + div {
 
 /* ===== 比對切換按鈕樣式 ===== */
 #gpt-diff-toggle {
-  padding: 4px 10px;
+  padding: 4px 8px;
   background-color: #9e9e9e;
   color: white;
   border: none;
@@ -412,11 +412,11 @@ textarea[name="content"] + div {
 }
 
 #gpt-diff-toggle.gpt-diff-toggle-on {
-  background-color: #26a69a;
+  background-color: #4caf50;
 }
 
 #gpt-diff-toggle.gpt-diff-toggle-on:hover {
-  background-color: #00897b;
+  background-color: #388e3c;
 }
 
 #gpt-diff-toggle:not(.gpt-diff-toggle-on):hover {
@@ -428,9 +428,9 @@ textarea[name="content"] + div {
 .gpt-ann {
   display: inline-flex;
   align-items: center;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
-  line-height: 1.1;
+  line-height: 1;
   padding: 0 4px;
   border-radius: 4px;
   white-space: nowrap;
@@ -442,35 +442,22 @@ textarea[name="content"] + div {
   will-change: transform;
 }
 
-/* 橫向指示線：從文字左緣延伸到右緣，垂直位置對齊泡泡中心 */
+/* 括號指示線：border-top + border-left/right 組成開口朝下的 ⌐¬，border-radius 讓轉角圓滑 */
 .gpt-ann-hline {
   position: absolute;
-  height: 1.5px;
-  border-radius: 1px;
+  height: 8px;
+  border-top: 2px solid;
+  border-left: 2px solid;
+  border-right: 2px solid;
+  border-bottom: none;
+  border-radius: 5px 5px 0 0;
+  background: transparent;
   pointer-events: none;
   opacity: 0.65;
   z-index: 49;
 }
-.gpt-ann-hline-replace { background: rgb(255 131 0); }
-.gpt-ann-hline-insert  { background: rgb(255 2 217); }
-
-/* 左右端點向下延伸 4px 的短垂直線，形成括號效果 */
-.gpt-ann-hline::before,
-.gpt-ann-hline::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  width: 1.5px;
-  height: 8px;
-  border-radius: 1px;
-  opacity: 1;
-}
-.gpt-ann-hline::before { left: 0; }
-.gpt-ann-hline::after  { right: 0; }
-.gpt-ann-hline-replace::before,
-.gpt-ann-hline-replace::after { background: rgb(255 131 0); }
-.gpt-ann-hline-insert::before,
-.gpt-ann-hline-insert::after  { background: rgb(255 2 217); }
+.gpt-ann-hline-replace { border-color: rgb(255 131 0); }
+.gpt-ann-hline-insert  { border-color: rgb(255 2 217); }
 
 /* 文字 label：在 span 內做 ellipsis，父元素不再需要 overflow:hidden */
 .gpt-ann-label {
@@ -502,6 +489,19 @@ textarea[name="content"] + div {
   background: #d1fae5;
   border: 1px solid #34d399;
   color: #000;
+}
+
+/* 刪除泡泡底部向下延伸的指示線，對齊泡泡水平中心 */
+.gpt-ann-delete::after {
+  content: '';
+  position: absolute;
+  bottom: -10px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 2px;
+  height: 10px;
+  background: #34d399;
+  border-radius: 0 0 1px 1px;
 }
 
 /* X 按鈕：絕對定位疊在泡泡右上角，hover 才顯示，紅圓圈白X */

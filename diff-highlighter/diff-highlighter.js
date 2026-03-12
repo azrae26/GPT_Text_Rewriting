@@ -323,6 +323,8 @@ const DiffHighlighter = {
         if (!oldTrimmed && !newTrimmed) continue;
         // 去空白後相同 → 忽略
         if (oldTrimmed === newTrimmed) continue;
+        // 唯一差異是句尾句點（. 或 。）→ 忽略
+        if (this._isOnlyTrailingPeriodDiff(oldTrimmed, newTrimmed)) continue;
 
         if (!oldTrimmed) {
           // 空白 → 有意義文字：視為新增
@@ -342,12 +344,16 @@ const DiffHighlighter = {
       } else if (g.type === 'insert') {
         // 純空白新增 → 忽略（換行、空格不顯示泡泡）
         if (WS_ONLY.test(g.newText)) continue;
+        // 唯一新增的是句尾句點 → 忽略
+        if (/^[.。]+$/.test(g.newText.trim())) continue;
         bubble = this._makeBubble('insert', '✕', g, ta, contentText,
           g.contentStartIdx, g.newText, styles, scrollTop);
 
       } else if (g.type === 'delete') {
         // 純空白刪除 → 忽略
         if (WS_ONLY.test(g.oldText)) continue;
+        // 唯一刪除的是句尾句點 → 忽略
+        if (/^[.。]+$/.test(g.oldText.trim())) continue;
         // 刪除型：contentInsertIdx 指向刪除點（即被刪文字在原文中的位置）
         // 取刪除點前一字（contentInsertIdx - 1）的右緣，精確對準刪除縫隙
         // 例：營收[分別]年增 → 刪除後 contentInsertIdx=2（年），應取 index 1（收）右緣
@@ -415,9 +421,9 @@ const DiffHighlighter = {
         rightMost = Math.max(rightMost, positions[i].left + positions[i].width);
       }
     }
-    // 水平中心（相對於 overlay 容器左邊）
+    // 水平中心（相對於 overlay 容器左邊），整體右移 1px
     // delete 型取右緣，對準刪除縫隙；其他型取中心
-    const centerX = useRightEdge ? rightMost : (leftMost + rightMost) / 2;
+    const centerX = (useRightEdge ? rightMost : (leftMost + rightMost) / 2) + 1;
     const t3 = new Date(); const ts3 = `${t3.getHours().toString().padStart(2,'0')}:${t3.getMinutes().toString().padStart(2,'0')}:${t3.getSeconds().toString().padStart(2,'0')}`;
     console.log(`[DiffHighlighter][${ts3}]   → positions[0]={top:${positions[0].top.toFixed(1)},left:${positions[0].left.toFixed(1)},w:${positions[0].width.toFixed(1)}} leftMost=${leftMost.toFixed(1)} rightMost=${rightMost.toFixed(1)} centerX=${centerX.toFixed(1)}`);
 
@@ -469,15 +475,16 @@ const DiffHighlighter = {
       const BUBBLE_MID = 5; // 泡泡高度約 11px，取中點 ~5px
       const absLineTop   = absTop + BUBBLE_MID;
       const lineFinalTop = absLineTop - scrollTop;
+      const lineLeft = leftMost - 1 + 1; // 整體右移 1px
       lineEl.dataset.absLineTop = absLineTop;
-      lineEl.dataset.lineLeft   = leftMost;
-      const lineWidth  = rightMost - leftMost;
+      lineEl.dataset.lineLeft   = lineLeft;
+      const lineWidth  = (rightMost - leftMost) + 2;
       const inBoundsLn = lineFinalTop > -(this.BUBBLE_H + this.BOUNDS_TOP_EXTRA) && lineFinalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
       lineEl.style.cssText = `
         position: absolute;
         top: 0;
         left: 0;
-        transform: translate(${leftMost}px, ${lineFinalTop}px);
+        transform: translate(${lineLeft}px, ${lineFinalTop}px);
         width: ${lineWidth}px;
         pointer-events: none;
         visibility: ${inBoundsLn ? 'visible' : 'hidden'};
@@ -490,6 +497,12 @@ const DiffHighlighter = {
 
   _abbrev(text, max = 30) {
     return text.length > max ? text.slice(0, max) + '…' : text;
+  },
+
+  /** 判斷兩字串唯一的差異是否只是句尾句點（. 或 。），若是則視為相同 */
+  _isOnlyTrailingPeriodDiff(a, b) {
+    const strip = s => s.replace(/[.。]+$/, '');
+    return strip(a) === strip(b);
   },
 
   // ─────────────────────────────────────────────────

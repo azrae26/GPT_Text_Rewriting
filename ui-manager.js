@@ -51,7 +51,6 @@ const UIManager = {
       const isOn = diffToggleBtn.classList.toggle('gpt-diff-toggle-on');
       if (window.DiffHighlighter) window.DiffHighlighter.toggle(isOn);
     });
-    buttonContainer.appendChild(diffToggleBtn);
 
     // 創建改寫按鈕
     const rewriteButton = document.createElement('button');
@@ -319,6 +318,7 @@ const UIManager = {
       });
       buttonContainer.appendChild(replaceToggleButton);
     }
+    buttonContainer.appendChild(diffToggleBtn);
 
     this._setupTextArea(textArea, buttonContainer);
 
