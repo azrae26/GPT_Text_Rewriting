@@ -487,10 +487,19 @@
             <div class="add-model-form">
               <div class="form-row">
                 <div class="form-group">
-                  <input type="text" id="custom-model-name" placeholder="模型名 gemini-2.0-flash" class="form-input">
+                  <input type="text" id="custom-model-name" placeholder="模型名" class="form-input">
                 </div>
                 <div class="form-group">
-                  <input type="text" id="custom-model-display" placeholder="顯示名 Gemini 2.0 Flash" class="form-input">
+                  <input type="text" id="custom-model-display" placeholder="顯示名" class="form-input">
+                </div>
+                <div class="form-group">
+                  <select id="custom-model-thinking" class="form-input">
+                    <option value="">思考程度</option>
+                    <option value="off">關閉</option>
+                    <option value="low">低</option>
+                    <option value="medium">中</option>
+                    <option value="high">高</option>
+                  </select>
                 </div>
                 <div class="form-group">
                   <select id="custom-model-type" class="form-input">

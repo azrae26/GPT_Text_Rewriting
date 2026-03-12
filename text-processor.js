@@ -152,6 +152,29 @@ const TextProcessor = {
       ]
     };
 
+    // 注入思考程度設定
+    const thinkingLevel = window.GlobalSettings.customModels?.[model]?.thinkingLevel;
+    if (thinkingLevel) {
+      if (isGemini) {
+        const ml = model.toLowerCase();
+        if (ml.includes('gemini-2.5')) {
+          // Gemini 2.5 系列使用 thinkingBudget（token 數量）
+          const budgetMap = { off: 0, low: 1024, medium: 8192, high: 24576 };
+          if (budgetMap[thinkingLevel] !== undefined) {
+            body.generationConfig = { thinkingConfig: { thinkingBudget: budgetMap[thinkingLevel] } };
+          }
+        } else if (ml.includes('gemini-3')) {
+          // Gemini 3 系列使用 thinkingLevel（LOW/HIGH），不支援關閉
+          if (thinkingLevel !== 'off') {
+            body.generationConfig = { thinkingConfig: { thinkingLevel: thinkingLevel === 'low' ? 'LOW' : 'HIGH' } };
+          }
+        }
+      } else if (['low', 'medium', 'high'].includes(thinkingLevel)) {
+        // OpenAI 推理模型使用 reasoning_effort
+        body.reasoning_effort = thinkingLevel;
+      }
+    }
+
     LogUtils.log('API 請求配置:', {
       endpoint,
       requestBody: {

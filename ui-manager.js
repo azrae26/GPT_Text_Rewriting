@@ -65,6 +65,13 @@ const UIManager = {
           return;
         }
 
+        // 改寫前立即將報告框內容複製到公司簡介框，作為 diff 基準
+        const introTextarea = document.querySelector('textarea[name="info"]');
+        if (introTextarea) {
+          introTextarea.value = textArea.value;
+          introTextarea.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
         const settings = await window.GlobalSettings.loadSettings();
         // 檢查是否有任何可用的 API 金鑰
         const hasAnyApiKey = Object.values(settings.apiKeys || {}).some(key => key && key.trim());

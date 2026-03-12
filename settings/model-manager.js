@@ -25,9 +25,10 @@ const ModelManager = {
    * @param {string} modelName - 模型名稱
    * @param {string} displayName - 顯示名稱
    * @param {string} apiType - API類型 (gemini/openai)
+   * @param {string} thinkingLevel - 思考程度 (off/low/medium/high，空字串表示不設定)
    * @returns {Promise<boolean>} - 成功與否
    */
-  async addCustomModel(modelName, displayName, apiType) {
+  async addCustomModel(modelName, displayName, apiType, thinkingLevel = '') {
     try {
       if (!modelName || !displayName || !apiType) {
         throw new Error('模型名稱、顯示名稱和API類型都是必填的');
@@ -42,7 +43,8 @@ const ModelManager = {
       window.GlobalSettings.customModels[modelName] = {
         displayName: displayName,
         apiType: apiType,
-        isCustom: true
+        isCustom: true,
+        thinkingLevel: thinkingLevel
       };
 
       // 也將模型新增到 API.models 中
@@ -483,6 +485,7 @@ const ModelManager = {
     try {
       const customModelNameInput = document.getElementById('custom-model-name');
       const customModelDisplayInput = document.getElementById('custom-model-display');
+      const customModelThinkingSelect = document.getElementById('custom-model-thinking');
       const customModelTypeSelect = document.getElementById('custom-model-type');
       
       if (!customModelNameInput || !customModelDisplayInput || !customModelTypeSelect) {
@@ -493,6 +496,7 @@ const ModelManager = {
       
       const modelName = customModelNameInput.value.trim();
       const displayName = customModelDisplayInput.value.trim();
+      const thinkingLevel = customModelThinkingSelect ? customModelThinkingSelect.value : '';
       const apiType = customModelTypeSelect.value;
 
       // 驗證輸入
@@ -512,11 +516,12 @@ const ModelManager = {
       }
 
       // 呼叫核心新增方法
-      await this.addCustomModel(modelName, displayName, apiType);
+      await this.addCustomModel(modelName, displayName, apiType, thinkingLevel);
       
       // 清空表單
       customModelNameInput.value = '';
       customModelDisplayInput.value = '';
+      if (customModelThinkingSelect) customModelThinkingSelect.value = '';
       customModelTypeSelect.value = '';
 
       // 更新 UI
@@ -585,10 +590,14 @@ const ModelManager = {
       const modelItem = document.createElement('div');
       modelItem.className = 'custom-model-item';
       
+      const thinkingLabelMap = { off: '關閉', low: '低', medium: '中', high: '高' };
+      const thinkingLabel = thinkingLabelMap[model.thinkingLevel] || '—';
+
       modelItem.innerHTML = `
         <div class="custom-model-info">
           <div class="custom-model-name">${key}</div>
           <div class="custom-model-details">${model.displayName}</div>
+          <div class="custom-model-thinking">${thinkingLabel}</div>
           <div class="custom-model-api-type">${model.apiType === 'gemini' ? 'Gemini API' : 'OpenAI API'}</div>
         </div>
         <div class="custom-model-actions">
