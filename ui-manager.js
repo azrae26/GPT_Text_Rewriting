@@ -42,6 +42,17 @@ const UIManager = {
     const buttonContainer = document.createElement('div');
     buttonContainer.id = 'gpt-button-container';
 
+    // 創建比對切換按鈕（在改寫按鈕左邊）
+    const diffToggleBtn = document.createElement('button');
+    diffToggleBtn.id = 'gpt-diff-toggle';
+    diffToggleBtn.textContent = '比對';
+    diffToggleBtn.classList.add('gpt-diff-toggle-on');
+    diffToggleBtn.addEventListener('click', () => {
+      const isOn = diffToggleBtn.classList.toggle('gpt-diff-toggle-on');
+      if (window.DiffHighlighter) window.DiffHighlighter.toggle(isOn);
+    });
+    buttonContainer.appendChild(diffToggleBtn);
+
     // 創建改寫按鈕
     const rewriteButton = document.createElement('button');
     rewriteButton.id = 'gpt-rewrite-button';
@@ -303,6 +314,12 @@ const UIManager = {
     }
 
     this._setupTextArea(textArea, buttonContainer);
+
+    // 初始化比對功能（在 DOM 就緒後）
+    if (window.DiffHighlighter) {
+      window.DiffHighlighter.init('textarea[name="info"]', 'textarea[name="content"]');
+    }
+
     LogUtils.log('改寫按鈕添加成功');
   },
 

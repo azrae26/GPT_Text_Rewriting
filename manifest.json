@@ -64,6 +64,7 @@
         "google_translator/jwt-helper.js",
         "google_translator/google-translate.js",
         "stock_matcher/stock-matcher.js",
+        "diff-highlighter/diff-highlighter.js",
         "ui-manager.js",
         "stock_report_helper/quick-copy.js",
         "stock_report_helper/stock-analyzer.js",
