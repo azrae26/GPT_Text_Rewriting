@@ -442,22 +442,35 @@ textarea[name="content"] + div {
   will-change: transform;
 }
 
-/* 指示線：從泡泡底部中心向下指，讓使用者清楚看出指向哪個位置 */
-.gpt-ann::after {
+/* 橫向指示線：從文字左緣延伸到右緣，垂直位置對齊泡泡中心 */
+.gpt-ann-hline {
+  position: absolute;
+  height: 1.5px;
+  border-radius: 1px;
+  pointer-events: none;
+  opacity: 0.65;
+  z-index: 49;
+}
+.gpt-ann-hline-replace { background: rgb(255 131 0); }
+.gpt-ann-hline-insert  { background: rgb(255 2 217); }
+
+/* 左右端點向下延伸 4px 的短垂直線，形成括號效果 */
+.gpt-ann-hline::before,
+.gpt-ann-hline::after {
   content: '';
   position: absolute;
-  bottom: -8px;        /* 線頂貼近泡泡底部，往下延伸 7px */
-  left: 50%;
-  transform: translateX(-50%);
+  top: 0;
   width: 1.5px;
-  height: 7px;
+  height: 8px;
   border-radius: 1px;
-  opacity: 0.65;
-  pointer-events: none;
+  opacity: 1;
 }
-.gpt-ann-replace::after { background: #ffc107; }
-.gpt-ann-insert::after  { background: #34d399; }
-.gpt-ann-delete::after  { background: #f87171; }
+.gpt-ann-hline::before { left: 0; }
+.gpt-ann-hline::after  { right: 0; }
+.gpt-ann-hline-replace::before,
+.gpt-ann-hline-replace::after { background: rgb(255 131 0); }
+.gpt-ann-hline-insert::before,
+.gpt-ann-hline-insert::after  { background: rgb(255 2 217); }
 
 /* 文字 label：在 span 內做 ellipsis，父元素不再需要 overflow:hidden */
 .gpt-ann-label {
@@ -469,35 +482,35 @@ textarea[name="content"] + div {
   vertical-align: middle;
 }
 
-/* 替換：黃色，顯示原始文字 */
+/* 替換：橙色 */
 .gpt-ann-replace {
-  background: #fff3cd;
-  border: 1px solid #ffc107;
-  color: #664d03;
+  background: rgb(255 242 225);
+  border: 1px solid rgb(255 131 0);
+  color: #000;
 }
 
-/* 新增：綠色，只顯示 + */
+/* 新增：桃紅色系 */
 .gpt-ann-insert {
-  background: #d1fae5;
-  border: 1px solid #34d399;
-  color: #065f46;
+  background: rgb(254 224 251);
+  border: 1px solid rgb(255 2 217);
+  color: #000;
   font-weight: 600;
 }
 
-/* 刪除：紅色系，顯示被刪除的文字 */
+/* 刪除：綠色系，顯示被刪除的文字 */
 .gpt-ann-delete {
-  background: #ffe4e4;
-  border: 1px solid #f87171;
-  color: #7c2d12;
+  background: #d1fae5;
+  border: 1px solid #34d399;
+  color: #000;
 }
 
 /* X 按鈕：絕對定位疊在泡泡右上角，hover 才顯示，紅圓圈白X */
 .gpt-ann-close {
   position: absolute;
-  right: -6px;
+  right: -10px;
   top: -6px;
-  width: 13px;
-  height: 13px;
+  width: 15px;
+  height: 15px;
   background: #ef4444;
   border-radius: 50%;
   color: #fff;

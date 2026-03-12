@@ -20,6 +20,10 @@ const DiffHighlighter = {
   BUBBLE_H: 6,
   /** 泡泡與文字的垂直間距（px） */
   BUBBLE_GAP: 2,
+  /** 上方額外允許顯示的距離（px），讓泡泡超出容器頂部時仍可見 */
+  BOUNDS_TOP_EXTRA: 10,
+  /** 下方提早隱藏的距離（px），讓泡泡在接近容器底部時即隱藏 */
+  BOUNDS_BOTTOM_MARGIN: 10,
 
   isEnabled: true,
   /** @type {HTMLTextAreaElement|null} */
@@ -36,46 +40,24 @@ const DiffHighlighter = {
   _rafPending: false,
 
   // ─────────────────────────────────────────────────
-  // 1. TOKENIZE
-  //    優先順序（長匹配優先）：季度 4Q22 > 斜線數字 2023/24 > 純數字
-  //    > ASCII 詞 > 中文字（單字）> 換行 > 空白序列 > 其他字元
+  // 1. DIFF（使用 diff-match-patch）
+  //    Myers diff + diff_cleanupSemantic 自動校正邊界
+  //    字元層級操作，不需要 tokenizer
+  //    回傳 ops 陣列：{type:'equal'|'insert'|'delete', a?, b?}
   // ─────────────────────────────────────────────────
-  tokenize(text) {
-    const re = /\d+Q\d+|(?:\d+\/)+\d+|\d+(?:\.\d+)?|[a-zA-Z]+|\r?\n|[ \t]+|[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u2e80-\u2eff\u31c0-\u31ef\u3200-\u32ff\u3300-\u33ff\ufe30-\ufe4f\uff00-\uffef]|./gu;
-    const tokens = [];
-    let m;
-    while ((m = re.exec(text)) !== null) tokens.push(m[0]);
-    return tokens;
-  },
-
-  // ─────────────────────────────────────────────────
-  // 2. LCS-BASED DIFF
-  //    回傳 ops 陣列，每個 op：{type:'equal'|'insert'|'delete', a?, b?}
-  // ─────────────────────────────────────────────────
-  computeDiff(aT, bT) {
-    const m = aT.length, n = bT.length;
-    const dp = Array.from({ length: m + 1 }, () => new Int32Array(n + 1));
-    for (let i = 1; i <= m; i++) {
-      for (let j = 1; j <= n; j++) {
-        dp[i][j] = aT[i-1] === bT[j-1]
-          ? dp[i-1][j-1] + 1
-          : Math.max(dp[i-1][j], dp[i][j-1]);
-      }
-    }
-    const ops = [];
-    let i = m, j = n;
-    while (i > 0 || j > 0) {
-      if (i > 0 && j > 0 && aT[i-1] === bT[j-1]) {
-        ops.unshift({ type: 'equal', a: aT[i-1], b: bT[j-1] });
-        i--; j--;
-      } else if (j > 0 && (i === 0 || dp[i][j-1] >= dp[i-1][j])) {
-        ops.unshift({ type: 'insert', b: bT[j-1] });
-        j--;
-      } else {
-        ops.unshift({ type: 'delete', a: aT[i-1] });
-        i--;
-      }
-    }
+  computeDiffDMP(introText, contentText) {
+    const dmp   = new diff_match_patch();  // eslint-disable-line new-cap
+    const diffs = dmp.diff_main(introText, contentText);
+    dmp.diff_cleanupSemantic(diffs);       // 自動把邊界對齊到最近的詞/句邊界
+    const ops = diffs.map((diff) => {
+      const op   = diff[0];
+      const text = diff[1];
+      if (op ===  0) return { type: 'equal',  a: text, b: text };
+      if (op ===  1) return { type: 'insert', b: text };
+      /* op === -1 */ return { type: 'delete', a: text };
+    });
+    const t = new Date(); const ts = `${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`;
+    console.log(`[DiffHighlighter][${ts}] 📝 DMP ops (${ops.length}):`, ops.map(o => `[${o.type}] a=${JSON.stringify(o.a||'')} b=${JSON.stringify(o.b||'')}`));
     return ops;
   },
 
@@ -291,11 +273,12 @@ const DiffHighlighter = {
     this.clearBubbles();
     if (!introText.trim() || !contentText.trim()) return;
 
-    const aT     = this.tokenize(introText);
-    const bT     = this.tokenize(contentText);
-    const ops    = this.computeDiff(aT, bT);
+    const ops    = this.computeDiffDMP(introText, contentText);
     const groups = this.postProcessGroups(this.groupOps(ops));
     this.annotateGroupsWithIndices(groups);
+
+    const t = new Date(); const ts = `${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`;
+    console.log(`[DiffHighlighter][${ts}] 🔍 groups (${groups.length}):`, groups.map((g,i) => `[${i}] type=${g.type} old=${JSON.stringify(g.oldText||'')} new=${JSON.stringify(g.newText||'')} contentStart=${g.contentStartIdx} contentInsert=${g.contentInsertIdx}`));
 
     this.renderBubbles(groups, contentText);
   },
@@ -343,7 +326,7 @@ const DiffHighlighter = {
 
         if (!oldTrimmed) {
           // 空白 → 有意義文字：視為新增
-          bubble = this._makeBubble('insert', '+', g, ta, contentText,
+          bubble = this._makeBubble('insert', '✕', g, ta, contentText,
             g.contentStartIdx, g.newText, styles, scrollTop);
         } else if (!newTrimmed) {
           // 有意義文字 → 空白：視為刪除，錨點用 contentStartIdx
@@ -359,15 +342,16 @@ const DiffHighlighter = {
       } else if (g.type === 'insert') {
         // 純空白新增 → 忽略（換行、空格不顯示泡泡）
         if (WS_ONLY.test(g.newText)) continue;
-        bubble = this._makeBubble('insert', '+', g, ta, contentText,
+        bubble = this._makeBubble('insert', '✕', g, ta, contentText,
           g.contentStartIdx, g.newText, styles, scrollTop);
 
       } else if (g.type === 'delete') {
         // 純空白刪除 → 忽略
         if (WS_ONLY.test(g.oldText)) continue;
-        // 刪除型：contentInsertIdx 指向刪除點前一字（'收'）
-        // 取該字右緣作為 centerX，精確對準刪除縫隙
-        const anchorIdx = Math.min(g.contentInsertIdx, contentText.length - 1);
+        // 刪除型：contentInsertIdx 指向刪除點（即被刪文字在原文中的位置）
+        // 取刪除點前一字（contentInsertIdx - 1）的右緣，精確對準刪除縫隙
+        // 例：營收[分別]年增 → 刪除後 contentInsertIdx=2（年），應取 index 1（收）右緣
+        const anchorIdx = Math.min(g.contentInsertIdx - 1, contentText.length - 1);
         if (anchorIdx < 0) continue;
         bubble = this._makeBubble('delete', this._abbrev(g.oldText), g, ta, contentText,
           anchorIdx, contentText[anchorIdx] || ' ', styles, scrollTop, true);
@@ -414,20 +398,8 @@ const DiffHighlighter = {
       }
     }
 
-    // 步驟3：label 不含中文（如 "1Q"、"FY23"）但 posStr 以中文字元開頭
-    //   → LCS 把前一個 equal 區塊的末尾中文誤包進 newText（上文殘影），偏移 10-15px
-    //   → 跳過開頭連續的中文區段，直到遇到非中文內容
-    const CJK_RE  = /[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u2e80-\u2eff\u31c0-\u31ef\u3200-\u32ff\u3300-\u33ff\ufe30-\ufe4f\uff00-\uffef]/;
-    const labelHasCJK = CJK_RE.test(label);
-    if (!labelHasCJK && posStr.length > 1) {
-      // 匹配開頭連續的中文字元（含全形標點與空格）
-      const cjkLeadRe = /^[\u4e00-\u9fff\u3400-\u4dbf\uf900-\ufaff\u2e80-\u2eff\u31c0-\u31ef\u3200-\u32ff\u3300-\u33ff\ufe30-\ufe4f\uff00-\uffef\s]+/;
-      const cjkLead  = posStr.match(cjkLeadRe);
-      if (cjkLead && cjkLead[0].length < posStr.length) {
-        posIdx += cjkLead[0].length;
-        posStr  = posStr.slice(cjkLead[0].length);
-      }
-    }
+    const t2 = new Date(); const ts2 = `${t2.getHours().toString().padStart(2,'0')}:${t2.getMinutes().toString().padStart(2,'0')}:${t2.getSeconds().toString().padStart(2,'0')}`;
+    console.log(`[DiffHighlighter][${ts2}] 📍 _makeBubble type=${type} label=${JSON.stringify(label)} posIdx=${posIdx} posStr=${JSON.stringify(posStr)}`);
 
     const positions = calc.calculatePosition(ta, posIdx, contentText, posStr, styles);
     if (!positions || positions.length === 0) return null;
@@ -446,22 +418,8 @@ const DiffHighlighter = {
     // 水平中心（相對於 overlay 容器左邊）
     // delete 型取右緣，對準刪除縫隙；其他型取中心
     const centerX = useRightEdge ? rightMost : (leftMost + rightMost) / 2;
-
-    // [DEBUG] 位置診斷 log，確認後請移除
-    const _cs = getComputedStyle(ta);
-    console.log(`[DiffHighlighter] type=${type} label="${label}"`, {
-      posIdx,
-      posStr,
-      positions_count: positions.length,
-      leftMost:       leftMost.toFixed(1),
-      rightMost:      rightMost.toFixed(1),
-      centerX:        centerX.toFixed(1),
-      pos0_top:       positions[0].top.toFixed(1),
-      ta_paddingLeft: parseFloat(_cs.paddingLeft).toFixed(1),
-      ta_borderLeft:  parseFloat(_cs.borderLeft).toFixed(1),
-      overlay_left:   this.overlayContainer?.getBoundingClientRect().left.toFixed(1),
-      ta_rect_left:   ta.getBoundingClientRect().left.toFixed(1),
-    });
+    const t3 = new Date(); const ts3 = `${t3.getHours().toString().padStart(2,'0')}:${t3.getMinutes().toString().padStart(2,'0')}:${t3.getSeconds().toString().padStart(2,'0')}`;
+    console.log(`[DiffHighlighter][${ts3}]   → positions[0]={top:${positions[0].top.toFixed(1)},left:${positions[0].left.toFixed(1)},w:${positions[0].width.toFixed(1)}} leftMost=${leftMost.toFixed(1)} rightMost=${rightMost.toFixed(1)} centerX=${centerX.toFixed(1)}`);
 
     // 泡泡頂端（相對於 overlay 容器，可為負值 → 浮在 textarea 上方）
     const absTop   = positions[0].top - this.BUBBLE_H - this.BUBBLE_GAP;
@@ -483,7 +441,7 @@ const DiffHighlighter = {
 
     // 水平置中：先平移到 centerX，再用 translateX(-50%) 讓泡泡自身置中
     const containerH = this.overlayContainer.offsetHeight;
-    const inBounds = finalTop > -(this.BUBBLE_H + 10) && finalTop < containerH;
+    const inBounds = finalTop > -(this.BUBBLE_H + this.BOUNDS_TOP_EXTRA) && finalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
     bubble.style.cssText = `
       position: absolute;
       top: 0;
@@ -503,7 +461,31 @@ const DiffHighlighter = {
     });
     bubble.appendChild(closeBtn);
 
-    return bubble;
+    // 組合回傳：replace/insert 附帶橫線，垂直對齊泡泡正中心
+    const result = document.createDocumentFragment();
+    if ((type === 'replace' || type === 'insert') && rightMost > leftMost) {
+      const lineEl = document.createElement('div');
+      lineEl.className = `gpt-ann-hline gpt-ann-hline-${type}`;
+      const BUBBLE_MID = 5; // 泡泡高度約 11px，取中點 ~5px
+      const absLineTop   = absTop + BUBBLE_MID;
+      const lineFinalTop = absLineTop - scrollTop;
+      lineEl.dataset.absLineTop = absLineTop;
+      lineEl.dataset.lineLeft   = leftMost;
+      const lineWidth  = rightMost - leftMost;
+      const inBoundsLn = lineFinalTop > -(this.BUBBLE_H + this.BOUNDS_TOP_EXTRA) && lineFinalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
+      lineEl.style.cssText = `
+        position: absolute;
+        top: 0;
+        left: 0;
+        transform: translate(${leftMost}px, ${lineFinalTop}px);
+        width: ${lineWidth}px;
+        pointer-events: none;
+        visibility: ${inBoundsLn ? 'visible' : 'hidden'};
+      `;
+      result.appendChild(lineEl);
+    }
+    result.appendChild(bubble);
+    return result;
   },
 
   _abbrev(text, max = 30) {
@@ -522,10 +504,18 @@ const DiffHighlighter = {
       const absTop   = parseFloat(bubble.dataset.absTop);
       const centerX  = parseFloat(bubble.dataset.centerX);
       const finalTop = absTop - scrollTop;
-      const inBounds = finalTop > -(this.BUBBLE_H + 10) && finalTop < containerH;
+      const inBounds = finalTop > -(this.BUBBLE_H + this.BOUNDS_TOP_EXTRA) && finalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
       bubble.style.visibility = inBounds ? 'visible' : 'hidden';
       bubble.style.transform =
         `translate(${centerX}px, ${finalTop}px) translateX(-50%)`;
+    });
+    this.overlayContainer.querySelectorAll('.gpt-ann-hline').forEach(lineEl => {
+      const absLineTop   = parseFloat(lineEl.dataset.absLineTop);
+      const lineLeft     = parseFloat(lineEl.dataset.lineLeft);
+      const lineFinalTop = absLineTop - scrollTop;
+      const inBounds = lineFinalTop > -(this.BUBBLE_H + this.BOUNDS_TOP_EXTRA) && lineFinalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
+      lineEl.style.visibility = inBounds ? 'visible' : 'hidden';
+      lineEl.style.transform = `translate(${lineLeft}px, ${lineFinalTop}px)`;
     });
   },
 
