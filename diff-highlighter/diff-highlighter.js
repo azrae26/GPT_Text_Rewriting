@@ -20,6 +20,8 @@ const DiffHighlighter = {
   BUBBLE_H: 6,
   /** 泡泡與文字的垂直間距（px） */
   BUBBLE_GAP: 2,
+  /** 泡泡整體垂直偏移量（px），正值往下移，負值往上移 */
+  BUBBLE_VERTICAL_ADJUST: 2,
   /** 上方額外允許顯示的距離（px），讓泡泡超出容器頂部時仍可見 */
   BOUNDS_TOP_EXTRA: 10,
   /** 下方提早隱藏的距離（px），讓泡泡在接近容器底部時即隱藏 */
@@ -428,7 +430,7 @@ const DiffHighlighter = {
     console.log(`[DiffHighlighter][${ts3}]   → positions[0]={top:${positions[0].top.toFixed(1)},left:${positions[0].left.toFixed(1)},w:${positions[0].width.toFixed(1)}} leftMost=${leftMost.toFixed(1)} rightMost=${rightMost.toFixed(1)} centerX=${centerX.toFixed(1)}`);
 
     // 泡泡頂端（相對於 overlay 容器，可為負值 → 浮在 textarea 上方）
-    const absTop   = positions[0].top - this.BUBBLE_H - this.BUBBLE_GAP;
+    const absTop   = positions[0].top - this.BUBBLE_H - this.BUBBLE_GAP + this.BUBBLE_VERTICAL_ADJUST;
     // 應用 scrollTop 補償（等同 TextHighlight 的 top - scrollTop pattern）
     const finalTop = absTop - scrollTop;
 

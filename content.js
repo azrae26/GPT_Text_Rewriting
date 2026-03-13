@@ -241,6 +241,9 @@ function initializeExtension() {
       return;
     }
 
+    // 套用報告框行距（必須在 TextHighlight.initialize() 前，讓 getComputedStyle 讀到新值）
+    textarea.style.lineHeight = UIManager.REPORT_LINE_HEIGHT;
+
     // 先初始化基本功能
     window.TextHighlight.initialize();
 

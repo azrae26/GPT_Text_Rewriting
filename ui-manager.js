@@ -20,6 +20,13 @@
  * - StockMatcher：股票代號匹配功能（新分離模組）
  */
 const UIManager = {
+  /**
+   * 報告框行距（CSS line-height 值）
+   * 調整此常數即可改變報告框行距，高亮/比對/滾動系統會自動適應
+   * 可用倍率（如 '1.8'）或固定像素（如 '26px'）
+   */
+  REPORT_LINE_HEIGHT: '1.7',
+
   /** 初始化追蹤改寫任務的 Set */
   _activeRewrites: new Set(),
 
