@@ -47,14 +47,15 @@ const DiffHighlighter = {
 
   // ─────────────────────────────────────────────────
   // 1. DIFF（使用 diff-match-patch）
-  //    Myers diff + diff_cleanupSemantic 自動校正邊界
-  //    字元層級操作，不需要 tokenizer
+  //    Myers diff 字元層級操作，不使用 diff_cleanupSemantic
+  //    （cleanupSemantic 會把短等值段如「延續」吸收進 replace，
+  //      導致相鄰的多個差異合併成一個超大 replace，讓自訂規則無法拆分）
   //    回傳 ops 陣列：{type:'equal'|'insert'|'delete', a?, b?}
   // ─────────────────────────────────────────────────
   computeDiffDMP(introText, contentText) {
     const dmp   = new diff_match_patch();  // eslint-disable-line new-cap
     const diffs = dmp.diff_main(introText, contentText);
-    dmp.diff_cleanupSemantic(diffs);       // 自動把邊界對齊到最近的詞/句邊界
+    // 不呼叫 diff_cleanupSemantic：它會過度合併相鄰差異，使自訂規則失效
     const ops = diffs.map((diff) => {
       const op   = diff[0];
       const text = diff[1];
@@ -222,8 +223,15 @@ const DiffHighlighter = {
   _mergeByRule(groups, rule) {
     const { oldMatcher, newMatcher } = rule;
 
+    let _iterCount = 0;
     let changed = true;
     while (changed) {
+      // 防止自訂規則 regex 組合在某些文字上觸發無限迴圈
+      if (++_iterCount > 500) {
+        const t = new Date(); const ts = `${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`;
+        LogUtils.warn(`[DiffHighlighter][${ts}] ⚠️ _mergeByRule 超過 500 次迭代，強制中止`);
+        break;
+      }
       changed = false;
 
       // ── Step 1：重建 old/new 全文與各 group 的跨度 ──
@@ -268,6 +276,14 @@ const DiffHighlighter = {
 
         let giS = Math.min(oS, nS);
         let giE = Math.max(oE, nE);
+
+        // 若 [giS..giE] 全為 equal group，segOld 必然等於 segNew，
+        // 不需合併且任何 split 都會引發無限迴圈（pattern 匹配在 equal 內部時）
+        let _hasNonEqual = false;
+        for (let _k = giS; _k <= giE; _k++) {
+          if (groups[_k].type !== 'equal') { _hasNonEqual = true; break; }
+        }
+        if (!_hasNonEqual) return false;
 
         // A, 模式（僅 oldMatcher）：在 old match 結尾的 equal group 後，
         // 把緊接的非 equal group 也納入（捕捉例如「2Q23 」中的尾部空格 replace）
@@ -687,7 +703,7 @@ const DiffHighlighter = {
     }
     // 水平中心（相對於 overlay 容器左邊），整體右移 1px
     // delete 型取右緣，對準刪除縫隙；其他型取中心
-    const centerX = (useRightEdge ? rightMost : (leftMost + rightMost) / 2) + 1;
+    const centerX = (useRightEdge ? rightMost : (leftMost + rightMost) / 2);
     const t3 = new Date(); const ts3 = `${t3.getHours().toString().padStart(2,'0')}:${t3.getMinutes().toString().padStart(2,'0')}:${t3.getSeconds().toString().padStart(2,'0')}`;
     console.log(`[DiffHighlighter][${ts3}]   → positions[0]={top:${positions[0].top.toFixed(1)},left:${positions[0].left.toFixed(1)},w:${positions[0].width.toFixed(1)}} leftMost=${leftMost.toFixed(1)} rightMost=${rightMost.toFixed(1)} centerX=${centerX.toFixed(1)}`);
 
@@ -739,7 +755,7 @@ const DiffHighlighter = {
       const BUBBLE_MID = 5; // 泡泡高度約 11px，取中點 ~5px
       const absLineTop   = absTop + BUBBLE_MID;
       const lineFinalTop = absLineTop - scrollTop;
-      const lineLeft = leftMost - 1 + 1; // 整體右移 1px
+      const lineLeft = leftMost - 1; // 整體左移 1px
       lineEl.dataset.absLineTop = absLineTop;
       lineEl.dataset.lineLeft   = lineLeft;
       const lineWidth  = (rightMost - leftMost) + 2;

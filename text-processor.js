@@ -242,7 +242,6 @@ const TextProcessor = {
 
     try {
       LogUtils.log('🌐 透過 Background Script 發送 API 請求');
-      
       // 🆕 通過 Background Script 發送請求（避免 CORS）
       const response = await chrome.runtime.sendMessage({
         action: 'apiRequest',

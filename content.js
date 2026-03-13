@@ -447,6 +447,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           window.GlobalSettings.removeStar = request.settings.removeStar;
         }
         
+        // 處理比對規則即時更新
+        if (request.settings.diffCustomRules !== undefined) {
+          window.GlobalSettings.diffCustomRules = request.settings.diffCustomRules;
+          if (window.DiffHighlighter) {
+            window.DiffHighlighter.setCustomRules(request.settings.diffCustomRules || '');
+            window.DiffHighlighter.scheduleDiff();
+          }
+        }
+
         // 處理股票清單更新
         if (request.settings.stockList !== undefined) {
           LogUtils.log('檢測到股票清單更新，重新初始化股票功能');
