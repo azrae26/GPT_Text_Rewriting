@@ -332,6 +332,9 @@ const UIManager = {
     // 初始化比對功能（在 DOM 就緒後）
     if (window.DiffHighlighter) {
       window.DiffHighlighter.init('textarea[name="info"]', 'textarea[name="content"]');
+      if (window.GlobalSettings) {
+        window.DiffHighlighter.setCustomRules(GlobalSettings.diffCustomRules || '');
+      }
     }
 
     LogUtils.log('改寫按鈕添加成功');

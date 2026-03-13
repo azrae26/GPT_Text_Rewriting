@@ -134,6 +134,7 @@ window.SettingsLoader = {
           'codeCheckInstruction', // 代號檢查指令
           'codeCheckModel',       // 代號檢查模型
           'zhEnMapping',
+          'diffCustomRules',
           'reflectInstruction',
           'optimizeInstruction',
           'generateInstruction',
@@ -253,7 +254,7 @@ window.SettingsLoader = {
       'optimizeInstruction', 'generateInstruction', 'reflect1Instruction',
       'generationOptimize_1_Instruction', 'reflect2Instruction', 'generationOptimize_2_Instruction',
       'reflect3Instruction', 'generationOptimize_3_Instruction', 'backgroundKnowledge',
-      'summaryInstruction', 'codeCheckInstruction', 'zhEnMapping', 'stockList', 'stockChangeLog', 'stockCrawlLog'
+      'summaryInstruction', 'codeCheckInstruction', 'zhEnMapping', 'diffCustomRules', 'stockList', 'stockChangeLog', 'stockCrawlLog'
     ];
     
     localInstructionKeys.forEach(key => {

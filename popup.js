@@ -78,6 +78,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   const removeHashCheckbox = document.getElementById('removeHash');
   const removeStarCheckbox = document.getElementById('removeStar');
   const zhEnMappingInput = document.getElementById('zhEnMapping');
+  const diffCustomRulesInput = document.getElementById('diffCustomRules');
   const generateModelSelect = document.getElementById('initialGenModel');
   const generateInstructionInput = document.getElementById('initialGenInstruction');
   const reflect1ModelSelect = document.getElementById('reflect1Model');
@@ -178,6 +179,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   codeCheckModelSelect.value = settings.codeCheckModel || '';
   codeCheckInstructionInput.value = settings.codeCheckInstruction || '';
   zhEnMappingInput.value = settings.zhEnMapping || '';
+  diffCustomRulesInput.value = settings.diffCustomRules || '';
   stockListInput.value = settings.stockList || '';
   stockChangeLogInput.value = settings.stockChangeLog || '';
   stockCrawlLogInput.value = settings.stockCrawlLog || '';
@@ -326,6 +328,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       'summaryInstruction': { type: 'input', element: summaryInstructionInput },
       'codeCheckInstruction': { type: 'input', element: codeCheckInstructionInput },
       'zhEnMapping': { type: 'input', element: zhEnMappingInput },
+      'diffCustomRules': { type: 'input', element: diffCustomRulesInput },
       'crawlerInterval': { 
         type: 'input', 
         element: document.getElementById('crawler-interval')

@@ -10,6 +10,8 @@
  * - 複用 TextHighlight.ScrollHelper 同步 textarea 滾動
  * - 支援點 X 還原單筆修改（整合 UndoManager）
  * - 切換按鈕控制整個 overlay 顯示/隱藏
+ * - 自訂合併規則（setCustomRules）：指定 oldPattern/newPattern，強制合併字元層級被拆散的 group
+ *   支援精準字串與 /regex/ 語法，格式：A,B / A, / ,B（逗點分隔，任一側可空）
  *
  * 依賴：
  * - text_highlight/highlight.js（TextHighlight.PositionCalculator、TextHighlight.ScrollHelper）
@@ -40,6 +42,8 @@ const DiffHighlighter = {
   _resizeObserver: null,
   /** requestAnimationFrame 排程旗標，避免重複排程 */
   _rafPending: false,
+  /** 自訂合併規則，每條為 {oldMatcher, newMatcher}，任一可為 null */
+  customRules: [],
 
   // ─────────────────────────────────────────────────
   // 1. DIFF（使用 diff-match-patch）
@@ -110,6 +114,264 @@ const DiffHighlighter = {
           changed = true; break;
         }
       }
+    }
+    return groups;
+  },
+
+  // ─────────────────────────────────────────────────
+  // 3c. CUSTOM RULES
+  //    解析使用者設定的自訂合併規則，並在 postProcessGroups 後套用
+  //    格式每行：A,B / A, / ,B（逗點分隔，支援 /regex/ 語法）
+  // ─────────────────────────────────────────────────
+
+  /**
+   * 解析單個 pattern 字串為 matcher 物件
+   * @param {string} str - trim 後的 pattern 字串
+   * @returns {{type:'exact'|'regex', value:string|RegExp}|null}
+   */
+  _parseMatcher(str) {
+    if (!str) return null;
+    // /pattern/ 語法 → regex
+    if (str.startsWith('/') && str.lastIndexOf('/') > 0) {
+      const lastSlash = str.lastIndexOf('/');
+      const flags     = str.slice(lastSlash + 1);
+      const body      = str.slice(1, lastSlash);
+      try {
+        return { type: 'regex', value: new RegExp(body, flags) };
+      } catch (e) {
+        LogUtils.warn(`[DiffHighlighter] 無效的正則表達式: ${str}`, e);
+        return null;
+      }
+    }
+    return { type: 'exact', value: str };
+  },
+
+  /**
+   * 解析自訂規則文字，設定 customRules
+   * @param {string} text - 每行一條規則，格式 A,B / A, / ,B
+   */
+  setCustomRules(text) {
+    this.customRules = [];
+    if (!text) return;
+    const lines = text.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      // 以第一個逗點分割（pattern 內可能含逗點的情況由使用者自行處理）
+      const commaIdx = trimmed.indexOf(',');
+      let rawOld, rawNew;
+      if (commaIdx === -1) {
+        // 無逗點 → 視為 A,（舊文字模式）
+        rawOld = trimmed;
+        rawNew = '';
+      } else {
+        rawOld = trimmed.slice(0, commaIdx).trim();
+        rawNew = trimmed.slice(commaIdx + 1).trim();
+      }
+      const oldMatcher = this._parseMatcher(rawOld);
+      const newMatcher = this._parseMatcher(rawNew);
+      if (!oldMatcher && !newMatcher) continue;
+      this.customRules.push({ oldMatcher, newMatcher });
+    }
+    const t = new Date(); const ts = `${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`;
+    LogUtils.log(`[DiffHighlighter][${ts}] ✅ 自訂規則已載入 (${this.customRules.length} 條)`);
+  },
+
+  /**
+   * 在 text 中找出 matcher 的所有不重疊匹配位置
+   * @param {string} text
+   * @param {{type:'exact'|'regex', value:string|RegExp}} matcher
+   * @returns {Array<{start:number, end:number}>}
+   */
+  _findTextMatches(text, matcher) {
+    const results = [];
+    if (matcher.type === 'exact') {
+      let pos = 0;
+      const val = matcher.value;
+      if (!val) return results;
+      while (pos <= text.length - val.length) {
+        const idx = text.indexOf(val, pos);
+        if (idx < 0) break;
+        results.push({ start: idx, end: idx + val.length });
+        pos = idx + val.length;
+      }
+    } else {
+      // 建立帶 g flag 的副本（避免污染原 RegExp 的 lastIndex）
+      const flags = (matcher.value.flags || '').replace('g', '') + 'g';
+      const re = new RegExp(matcher.value.source, flags);
+      let m;
+      while ((m = re.exec(text)) !== null) {
+        results.push({ start: m.index, end: m.index + m[0].length });
+        if (!m[0].length) re.lastIndex++; // 防止零寬匹配無窮迴圈
+      }
+    }
+    return results;
+  },
+
+  /**
+   * 依規則合併 groups：
+   *  - 重建 old/new 全文及 group 跨度資訊
+   *  - 在全文中找 pattern 匹配位置
+   *  - 在匹配邊界拆分橫跨的 equal group
+   *  - 合併對應 group 範圍為單一 replace group
+   *  - 反覆直到無法繼續（單次執行多個匹配 → restart loop）
+   * @param {Array} groups
+   * @param {{oldMatcher, newMatcher}} rule
+   * @returns {Array}
+   */
+  _mergeByRule(groups, rule) {
+    const { oldMatcher, newMatcher } = rule;
+
+    let changed = true;
+    while (changed) {
+      changed = false;
+
+      // ── Step 1：重建 old/new 全文與各 group 的跨度 ──
+      let oldText = '', newText = '';
+      const gOS = [], gNS = [], gOL = [], gNL = []; // old/new start, old/new length
+      for (let gi = 0; gi < groups.length; gi++) {
+        const g = groups[gi];
+        gOS.push(oldText.length);
+        gNS.push(newText.length);
+        let op = '', np = '';
+        if (g.type === 'equal')   { op = g.text;    np = g.text; }
+        if (g.type === 'delete')  { op = g.oldText; }
+        if (g.type === 'insert')  { np = g.newText; }
+        if (g.type === 'replace') { op = g.oldText; np = g.newText; }
+        gOL.push(op.length); gNL.push(np.length);
+        oldText += op; newText += np;
+      }
+
+      // 找到 pos 所在的 group index（在 old 或 new 文字中）
+      const findGi = (starts, lens, pos) => {
+        for (let gi = 0; gi < starts.length; gi++) {
+          if (lens[gi] > 0 && pos >= starts[gi] && pos < starts[gi] + lens[gi]) return gi;
+        }
+        return -1;
+      };
+
+      // ── Step 2：找匹配 ──
+      const oldMs = oldMatcher ? this._findTextMatches(oldText, oldMatcher) : [];
+      const newMs = newMatcher ? this._findTextMatches(newText, newMatcher) : [];
+
+      // ── Step 3：嘗試套用第一個有效的合併 ──
+      const attempt = (om, nm) => {
+        // 確定各自的 group 範圍
+        let oS = -1, oE = -1, nS = -1, nE = -1;
+        if (om) { oS = findGi(gOS, gOL, om.start); oE = findGi(gOS, gOL, om.end - 1); }
+        if (nm) { nS = findGi(gNS, gNL, nm.start); nE = findGi(gNS, gNL, nm.end - 1); }
+        if (om && (oS < 0 || oE < 0)) return false;
+        if (nm && (nS < 0 || nE < 0)) return false;
+        // 單側模式：以另一側的 group 範圍為預設
+        if (!om) { oS = nS; oE = nE; }
+        if (!nm) { nS = oS; nE = oE; }
+
+        let giS = Math.min(oS, nS);
+        let giE = Math.max(oE, nE);
+
+        // A, 模式（僅 oldMatcher）：在 old match 結尾的 equal group 後，
+        // 把緊接的非 equal group 也納入（捕捉例如「2Q23 」中的尾部空格 replace）
+        if (!newMatcher) {
+          while (giE + 1 < groups.length &&
+                 groups[giE].type === 'equal' &&
+                 groups[giE + 1].type !== 'equal') {
+            giE++;
+          }
+        }
+        // ,B 模式（僅 newMatcher）：類似地往前擴展
+        if (!oldMatcher) {
+          while (giS > 0 &&
+                 groups[giS].type === 'equal' &&
+                 groups[giS - 1].type !== 'equal') {
+            giS--;
+          }
+        }
+
+        // ── Step 4：如需要，拆分 leading equal group ──
+        if (groups[giS] && groups[giS].type === 'equal') {
+          // 對 equal group，old 與 new 的文字相同，offset 一致
+          const splitOff = om ? (om.start - gOS[giS]) : (nm.start - gNS[giS]);
+          if (splitOff > 0) {
+            const g = groups[giS];
+            groups.splice(giS, 1,
+              { type: 'equal', text: g.text.slice(0, splitOff) },
+              { type: 'equal', text: g.text.slice(splitOff) }
+            );
+            return true; // restart loop（indices 已失效）
+          }
+        }
+
+        // ── Step 5：如需要，拆分 trailing equal group ──
+        if (groups[giE] && groups[giE].type === 'equal') {
+          // 計算匹配在此 group 中的終止 offset
+          const matchEnd  = om ? om.end : nm.end;
+          const groupStart = om ? gOS[giE] : gNS[giE];
+          const groupLen   = om ? gOL[giE] : gNL[giE];
+          const splitOff   = matchEnd - groupStart;
+          if (splitOff > 0 && splitOff < groupLen) {
+            const g = groups[giE];
+            groups.splice(giE, 1,
+              { type: 'equal', text: g.text.slice(0, splitOff) },
+              { type: 'equal', text: g.text.slice(splitOff) }
+            );
+            return true; // restart（giE 現在指向前半部，正好是匹配結尾）
+          }
+        }
+
+        // ── Step 6：合併 groups[giS..giE] ──
+        let segOld = '', segNew = '';
+        for (let k = giS; k <= giE; k++) {
+          const g = groups[k];
+          if (g.type === 'equal')   { segOld += g.text;    segNew += g.text; }
+          if (g.type === 'delete')  { segOld += g.oldText; }
+          if (g.type === 'insert')  { segNew += g.newText; }
+          if (g.type === 'replace') { segOld += g.oldText; segNew += g.newText; }
+        }
+        if (segOld === segNew) return false; // 無實際變動
+
+        // 若 range 已是單一 replace group 且內容相同，代表已合併過，不重複處理
+        // 若不做此檢查，while(changed) loop 會在同一 replace group 上無窮迴圈
+        if (giE === giS && groups[giS].type === 'replace' &&
+            groups[giS].oldText === segOld && groups[giS].newText === segNew) {
+          return false;
+        }
+
+        groups.splice(giS, giE - giS + 1, { type: 'replace', oldText: segOld, newText: segNew });
+        return true;
+      };
+
+      // ── Step 3 dispatch ──
+      if (oldMatcher && newMatcher) {
+        // A,B 模式：找 old 與 new 的 group 範圍有重疊的配對
+        outer: for (const om of oldMs) {
+          const oS = findGi(gOS, gOL, om.start), oE = findGi(gOS, gOL, om.end - 1);
+          for (const nm of newMs) {
+            const nS = findGi(gNS, gNL, nm.start), nE = findGi(gNS, gNL, nm.end - 1);
+            if (oS >= 0 && oE >= 0 && nS >= 0 && nE >= 0 &&
+                Math.max(oS, nS) <= Math.min(oE, nE)) {
+              if (attempt(om, nm)) { changed = true; break outer; }
+            }
+          }
+        }
+      } else if (oldMatcher) {
+        for (const om of oldMs) { if (attempt(om, null)) { changed = true; break; } }
+      } else if (newMatcher) {
+        for (const nm of newMs) { if (attempt(null, nm)) { changed = true; break; } }
+      }
+    }
+
+    return groups;
+  },
+
+  /**
+   * 套用所有自訂規則
+   * @param {Array} groups
+   * @returns {Array}
+   */
+  applyCustomRules(groups) {
+    if (!this.customRules || this.customRules.length === 0) return groups;
+    for (const rule of this.customRules) {
+      groups = this._mergeByRule(groups, rule);
     }
     return groups;
   },
@@ -276,7 +538,7 @@ const DiffHighlighter = {
     if (!introText.trim() || !contentText.trim()) return;
 
     const ops    = this.computeDiffDMP(introText, contentText);
-    const groups = this.postProcessGroups(this.groupOps(ops));
+    const groups = this.applyCustomRules(this.postProcessGroups(this.groupOps(ops)));
     this.annotateGroupsWithIndices(groups);
 
     const t = new Date(); const ts = `${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`;

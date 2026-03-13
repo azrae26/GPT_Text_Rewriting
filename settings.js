@@ -114,6 +114,8 @@ const GlobalSettings = {
   codeCheckInstruction: '',
   /** 中英對照表。 */
   zhEnMapping: '',
+  /** 差異比對自訂合併規則。 */
+  diffCustomRules: '',
   /** 股票清單。 */
   stockList: '',
   /** 股票變更記錄（近30日）。 */
@@ -222,6 +224,7 @@ const GlobalSettings = {
             optimizeInstruction: this.optimizeInstruction,
             summaryInstruction: this.summaryInstruction,
             zhEnMapping: this.zhEnMapping,  // 加入中英對照表到本地儲存
+            diffCustomRules: this.diffCustomRules,
             stockList: this.stockList,  // 加入股票清單到本地儲存
             stockChangeLog: this.stockChangeLog,  // 加入股票變更記錄到本地儲存
             generateInstruction: this.generateInstruction,
@@ -357,6 +360,7 @@ const GlobalSettings = {
     'translateInstruction',
     'summaryInstruction',
     'zhEnMapping',
+    'diffCustomRules',
     'reflectInstruction',
     'optimizeInstruction',
     'generateInstruction',
