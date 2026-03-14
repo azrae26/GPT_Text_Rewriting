@@ -20,12 +20,68 @@ const ModelManager = {
   // 防抖計時器
   autoDetectDebounceTimer: null,
 
+  /** 思考程度選項定義 { value, label }，用於依模型過濾。關閉=不思考，預設=不設定用 API 預設 */
+  THINKING_LEVEL_OPTIONS: [
+    { value: '', label: '預設' },
+    { value: 'off', label: '關閉' },
+    { value: 'minimal', label: '最小' },
+    { value: 'low', label: '低' },
+    { value: 'medium', label: '中' },
+    { value: 'high', label: '高' }
+  ],
+
+  /**
+   * 依模型與 API 類型取得該模型支援的思考程度選項
+   * @param {string} modelKey - 模型識別碼（如 gpt-5-mini、gemini-3-flash-preview）
+   * @param {string} apiType - API 類型 (gemini/openai)
+   * @returns {Array<{value:string, label:string}>} 支援的選項
+   */
+  getSupportedThinkingLevels(modelKey, apiType) {
+    const ml = (modelKey || '').toLowerCase();
+    const type = apiType || this.getModelApiType(modelKey);
+
+    if (type === 'openai') {
+      // OpenAI 無「關閉」語義，off 等同預設，只顯示預設與各級
+      return this.THINKING_LEVEL_OPTIONS.filter(o => o.value !== 'off');
+    }
+
+    if (type === 'gemini' || ml.includes('gemini')) {
+      if (ml.includes('gemini-2.5')) {
+        return this.THINKING_LEVEL_OPTIONS.filter(o => o.value !== 'minimal');
+      }
+      if (ml.includes('gemini-3-flash')) {
+        return this.THINKING_LEVEL_OPTIONS.filter(o => o.value !== 'off');
+      }
+      if (ml.includes('gemini-3.1') || ml.includes('gemini-3-1')) {
+        return this.THINKING_LEVEL_OPTIONS.filter(o => o.value !== 'off' && o.value !== 'minimal');
+      }
+      if (ml.includes('gemini-3-pro') && !ml.includes('3.1') && !ml.includes('3-1')) {
+        return this.THINKING_LEVEL_OPTIONS.filter(o => ['', 'low', 'high'].includes(o.value));
+      }
+      if (ml.includes('gemini-3')) {
+        return this.THINKING_LEVEL_OPTIONS.filter(o => o.value !== 'off' && o.value !== 'minimal');
+      }
+    }
+
+    return this.THINKING_LEVEL_OPTIONS;
+  },
+
+  /**
+   * 從支援的選項中取得「最少思考」的預設值（優先 minimal，其次 low）
+   * @param {Array<{value:string, label:string}>} supported - 該模型支援的選項
+   * @returns {string} 預設值
+   */
+  _getDefaultThinkingLevel(supported) {
+    const preferred = supported.find(o => o.value === 'minimal') || supported.find(o => o.value === 'low');
+    return preferred ? preferred.value : (supported[0]?.value ?? '');
+  },
+
   /**
    * 新增自定義模型
    * @param {string} modelName - 模型名稱
    * @param {string} displayName - 顯示名稱
    * @param {string} apiType - API類型 (gemini/openai)
-   * @param {string} thinkingLevel - 思考程度 (off/low/medium/high，空字串表示不設定)
+   * @param {string} thinkingLevel - 思考程度 (off/minimal/low/medium/high，空字串表示不設定)
    * @returns {Promise<boolean>} - 成功與否
    */
   async addCustomModel(modelName, displayName, apiType, thinkingLevel = '') {
@@ -59,6 +115,20 @@ const ModelManager = {
       LogUtils.error('新增自定義模型失敗:', error);
       throw error;
     }
+  },
+
+  /**
+   * 更新自定義模型的思考程度
+   * @param {string} modelKey - 模型名稱
+   * @param {string} thinkingLevel - 思考程度 (off/minimal/low/medium/high，空字串表示不設定)
+   */
+  async updateModelThinkingLevel(modelKey, thinkingLevel) {
+    if (!window.GlobalSettings.customModels?.[modelKey]) return;
+    window.GlobalSettings.customModels[modelKey].thinkingLevel = thinkingLevel;
+    if (window.GlobalSettings.API?.models?.[modelKey]) {
+      window.GlobalSettings.API.models[modelKey].thinkingLevel = thinkingLevel;
+    }
+    await window.GlobalSettings.saveSingleSetting('customModels', window.GlobalSettings.customModels);
   },
 
   /**
@@ -364,6 +434,13 @@ const ModelManager = {
     // 更新模型列表
     this.updateCustomModelsList();
     
+    // 初始化新增表單的思考程度選項（空表單時顯示全部）
+    const nameInput = document.getElementById('custom-model-name');
+    const typeSelect = document.getElementById('custom-model-type');
+    if (nameInput && typeSelect) {
+      this.refreshAddFormThinkingOptions(nameInput.value.trim(), typeSelect.value);
+    }
+    
     LogUtils.log('自定義模型管理 UI 初始化完成');
   },
 
@@ -384,24 +461,43 @@ const ModelManager = {
       });
     }
     
-    // 綁定自動檢測事件
+    // 綁定自動檢測事件與思考程度選項動態更新
     if (customModelNameInput && customModelDisplayInput && customModelTypeSelect) {
+      const refreshThinkingOptions = () => {
+        this.refreshAddFormThinkingOptions(customModelNameInput.value.trim(), customModelTypeSelect.value);
+      };
       customModelNameInput.addEventListener('input', (e) => {
         this.debouncedAutoDetect(e.target.value.trim(), customModelTypeSelect, 'modelName');
+        refreshThinkingOptions();
       });
-      
       customModelNameInput.addEventListener('blur', (e) => {
         this.autoDetectApiType(e.target.value.trim(), customModelTypeSelect, 'modelName');
+        refreshThinkingOptions();
       });
+      customModelTypeSelect.addEventListener('change', refreshThinkingOptions);
 
       customModelDisplayInput.addEventListener('input', (e) => {
         this.debouncedAutoDetect(e.target.value.trim(), customModelTypeSelect, 'displayName');
       });
-      
       customModelDisplayInput.addEventListener('blur', (e) => {
         this.autoDetectApiType(e.target.value.trim(), customModelTypeSelect, 'displayName');
       });
     }
+  },
+
+  /**
+   * 依模型名稱與 API 類型更新新增表單的思考程度下拉選單（僅顯示該模型支援的選項）
+   * @param {string} modelName - 模型名稱
+   * @param {string} apiType - API 類型
+   */
+  refreshAddFormThinkingOptions(modelName, apiType) {
+    const select = document.getElementById('custom-model-thinking');
+    if (!select) return;
+    const supported = this.getSupportedThinkingLevels(modelName, apiType);
+    const currentVal = select.value;
+    select.innerHTML = supported.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+    const keepCurrent = currentVal && supported.some(o => o.value === currentVal);
+    select.value = keepCurrent ? currentVal : this._getDefaultThinkingLevel(supported);
   },
 
   /**
@@ -590,27 +686,39 @@ const ModelManager = {
       const modelItem = document.createElement('div');
       modelItem.className = 'custom-model-item';
       
-      const thinkingLabelMap = { off: '關閉', low: '低', medium: '中', high: '高' };
-      const thinkingLabel = thinkingLabelMap[model.thinkingLevel] || '—';
+      const currentLevel = model.thinkingLevel || '';
+      const supportedLevels = this.getSupportedThinkingLevels(key, model.apiType);
+      const validLevel = supportedLevels.some(o => o.value === currentLevel) ? currentLevel : '';
+      const thinkingSelectHtml = `
+        <select class="form-input thinking-level-select" data-model-key="${key}"
+                style="height:26px;padding:2px 20px 2px 6px;font-size:12px;">
+          ${supportedLevels.map(o => `<option value="${o.value}" ${(validLevel || '') === o.value ? 'selected' : ''}>${o.label}</option>`).join('')}
+        </select>`;
 
       modelItem.innerHTML = `
         <div class="custom-model-info">
           <div class="custom-model-name">${key}</div>
           <div class="custom-model-details">${model.displayName}</div>
-          <div class="custom-model-thinking">${thinkingLabel}</div>
+          <div class="custom-model-thinking">${thinkingSelectHtml}</div>
           <div class="custom-model-api-type">${model.apiType === 'gemini' ? 'Gemini API' : 'OpenAI API'}</div>
         </div>
         <div class="custom-model-actions">
           <button class="delete-model-button" data-model-key="${key}">刪除</button>
         </div>
       `;
-      
+
       // 綁定刪除按鈕事件
       const deleteButton = modelItem.querySelector('.delete-model-button');
       deleteButton.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
         this.handleRemoveCustomModel(key);
+      });
+
+      // 綁定思考程度下拉選單事件
+      const thinkingSelect = modelItem.querySelector('.thinking-level-select');
+      thinkingSelect.addEventListener('change', async (e) => {
+        await this.updateModelThinkingLevel(key, e.target.value);
       });
       
       customModelsContainer.appendChild(modelItem);

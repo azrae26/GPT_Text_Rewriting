@@ -164,13 +164,14 @@ const TextProcessor = {
             body.generationConfig = { thinkingConfig: { thinkingBudget: budgetMap[thinkingLevel] } };
           }
         } else if (ml.includes('gemini-3')) {
-          // Gemini 3 系列使用 thinkingLevel（LOW/HIGH），不支援關閉
-          if (thinkingLevel !== 'off') {
-            body.generationConfig = { thinkingConfig: { thinkingLevel: thinkingLevel === 'low' ? 'LOW' : 'HIGH' } };
+          // Gemini 3 系列使用 thinkingLevel（API 需小寫：minimal/low/medium/high），不支援關閉
+          const gemini3Levels = ['minimal', 'low', 'medium', 'high'];
+          if (gemini3Levels.includes(thinkingLevel)) {
+            body.generationConfig = { thinkingConfig: { thinkingLevel: thinkingLevel } };
           }
         }
-      } else if (['low', 'medium', 'high'].includes(thinkingLevel)) {
-        // OpenAI 推理模型使用 reasoning_effort
+      } else if (['minimal', 'low', 'medium', 'high'].includes(thinkingLevel)) {
+        // OpenAI 推理模型使用 reasoning_effort（GPT-5 系列支援 minimal）
         body.reasoning_effort = thinkingLevel;
       }
     }
