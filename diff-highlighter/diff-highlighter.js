@@ -40,6 +40,8 @@ const DiffHighlighter = {
   ABBREV_MAX_LEN: 50,
 
   isEnabled: true,
+  /** 顯示模式：'off' 關閉 | 'hide' 隱藏等價差異（預設）| 'show' 顯示等價差異 */
+  displayMode: 'hide',
   /** @type {HTMLTextAreaElement|null} */
   contentTextarea: null,
   /** @type {HTMLTextAreaElement|null} */
@@ -81,9 +83,12 @@ const DiffHighlighter = {
     return result;
   },
 
-  computeDiffDMP(introText, contentText) {
-    const introNorm   = (introText   || '').replace(/\s/g, '');
+  computeDiffDMP(introText, contentText, preDMPNorm = false) {
+    let introNorm     = (introText   || '').replace(/\s/g, '');
     const contentNorm = (contentText || '').replace(/\s/g, '');
+    if (preDMPNorm && this.customRules.length) {
+      introNorm = this._applyPreDMPNorm(introNorm, contentNorm);
+    }
     const dmp   = new diff_match_patch();  // eslint-disable-line new-cap
     const diffs = dmp.diff_main(introNorm, contentNorm);
     // 不呼叫 diff_cleanupSemantic：它會過度合併相鄰差異，使自訂規則失效
@@ -475,6 +480,83 @@ const DiffHighlighter = {
     return groups;
   },
 
+  /**
+   * 判斷 replace group 是否符合任何自訂規則的 A,B pair（全字匹配）
+   * @param {{type:string, oldText?:string, newText?:string}} g
+   * @returns {boolean}
+   */
+  _isEquivGroup(g) {
+    if (g.type !== 'replace') return false;
+    for (const { oldMatcher, newMatcher } of this.customRules) {
+      const oldOk = !oldMatcher || this._matchesEntire(g.oldText || '', oldMatcher);
+      const newOk = !newMatcher || this._matchesEntire(g.newText || '', newMatcher);
+      if (oldOk && newOk) return true;
+    }
+    return false;
+  },
+
+  /**
+   * 檢查 text 是否被 matcher 完整匹配（全字，非部分匹配）
+   * @param {string} text
+   * @param {{type:'exact'|'regex', value:string|RegExp}} matcher
+   * @returns {boolean}
+   */
+  _matchesEntire(text, matcher) {
+    if (matcher.type === 'exact') return text === matcher.value;
+    const flags = (matcher.value.flags || '').replace('g', '');
+    const re = new RegExp(`^(?:${matcher.value.source})$`, flags);
+    return re.test(text);
+  },
+
+  /**
+   * Pre-DMP 正規化：在 DMP 前對 introNorm 套用自訂規則（A→B 替換），
+   * 讓等價差異在 DMP 前就消失成 equal，避免碎片化與迭代爆炸。
+   * - A-only 或 B-only 規則略過（無法決定替換內容）
+   * - B 是 exact string → 直接替換
+   * - B 是 regex → 在 contentNorm 中找最近的 B match，one-to-one greedy 配對
+   * @param {string} introNorm  已移除空白的 intro 字串
+   * @param {string} contentNorm 已移除空白的 content 字串
+   * @returns {string} 正規化後的 introNorm
+   */
+  _applyPreDMPNorm(introNorm, contentNorm) {
+    let result = introNorm;
+    for (const { oldMatcher, newMatcher } of this.customRules) {
+      if (!oldMatcher || !newMatcher) continue;
+
+      const aMatches = this._findTextMatches(result, oldMatcher);
+      if (!aMatches.length) continue;
+
+      let replacements;
+      if (newMatcher.type === 'exact') {
+        replacements = aMatches.map(() => newMatcher.value);
+      } else {
+        const bMatches = this._findTextMatches(contentNorm, newMatcher);
+        if (!bMatches.length) continue;
+        const usedB = new Set();
+        const cLen = contentNorm.length || 1;
+        replacements = aMatches.map((am) => {
+          const aRel = (am.start + am.end) / 2 / (result.length || 1);
+          let best = null, bestDist = Infinity;
+          for (let bi = 0; bi < bMatches.length; bi++) {
+            if (usedB.has(bi)) continue;
+            const dist = Math.abs((bMatches[bi].start + bMatches[bi].end) / 2 / cLen - aRel);
+            if (dist < bestDist) { bestDist = dist; best = bi; }
+          }
+          if (best === null) return null;
+          usedB.add(best);
+          return contentNorm.slice(bMatches[best].start, bMatches[best].end);
+        });
+      }
+
+      // 反序替換，保留前面 match 的 index 正確性
+      for (let i = aMatches.length - 1; i >= 0; i--) {
+        if (replacements[i] === null) continue;
+        result = result.slice(0, aMatches[i].start) + replacements[i] + result.slice(aMatches[i].end);
+      }
+    }
+    return result;
+  },
+
   // ─────────────────────────────────────────────────
   // 4. ANNOTATE GROUPS WITH CONTENT INDICES
   //    遍歷 groups，追蹤每個 group 在 content textarea 中的字元索引
@@ -637,7 +719,8 @@ const DiffHighlighter = {
     if (!introText.trim() || !contentText.trim()) return;
 
     const normToOrig = this.buildNormToOrig(contentText);
-    const ops = this.computeDiffDMP(introText, contentText);
+    // hide 模式：DMP 前先對 introNorm 套用自訂規則正規化，讓等價差異消失成 equal
+    const ops = this.computeDiffDMP(introText, contentText, this.displayMode === 'hide');
     // #region agent log
     fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'before groupOps',data:{opsLen:ops.length},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
     // #endregion
@@ -649,7 +732,11 @@ const DiffHighlighter = {
     // #region agent log
     fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'after postProcessGroups',data:{groupsLen:postProcessed.length},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
     // #endregion
-    const groups = this.applyCustomRules(postProcessed);
+    // hide 模式：pre-DMP 已處理等價差異，不再需要 applyCustomRules（避免迭代爆炸）
+    // show 模式：照常合併碎片以便偵測等價群組並顯示灰色泡泡
+    const groups = (this.displayMode === 'hide')
+      ? postProcessed
+      : this.applyCustomRules(postProcessed);
     // #region agent log
     fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'after applyCustomRules',data:{groupsLen:groups.length},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
     // #endregion
@@ -709,6 +796,10 @@ const DiffHighlighter = {
       // #endregion
       groupIdx++;
 
+      // hide 模式：符合自訂規則等價的 replace 群組不顯示泡泡
+      const isEquiv = this._isEquivGroup(g);
+      if (this.displayMode === 'hide' && isEquiv) continue;
+
       let bubble = null;
 
       if (g.type === 'replace') {
@@ -733,8 +824,9 @@ const DiffHighlighter = {
             g.contentStartIdx, g.newText.length > 0 ? g.newText : (contentText[g.contentStartIdx] || ' '),
             styles, scrollTop);
         } else {
-          // 一般替換：泡泡顯示原始文字
-          bubble = this._makeBubble('replace', this._abbrev(oldTrimmed), g, ta, contentText,
+          // show 模式等價 replace → 灰色系泡泡；一般替換 → 橙色
+          const replaceType = (this.displayMode === 'show' && isEquiv) ? 'equiv' : 'replace';
+          bubble = this._makeBubble(replaceType, this._abbrev(oldTrimmed), g, ta, contentText,
             g.contentStartIdx, g.newText, styles, scrollTop);
         }
 
@@ -977,12 +1069,14 @@ const DiffHighlighter = {
   // ─────────────────────────────────────────────────
   // 15. TOGGLE
   // ─────────────────────────────────────────────────
-  toggle(enabled) {
-    this.isEnabled = enabled;
+  toggle(mode) {
+    this.displayMode = mode;
+    this.isEnabled = (mode !== 'off');
     if (this.overlayContainer) {
-      this.overlayContainer.style.display = enabled ? '' : 'none';
+      this.overlayContainer.style.display = this.isEnabled ? '' : 'none';
     }
-    if (enabled) this.scheduleDiff();
+    if (this.isEnabled) this.scheduleDiff();
+    else this.clearBubbles();
   }
 };
 

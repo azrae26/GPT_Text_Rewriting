@@ -49,15 +49,24 @@ const UIManager = {
     const buttonContainer = document.createElement('div');
     buttonContainer.id = 'gpt-button-container';
 
-    // 創建比對切換按鈕（在改寫按鈕左邊）
+    // 創建比對切換按鈕（三態循環：hide → show → off → hide）
+    // hide：隱藏等價差異（預設，綠色），show：顯示等價差異（橘色），off：關閉（灰色）
+    const DIFF_MODES = ['hide', 'show', 'off'];
+    let diffModeIdx = 0;
     const diffToggleBtn = document.createElement('button');
     diffToggleBtn.id = 'gpt-diff-toggle';
     diffToggleBtn.textContent = '比對';
-    diffToggleBtn.classList.add('gpt-diff-toggle-on');
+    diffToggleBtn.classList.add('gpt-diff-toggle-hide');
     diffToggleBtn.addEventListener('click', () => {
-      const isOn = diffToggleBtn.classList.toggle('gpt-diff-toggle-on');
-      if (window.DiffHighlighter) window.DiffHighlighter.toggle(isOn);
+      diffModeIdx = (diffModeIdx + 1) % DIFF_MODES.length;
+      const mode = DIFF_MODES[diffModeIdx];
+      diffToggleBtn.className = '';
+      diffToggleBtn.id = 'gpt-diff-toggle';
+      if (mode !== 'off') diffToggleBtn.classList.add(`gpt-diff-toggle-${mode}`);
+      if (window.DiffHighlighter) window.DiffHighlighter.toggle(mode);
     });
+    // 初始化為 hide 模式
+    if (window.DiffHighlighter) window.DiffHighlighter.toggle('hide');
 
     // 創建改寫按鈕
     const rewriteButton = document.createElement('button');
