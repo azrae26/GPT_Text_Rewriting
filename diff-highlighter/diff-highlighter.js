@@ -28,6 +28,16 @@ const DiffHighlighter = {
   BOUNDS_TOP_EXTRA: 10,
   /** 下方提早隱藏的距離（px），讓泡泡在接近容器底部時即隱藏 */
   BOUNDS_BOTTOM_MARGIN: 10,
+  /** 同行判定閾值（px），top 差值小於此視為同一行 */
+  LINE_SAME_TOP_THRESHOLD: 3,
+  /** 泡泡垂直中點（px），供外延線對齊 */
+  BUBBLE_MID: 5,
+  /** 外延線往左偏移（px） */
+  LINE_LEFT_OFFSET: 1,
+  /** 外延線寬度額外增加（px），總寬 = 文字寬 + LINE_WIDTH_EXTRA */
+  LINE_WIDTH_EXTRA: 2,
+  /** 泡泡 label 最大顯示字元數 */
+  ABBREV_MAX_LEN: 50,
 
   isEnabled: true,
   /** @type {HTMLTextAreaElement|null} */
@@ -64,6 +74,9 @@ const DiffHighlighter = {
     });
     const t = new Date(); const ts = `${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`;
     console.log(`[DiffHighlighter][${ts}] 📝 DMP ops (${ops.length}):`, ops.map(o => `[${o.type}] a=${JSON.stringify(o.a||'')} b=${JSON.stringify(o.b||'')}`));
+    // #region agent log
+    fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:computeDiffDMP',message:'after DMP',data:{opsLen:ops.length},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
+    // #endregion
     return ops;
   },
 
@@ -223,8 +236,18 @@ const DiffHighlighter = {
     const { oldMatcher, newMatcher } = rule;
 
     let changed = true;
+    let iterCount = 0;
+    const MAX_ITER = 150; // 防止無限迴圈：某些自訂規則會導致 split→match→split 無限增長
     while (changed) {
       changed = false;
+      iterCount++;
+      if (iterCount > MAX_ITER) {
+        LogUtils.warn(`[DiffHighlighter] _mergeByRule 達迭代上限 (${iterCount})，略過剩餘規則合併`);
+        break;
+      }
+      // #region agent log
+      if (iterCount > 50) { fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:_mergeByRule',message:'loop iteration',data:{iterCount,groupsLen:groups.length},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{}); }
+      // #endregion
 
       // ── Step 1：重建 old/new 全文與各 group 的跨度 ──
       let oldText = '', newText = '';
@@ -284,6 +307,36 @@ const DiffHighlighter = {
                  groups[giS].type === 'equal' &&
                  groups[giS - 1].type !== 'equal') {
             giS--;
+          }
+        }
+
+        // ── Step 3.5：A,B 模式下，若 match 只覆蓋單一 replace group 的部分內容，
+        //   則把該 replace group 拆成 前段 + 中段（精準匹配）+ 後段，以便下一輪
+        //   迭代精準對應各自的 pattern，而非把整個大塊視為一個 replace。
+        if (giS === giE && groups[giS].type === 'replace' && om !== null && nm !== null) {
+          const g   = groups[giS];
+          const olc = om.start - gOS[giS];  // old local start
+          const ole = om.end   - gOS[giS];  // old local end
+          const nlc = nm.start - gNS[giS];  // new local start
+          const nle = nm.end   - gNS[giS];  // new local end
+          if (olc >= 0 && ole <= g.oldText.length && nlc >= 0 && nle <= g.newText.length) {
+            // match 已覆蓋全部 old 且全部 new → 不需拆分
+            if (olc === 0 && ole === g.oldText.length && nlc === 0 && nle === g.newText.length) {
+              return false;
+            }
+            const makeGrp = (ot, nt) => {
+              if (ot === nt)  return ot ? { type: 'equal',   text: ot }    : null;
+              if (!ot)        return nt ? { type: 'insert',  newText: nt } : null;
+              if (!nt)        return ot ? { type: 'delete',  oldText: ot } : null;
+              return { type: 'replace', oldText: ot, newText: nt };
+            };
+            const parts = [
+              makeGrp(g.oldText.slice(0, olc),   g.newText.slice(0, nlc)),
+              makeGrp(g.oldText.slice(olc, ole),  g.newText.slice(nlc, nle)),
+              makeGrp(g.oldText.slice(ole),        g.newText.slice(nle)),
+            ].filter(Boolean);
+            groups.splice(giS, 1, ...parts);
+            return true; // restart
           }
         }
 
@@ -537,14 +590,34 @@ const DiffHighlighter = {
     this.clearBubbles();
     if (!introText.trim() || !contentText.trim()) return;
 
-    const ops    = this.computeDiffDMP(introText, contentText);
-    const groups = this.applyCustomRules(this.postProcessGroups(this.groupOps(ops)));
+    const ops = this.computeDiffDMP(introText, contentText);
+    // #region agent log
+    fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'before groupOps',data:{opsLen:ops.length},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    const grouped = this.groupOps(ops);
+    // #region agent log
+    fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'after groupOps',data:{groupsLen:grouped.length},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
+    // #endregion
+    const postProcessed = this.postProcessGroups(grouped);
+    // #region agent log
+    fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'after postProcessGroups',data:{groupsLen:postProcessed.length},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
+    // #endregion
+    const groups = this.applyCustomRules(postProcessed);
+    // #region agent log
+    fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'after applyCustomRules',data:{groupsLen:groups.length},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
+    // #endregion
     this.annotateGroupsWithIndices(groups);
 
     const t = new Date(); const ts = `${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`;
     console.log(`[DiffHighlighter][${ts}] 🔍 groups (${groups.length}):`, groups.map((g,i) => `[${i}] type=${g.type} old=${JSON.stringify(g.oldText||'')} new=${JSON.stringify(g.newText||'')} contentStart=${g.contentStartIdx} contentInsert=${g.contentInsertIdx}`));
 
+    // #region agent log
+    fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'before renderBubbles',data:{groupsLen:groups.length},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
+    // #endregion
     this.renderBubbles(groups, contentText);
+    // #region agent log
+    fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'after renderBubbles',data:{},timestamp:Date.now(),hypothesisId:'F'})}).catch(()=>{});
+    // #endregion
   },
 
   // ─────────────────────────────────────────────────
@@ -575,8 +648,13 @@ const DiffHighlighter = {
     const scrollTop = ta.scrollTop;
     const fragment  = document.createDocumentFragment();
 
+    let groupIdx = 0;
     for (const g of groups) {
       if (g.type === 'equal') continue;
+      // #region agent log
+      fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:renderBubbles',message:'group loop',data:{groupIdx,type:g.type},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+      // #endregion
+      groupIdx++;
 
       let bubble = null;
 
@@ -585,8 +663,10 @@ const DiffHighlighter = {
         const newTrimmed = g.newText.trim();
         // 兩側都是空白 → 忽略
         if (!oldTrimmed && !newTrimmed) continue;
-        // 去空白後相同 → 忽略
-        if (oldTrimmed === newTrimmed) continue;
+        // 移除所有空白後相同 → 忽略（涵蓋 PDF 多餘空格、字元間空格）
+        const oldNorm = (g.oldText || '').replace(/\s/g, '');
+        const newNorm = (g.newText || '').replace(/\s/g, '');
+        if (oldNorm === newNorm) continue;
         // 唯一差異是句尾句點（. 或 。）→ 忽略
         if (this._isOnlyTrailingPeriodDiff(oldTrimmed, newTrimmed)) continue;
 
@@ -680,14 +760,14 @@ const DiffHighlighter = {
     let leftMost  = positions[0].left;
     let rightMost = positions[0].left + positions[0].width;
     for (let i = 1; i < positions.length; i++) {
-      if (Math.abs(positions[i].top - firstTop) < 3) {
+      if (Math.abs(positions[i].top - firstTop) < this.LINE_SAME_TOP_THRESHOLD) {
         leftMost  = Math.min(leftMost,  positions[i].left);
         rightMost = Math.max(rightMost, positions[i].left + positions[i].width);
       }
     }
-    // 水平中心（相對於 overlay 容器左邊），整體右移 1px
+    // 水平中心（相對於 overlay 容器左邊），整體左移 1px
     // delete 型取右緣，對準刪除縫隙；其他型取中心
-    const centerX = (useRightEdge ? rightMost : (leftMost + rightMost) / 2) + 1;
+    const centerX = (useRightEdge ? rightMost : (leftMost + rightMost) / 2);
     const t3 = new Date(); const ts3 = `${t3.getHours().toString().padStart(2,'0')}:${t3.getMinutes().toString().padStart(2,'0')}:${t3.getSeconds().toString().padStart(2,'0')}`;
     console.log(`[DiffHighlighter][${ts3}]   → positions[0]={top:${positions[0].top.toFixed(1)},left:${positions[0].left.toFixed(1)},w:${positions[0].width.toFixed(1)}} leftMost=${leftMost.toFixed(1)} rightMost=${rightMost.toFixed(1)} centerX=${centerX.toFixed(1)}`);
 
@@ -736,13 +816,12 @@ const DiffHighlighter = {
     if ((type === 'replace' || type === 'insert') && rightMost > leftMost) {
       const lineEl = document.createElement('div');
       lineEl.className = `gpt-ann-hline gpt-ann-hline-${type}`;
-      const BUBBLE_MID = 5; // 泡泡高度約 11px，取中點 ~5px
-      const absLineTop   = absTop + BUBBLE_MID;
+      const absLineTop   = absTop + this.BUBBLE_MID;
       const lineFinalTop = absLineTop - scrollTop;
-      const lineLeft = leftMost - 1 + 1; // 整體右移 1px
+      const lineLeft = leftMost - this.LINE_LEFT_OFFSET;
       lineEl.dataset.absLineTop = absLineTop;
       lineEl.dataset.lineLeft   = lineLeft;
-      const lineWidth  = (rightMost - leftMost) + 2;
+      const lineWidth  = (rightMost - leftMost) + this.LINE_WIDTH_EXTRA;
       const inBoundsLn = lineFinalTop > -(this.BUBBLE_H + this.BOUNDS_TOP_EXTRA) && lineFinalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
       lineEl.style.cssText = `
         position: absolute;
@@ -759,7 +838,7 @@ const DiffHighlighter = {
     return result;
   },
 
-  _abbrev(text, max = 30) {
+  _abbrev(text, max = this.ABBREV_MAX_LEN) {
     return text.length > max ? text.slice(0, max) + '…' : text;
   },
 
