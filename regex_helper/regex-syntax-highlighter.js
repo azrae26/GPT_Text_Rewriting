@@ -365,11 +365,16 @@ const RegexSyntaxHighlighter = {
     mirror.style.borderWidth = cs.borderWidth;
     mirror.style.boxSizing = cs.boxSizing;
     mirror.style.letterSpacing = cs.letterSpacing;
-    // 只在 textarea 真正可見（offsetWidth > 0）時更新尺寸，
-    // 避免隱藏 tab 中 offsetWidth = 0 導致 mirror 永久縮成 0px
+    // 使用 clientWidth/clientHeight 排除捲軸佔用空間，確保 mirror 與 textarea 內容區寬高一致
+    // （textarea 有捲軸時 offsetWidth 為總寬，mirror 無捲軸會較寬導致對不齊）
+    // clientWidth 不含 border，需加回以匹配 mirror 的 box-sizing
     if (textarea.offsetWidth > 0) {
-      mirror.style.width = `${textarea.offsetWidth}px`;
-      mirror.style.height = `${textarea.offsetHeight}px`;
+      const bL = parseFloat(cs.borderLeftWidth) || 0;
+      const bR = parseFloat(cs.borderRightWidth) || 0;
+      const bT = parseFloat(cs.borderTopWidth) || 0;
+      const bB = parseFloat(cs.borderBottomWidth) || 0;
+      mirror.style.width = `${textarea.clientWidth + bL + bR}px`;
+      mirror.style.height = `${textarea.clientHeight + bT + bB}px`;
     }
 
     // 更新語法高亮 HTML

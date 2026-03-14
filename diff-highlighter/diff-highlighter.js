@@ -589,16 +589,24 @@ const DiffHighlighter = {
    * - B 是 template（含 $n）→ 從 A 的 capture groups 直接推導，不依賴 content
    * - B 是 exact string → 直接替換
    * - B 是 regex → 在 contentNorm 中找最近的 B match，one-to-one greedy 配對
+   *
+   * Non-overlapping 策略：所有規則對「原始 introNorm」同時掃描，
+   * 收集全部 {start, end, text} 替換候補，依 (start ASC, end DESC) 排序，
+   * 貪婪挑選不重疊者（位置較早、長度較長者優先），最後反序套用一次。
+   * 這樣後面的規則不會再次作用到前面規則已處理的字元範圍。
+   *
    * @param {string} introNorm  已移除空白的 intro 字串
    * @param {string} contentNorm 已移除空白的 content 字串
    * @returns {string} 正規化後的 introNorm
    */
   _applyPreDMPNorm(introNorm, contentNorm) {
-    let result = introNorm;
+    // 收集所有規則對原始 introNorm 的替換候補
+    const allReplacements = []; // { start, end, text }
+
     for (const { oldMatcher, newMatcher } of this.customRules) {
       if (!oldMatcher || !newMatcher) continue;
 
-      const aMatches = this._findTextMatches(result, oldMatcher);
+      const aMatches = this._findTextMatches(introNorm, oldMatcher);
       if (!aMatches.length) continue;
 
       let replacements;
@@ -610,7 +618,7 @@ const DiffHighlighter = {
         // → 跳過正規化，兩邊保持原格式，DMP 自然視為 equal，不產生泡泡
         // → 若跳過：normToOrig 不受影響，bubble 位置正確
         if (oldMatcher.type !== 'regex') continue;
-        const aMatchesWC = this._findRegexMatchesWithCaptures(result, oldMatcher.value);
+        const aMatchesWC = this._findRegexMatchesWithCaptures(introNorm, oldMatcher.value);
         const contentAMatches = this._findRegexMatchesWithCaptures(contentNorm, oldMatcher.value);
         const contentATexts = contentAMatches.map(cam => contentNorm.slice(cam.start, cam.end));
         const cLen = contentNorm.length || 1;
@@ -618,8 +626,8 @@ const DiffHighlighter = {
         replacements = aMatches.map((am, i) => {
           const amwc = aMatchesWC[i];
           if (!amwc) return null;
-          const aText = result.slice(am.start, am.end);
-          const aRel = (am.start + am.end) / 2 / (result.length || 1);
+          const aText = introNorm.slice(am.start, am.end);
+          const aRel = (am.start + am.end) / 2 / (introNorm.length || 1);
           // 找 content 中文字完全相同的 A match，按相對位置最近者一對一配對
           let bestMatch = null, bestDist = Infinity;
           for (let ci = 0; ci < contentAMatches.length; ci++) {
@@ -643,8 +651,8 @@ const DiffHighlighter = {
         const usedB = new Set();
         const cLen = contentNorm.length || 1;
         replacements = aMatches.map((am) => {
-          const aText = result.slice(am.start, am.end);
-          const aRel = (am.start + am.end) / 2 / (result.length || 1);
+          const aText = introNorm.slice(am.start, am.end);
+          const aRel = (am.start + am.end) / 2 / (introNorm.length || 1);
           let best = null, bestScore = Infinity;
           for (let bi = 0; bi < bMatches.length; bi++) {
             if (usedB.has(bi)) continue;
@@ -661,11 +669,29 @@ const DiffHighlighter = {
         });
       }
 
-      // 反序替換，保留前面 match 的 index 正確性
-      for (let i = aMatches.length - 1; i >= 0; i--) {
+      for (let i = 0; i < aMatches.length; i++) {
         if (replacements[i] === null) continue;
-        result = result.slice(0, aMatches[i].start) + replacements[i] + result.slice(aMatches[i].end);
+        allReplacements.push({ start: aMatches[i].start, end: aMatches[i].end, text: replacements[i] });
       }
+    }
+
+    // 依 (start 較小優先, end 較大優先) 排序，貪婪挑選不重疊的替換
+    allReplacements.sort((a, b) => a.start - b.start || b.end - a.end);
+    const nonOverlapping = [];
+    let lastEnd = -1;
+    for (const r of allReplacements) {
+      if (r.start >= lastEnd) {
+        nonOverlapping.push(r);
+        lastEnd = r.end;
+      }
+      // 與已選範圍重疊 → 跳過（先出現或較長的 match 優先）
+    }
+
+    // 反序套用，保留前面 match 的 index 正確性
+    let result = introNorm;
+    for (let i = nonOverlapping.length - 1; i >= 0; i--) {
+      const { start, end, text } = nonOverlapping[i];
+      result = result.slice(0, start) + text + result.slice(end);
     }
     return result;
   },
