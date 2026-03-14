@@ -75,12 +75,14 @@
         <div class="diff-rules-highlight-container">
           <textarea id="diffCustomRules" placeholder="每行一條規則，逗點分隔（舊文字,新文字）
 支援正則表達式：/regex/
+支援 Capture Group 替換：$1, $2（從舊文字語義推導新文字）
 範例：
 2H23,
 ,2023年下半年
 2Q23,2023年第二季
 /[12]H\d{2}/,
-/[1-4]Q\d{2}/,/20\d{2}年第[1-4]季/"></textarea>
+/([1234])[Qq](\d{2})/,20$2年第$1季
+/(?<!\d)(\d{2})\s*年/,20$1年"></textarea>
         </div>
       </div>
       

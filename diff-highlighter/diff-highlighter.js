@@ -162,7 +162,7 @@ const DiffHighlighter = {
   /**
    * 解析單個 pattern 字串為 matcher 物件
    * @param {string} str - trim 後的 pattern 字串
-   * @returns {{type:'exact'|'regex', value:string|RegExp}|null}
+   * @returns {{type:'exact'|'regex'|'template', value:string|RegExp}|null}
    */
   _parseMatcher(str) {
     if (!str) return null;
@@ -178,7 +178,52 @@ const DiffHighlighter = {
         return null;
       }
     }
+    // 含 $1/$2 等 capture group 引用 → template（用於從 A 的 match 語義推導 B）
+    if (/\$\d+/.test(str)) {
+      return { type: 'template', value: str };
+    }
     return { type: 'exact', value: str };
+  },
+
+  /**
+   * 將 RegExp.exec 的匹配結果套用到 template 字串，替換 $1、$2 等群組引用
+   * 由數字大到小處理，避免 $12 被誤拆成 $1+"2"
+   * @param {Array} m - exec 的結果陣列（m[0]=全匹配，m[1]=$1...）
+   * @param {string} template - 含 $n 的替換字串
+   * @returns {string}
+   */
+  _applyTemplate(m, template) {
+    const indices = [];
+    const re = /\$(\d+)/g;
+    let hit;
+    while ((hit = re.exec(template)) !== null) {
+      const n = parseInt(hit[1], 10);
+      if (!indices.includes(n)) indices.push(n);
+    }
+    indices.sort((a, b) => b - a);
+    let result = template;
+    for (const n of indices) {
+      result = result.replace(new RegExp(`\\$${n}`, 'g'), m[n] != null ? m[n] : '');
+    }
+    return result;
+  },
+
+  /**
+   * 在 text 中找出 regex 的所有不重疊匹配，並保留 capture groups
+   * @param {string} text
+   * @param {RegExp} regex
+   * @returns {Array<{start:number, end:number, groups:Array}>}
+   */
+  _findRegexMatchesWithCaptures(text, regex) {
+    const flags = (regex.flags || '').replace('g', '') + 'g';
+    const re = new RegExp(regex.source, flags);
+    const results = [];
+    let m;
+    while ((m = re.exec(text)) !== null) {
+      results.push({ start: m.index, end: m.index + m[0].length, groups: Array.from(m) });
+      if (!m[0].length) re.lastIndex++;
+    }
+    return results;
   },
 
   /**
@@ -309,7 +354,30 @@ const DiffHighlighter = {
 
       // ── Step 2：找匹配 ──
       const oldMs = oldMatcher ? this._findTextMatches(oldText, oldMatcher) : [];
-      const newMs = newMatcher ? this._findTextMatches(newText, newMatcher) : [];
+      let newMs;
+      if (newMatcher && newMatcher.type === 'template') {
+        // template 模式：從 oldMs 的 capture groups 推導 new text 中的對應位置
+        // 例：oldMs 中 4Q23 → 推導出 "2023年第4季" → 在 newText 中找其位置
+        newMs = [];
+        if (oldMatcher && oldMatcher.type === 'regex') {
+          const oldMsWC = this._findRegexMatchesWithCaptures(oldText, oldMatcher.value);
+          for (let oi = 0; oi < oldMsWC.length; oi++) {
+            const expectedNew = this._applyTemplate(oldMsWC[oi].groups, newMatcher.value);
+            const exactMatcher = { type: 'exact', value: expectedNew };
+            const candidates = this._findTextMatches(newText, exactMatcher);
+            if (!candidates.length) continue;
+            const amRel = (oldMsWC[oi].start + oldMsWC[oi].end) / 2 / (oldText.length || 1);
+            let best = null, bestDist = Infinity;
+            for (const c of candidates) {
+              const dist = Math.abs((c.start + c.end) / 2 / (newText.length || 1) - amRel);
+              if (dist < bestDist) { bestDist = dist; best = c; }
+            }
+            if (best) newMs.push(best);
+          }
+        }
+      } else {
+        newMs = newMatcher ? this._findTextMatches(newText, newMatcher) : [];
+      }
 
       // ── Step 3：嘗試套用第一個有效的合併 ──
       const attempt = (om, nm) => {
@@ -473,6 +541,8 @@ const DiffHighlighter = {
 
   /**
    * 判斷 replace group 是否符合任何自訂規則的 A,B pair（全字匹配）
+   * - 一般規則：old 與 new 各自完整匹配 oldMatcher / newMatcher
+   * - template 規則：從 oldMatcher exec 取 captures 推導 expected new，再比對
    * @param {{type:string, oldText?:string, newText?:string}} g
    * @returns {boolean}
    */
@@ -480,8 +550,21 @@ const DiffHighlighter = {
     if (g.type !== 'replace') return false;
     for (const { oldMatcher, newMatcher } of this.customRules) {
       const oldOk = !oldMatcher || this._matchesEntire(g.oldText || '', oldMatcher);
-      const newOk = !newMatcher || this._matchesEntire(g.newText || '', newMatcher);
-      if (oldOk && newOk) return true;
+      if (!oldOk) continue;
+      if (!newMatcher) { return true; }
+      if (newMatcher.type === 'template') {
+        // 用 oldMatcher 的 regex 對 oldText 做 exec，推導期望的 newText
+        if (!oldMatcher || oldMatcher.type !== 'regex') continue;
+        const flags = (oldMatcher.value.flags || '').replace('g', '');
+        const re = new RegExp(`^(?:${oldMatcher.value.source})$`, flags);
+        const m = re.exec(g.oldText || '');
+        if (!m) continue;
+        const expectedNew = this._applyTemplate(Array.from(m), newMatcher.value);
+        if (expectedNew === (g.newText || '')) return true;
+      } else {
+        const newOk = this._matchesEntire(g.newText || '', newMatcher);
+        if (newOk) return true;
+      }
     }
     return false;
   },
@@ -503,6 +586,7 @@ const DiffHighlighter = {
    * Pre-DMP 正規化：在 DMP 前對 introNorm 套用自訂規則（A→B 替換），
    * 讓等價差異在 DMP 前就消失成 equal，避免碎片化與迭代爆炸。
    * - A-only 或 B-only 規則略過（無法決定替換內容）
+   * - B 是 template（含 $n）→ 從 A 的 capture groups 直接推導，不依賴 content
    * - B 是 exact string → 直接替換
    * - B 是 regex → 在 contentNorm 中找最近的 B match，one-to-one greedy 配對
    * @param {string} introNorm  已移除空白的 intro 字串
@@ -518,7 +602,40 @@ const DiffHighlighter = {
       if (!aMatches.length) continue;
 
       let replacements;
-      if (newMatcher.type === 'exact') {
+      if (newMatcher.type === 'template') {
+        // 從 A 的 capture groups 直接推導替換字串，語義準確，不依賴 content
+        // 例：4Q23 → $1=4, $2=23 → 2023年第4季，不會誤選 content 中的 2024年第四季
+        //
+        // 特別處理：若 content 也有完全相同的 A match 文字（如兩邊都是 "2026/03/11"）
+        // → 跳過正規化，兩邊保持原格式，DMP 自然視為 equal，不產生泡泡
+        // → 若跳過：normToOrig 不受影響，bubble 位置正確
+        if (oldMatcher.type !== 'regex') continue;
+        const aMatchesWC = this._findRegexMatchesWithCaptures(result, oldMatcher.value);
+        const contentAMatches = this._findRegexMatchesWithCaptures(contentNorm, oldMatcher.value);
+        const contentATexts = contentAMatches.map(cam => contentNorm.slice(cam.start, cam.end));
+        const cLen = contentNorm.length || 1;
+        const usedContentA = new Set();
+        replacements = aMatches.map((am, i) => {
+          const amwc = aMatchesWC[i];
+          if (!amwc) return null;
+          const aText = result.slice(am.start, am.end);
+          const aRel = (am.start + am.end) / 2 / (result.length || 1);
+          // 找 content 中文字完全相同的 A match，按相對位置最近者一對一配對
+          let bestMatch = null, bestDist = Infinity;
+          for (let ci = 0; ci < contentAMatches.length; ci++) {
+            if (usedContentA.has(ci)) continue;
+            if (contentATexts[ci] !== aText) continue;
+            const camRel = (contentAMatches[ci].start + contentAMatches[ci].end) / 2 / cLen;
+            const dist = Math.abs(camRel - aRel);
+            if (dist < bestDist) { bestDist = dist; bestMatch = ci; }
+          }
+          if (bestMatch !== null) {
+            usedContentA.add(bestMatch);
+            return null; // 兩邊格式相同，跳過正規化
+          }
+          return this._applyTemplate(amwc.groups, newMatcher.value);
+        });
+      } else if (newMatcher.type === 'exact') {
         replacements = aMatches.map(() => newMatcher.value);
       } else {
         const bMatches = this._findTextMatches(contentNorm, newMatcher);
@@ -526,12 +643,17 @@ const DiffHighlighter = {
         const usedB = new Set();
         const cLen = contentNorm.length || 1;
         replacements = aMatches.map((am) => {
+          const aText = result.slice(am.start, am.end);
           const aRel = (am.start + am.end) / 2 / (result.length || 1);
-          let best = null, bestDist = Infinity;
+          let best = null, bestScore = Infinity;
           for (let bi = 0; bi < bMatches.length; bi++) {
             if (usedB.has(bi)) continue;
+            const bText = contentNorm.slice(bMatches[bi].start, bMatches[bi].end);
             const dist = Math.abs((bMatches[bi].start + bMatches[bi].end) / 2 / cLen - aRel);
-            if (dist < bestDist) { bestDist = dist; best = bi; }
+            // 優先選取包含 A 文字的 B match（語義相關性），再以位置遠近為次要依據
+            // 例：A="25年" → "2025年"(含A,dist=0.0) 優於 "2026年"(不含A,dist=0.4)
+            const score = (bText.includes(aText) ? 0 : 1) + dist;
+            if (score < bestScore) { bestScore = score; best = bi; }
           }
           if (best === null) return null;
           usedB.add(best);
