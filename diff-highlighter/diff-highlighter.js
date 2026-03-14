@@ -923,9 +923,9 @@ const DiffHighlighter = {
     });
     bubble.appendChild(closeBtn);
 
-    // 組合回傳：replace/insert 附帶橫線，垂直對齊泡泡正中心
+    // 組合回傳：replace/insert/equiv 附帶橫線，垂直對齊泡泡正中心
     const result = document.createDocumentFragment();
-    if ((type === 'replace' || type === 'insert') && rightMost > leftMost) {
+    if ((type === 'replace' || type === 'insert' || type === 'equiv') && rightMost > leftMost) {
       const lineEl = document.createElement('div');
       lineEl.className = `gpt-ann-hline gpt-ann-hline-${type}`;
       const absLineTop   = absTop + this.BUBBLE_MID;

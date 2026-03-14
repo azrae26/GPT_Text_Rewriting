@@ -1,13 +1,13 @@
 /* ===== 容器樣式 ===== */
-/* 主組容器 */
+/* 主組容器（手動替換組圖層最高） */
 .replace-controls-main {
   position: absolute;
   left: 14px;
   top: -22px;
-  z-index: 1000;
+  z-index: 10001;
 }
 
-/* 其他組容器 */
+/* 其他組容器（手動替換組圖層最高） */
 .replace-controls {
   display: flex;
   flex-direction: column;
@@ -15,7 +15,7 @@
   position: fixed;
   left: 50px;
   top: 50px;
-  z-index: 1000;
+  z-index: 10001;
 }
 
 /* 手動替換組容器 */
