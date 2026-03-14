@@ -28,6 +28,8 @@ const DiffHighlighter = {
   BOUNDS_TOP_EXTRA: 10,
   /** 下方提早隱藏的距離（px），讓泡泡在接近容器底部時即隱藏 */
   BOUNDS_BOTTOM_MARGIN: 10,
+  /** overlay 容器向上擴展的距離（px），使泡泡納入容器內，配合 overflow:hidden 防止頁面多出捲軸 */
+  OVERLAY_TOP_EXTRA: 24,
   /** 同行判定閾值（px），top 差值小於此視為同一行 */
   LINE_SAME_TOP_THRESHOLD: 3,
   /** 泡泡垂直中點（px），供外延線對齊 */
@@ -789,13 +791,13 @@ const DiffHighlighter = {
     container.id = 'gpt-diff-overlay-container';
     container.style.cssText = `
       position: absolute;
-      top: ${containerTop}px;
+      top: ${containerTop - this.OVERLAY_TOP_EXTRA}px;
       left: ${containerLeft}px;
       width: ${ta.offsetWidth}px;
-      height: ${ta.offsetHeight}px;
+      height: ${ta.offsetHeight + this.OVERLAY_TOP_EXTRA}px;
       pointer-events: none;
       z-index: 1002;
-      overflow: visible;
+      overflow: hidden;
     `;
 
     const taParent      = ta.parentElement;
@@ -846,10 +848,10 @@ const DiffHighlighter = {
     const ta = this.contentTextarea;
     const taRect     = ta.getBoundingClientRect();
     const parentRect = ta.parentElement.getBoundingClientRect();
-    this.overlayContainer.style.top    = `${taRect.top  - parentRect.top}px`;
+    this.overlayContainer.style.top    = `${taRect.top  - parentRect.top - this.OVERLAY_TOP_EXTRA}px`;
     this.overlayContainer.style.left   = `${taRect.left - parentRect.left}px`;
     this.overlayContainer.style.width  = `${ta.offsetWidth}px`;
-    this.overlayContainer.style.height = `${ta.offsetHeight}px`;
+    this.overlayContainer.style.height = `${ta.offsetHeight + this.OVERLAY_TOP_EXTRA}px`;
     this.clearBubbles();
     this.scheduleDiff();
   },
@@ -1053,8 +1055,8 @@ const DiffHighlighter = {
     const t3 = new Date(); const ts3 = `${t3.getHours().toString().padStart(2,'0')}:${t3.getMinutes().toString().padStart(2,'0')}:${t3.getSeconds().toString().padStart(2,'0')}`;
     console.log(`[DiffHighlighter][${ts3}]   → positions[0]={top:${positions[0].top.toFixed(1)},left:${positions[0].left.toFixed(1)},w:${positions[0].width.toFixed(1)}} leftMost=${leftMost.toFixed(1)} rightMost=${rightMost.toFixed(1)} centerX=${centerX.toFixed(1)}`);
 
-    // 泡泡頂端（相對於 overlay 容器，可為負值 → 浮在 textarea 上方）
-    const absTop   = positions[0].top - this.BUBBLE_H - this.BUBBLE_GAP + this.BUBBLE_VERTICAL_ADJUST;
+    // 泡泡頂端（相對於 textarea 頂端），加上 OVERLAY_TOP_EXTRA 轉換到容器座標（容器向上偏移了 OVERLAY_TOP_EXTRA）
+    const absTop   = positions[0].top - this.BUBBLE_H - this.BUBBLE_GAP + this.BUBBLE_VERTICAL_ADJUST + this.OVERLAY_TOP_EXTRA;
     // 應用 scrollTop 補償（等同 TextHighlight 的 top - scrollTop pattern）
     const finalTop = absTop - scrollTop;
 
@@ -1073,7 +1075,7 @@ const DiffHighlighter = {
 
     // 水平置中：先平移到 centerX，再用 translateX(-50%) 讓泡泡自身置中
     const containerH = this.overlayContainer.offsetHeight;
-    const inBounds = finalTop > -(this.BUBBLE_H + this.BOUNDS_TOP_EXTRA) && finalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
+    const inBounds = finalTop >= 0 && finalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
     bubble.style.cssText = `
       position: absolute;
       top: 0;
@@ -1098,13 +1100,13 @@ const DiffHighlighter = {
     if ((type === 'replace' || type === 'insert' || type === 'equiv') && rightMost > leftMost) {
       const lineEl = document.createElement('div');
       lineEl.className = `gpt-ann-hline gpt-ann-hline-${type}`;
-      const absLineTop   = absTop + this.BUBBLE_MID;
+      const absLineTop   = absTop + this.BUBBLE_MID;  // absTop 已含 OVERLAY_TOP_EXTRA
       const lineFinalTop = absLineTop - scrollTop;
       const lineLeft = leftMost - this.LINE_LEFT_OFFSET;
       lineEl.dataset.absLineTop = absLineTop;
       lineEl.dataset.lineLeft   = lineLeft;
       const lineWidth  = (rightMost - leftMost) + this.LINE_WIDTH_EXTRA;
-      const inBoundsLn = lineFinalTop > -(this.BUBBLE_H + this.BOUNDS_TOP_EXTRA) && lineFinalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
+      const inBoundsLn = lineFinalTop >= 0 && lineFinalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
       lineEl.style.cssText = `
         position: absolute;
         top: 0;
@@ -1142,7 +1144,7 @@ const DiffHighlighter = {
       const absTop   = parseFloat(bubble.dataset.absTop);
       const centerX  = parseFloat(bubble.dataset.centerX);
       const finalTop = absTop - scrollTop;
-      const inBounds = finalTop > -(this.BUBBLE_H + this.BOUNDS_TOP_EXTRA) && finalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
+      const inBounds = finalTop >= 0 && finalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
       bubble.style.visibility = inBounds ? 'visible' : 'hidden';
       bubble.style.transform =
         `translate(${centerX}px, ${finalTop}px) translateX(-50%)`;
@@ -1151,7 +1153,7 @@ const DiffHighlighter = {
       const absLineTop   = parseFloat(lineEl.dataset.absLineTop);
       const lineLeft     = parseFloat(lineEl.dataset.lineLeft);
       const lineFinalTop = absLineTop - scrollTop;
-      const inBounds = lineFinalTop > -(this.BUBBLE_H + this.BOUNDS_TOP_EXTRA) && lineFinalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
+      const inBounds = lineFinalTop >= 0 && lineFinalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
       lineEl.style.visibility = inBounds ? 'visible' : 'hidden';
       lineEl.style.transform = `translate(${lineLeft}px, ${lineFinalTop}px)`;
     });
