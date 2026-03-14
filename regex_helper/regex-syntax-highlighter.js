@@ -268,7 +268,7 @@ const RegexSyntaxHighlighter = {
   },
 
   /**
-   * 判斷 A 或 B 側是正則還是純文字，回傳上色 HTML
+   * 判斷 A 或 B 側是正則還是純文字（含 template $n/$n{...}），回傳上色 HTML
    * @param {string} str
    * @returns {string} HTML
    */
@@ -284,7 +284,54 @@ const RegexSyntaxHighlighter = {
         (trailing ? this._span('literal', this._esc(trailing)) : '')
       );
     }
+    // template：含 $n 或 $n{key:val,...} 對照表語法
+    if (/\$\d+/.test(t)) {
+      return this._highlightTemplateSide(str);
+    }
     return this._span('literal', this._esc(str));
+  },
+
+  /**
+   * 高亮 template 字串中的 $n 與 $n{key:val,...} 對照表語法
+   * @param {string} str
+   * @returns {string} HTML
+   */
+  _highlightTemplateSide(str) {
+    let result = '';
+    let lastIdx = 0;
+    // 匹配 $n 或 $n{...}（含整個 {} 區塊）
+    const re = /\$(\d+)(\{[^}]*\})?/g;
+    let m;
+    while ((m = re.exec(str)) !== null) {
+      if (m.index > lastIdx) {
+        result += this._span('literal', this._esc(str.slice(lastIdx, m.index)));
+      }
+      // $n 部分
+      result += this._span('capture', this._esc('$' + m[1]));
+      // {key:val,...} 部分（若有）
+      if (m[2]) {
+        const body = m[2].slice(1, m[2].length - 1);
+        result += this._span('table-brace', '{');
+        const entries = body.split(',');
+        entries.forEach((entry, i) => {
+          const colonIdx = entry.indexOf(':');
+          if (colonIdx >= 0) {
+            result += this._span('table-key', this._esc(entry.slice(0, colonIdx)));
+            result += this._span('table-colon', ':');
+            result += this._span('literal', this._esc(entry.slice(colonIdx + 1)));
+          } else {
+            result += this._span('literal', this._esc(entry));
+          }
+          if (i < entries.length - 1) result += this._span('table-sep', ',');
+        });
+        result += this._span('table-brace', '}');
+      }
+      lastIdx = m.index + m[0].length;
+    }
+    if (lastIdx < str.length) {
+      result += this._span('literal', this._esc(str.slice(lastIdx)));
+    }
+    return result;
   },
 
   // ─────────────────────────────────────────────────

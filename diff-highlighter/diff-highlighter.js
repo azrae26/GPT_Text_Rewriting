@@ -187,21 +187,43 @@ const DiffHighlighter = {
 
   /**
    * 將 RegExp.exec 的匹配結果套用到 template 字串，替換 $1、$2 等群組引用
+   * 支援對照表語法：$n{key1:val1,key2:val2,...}，依 $n 的值查表輸出
+   *   - key 為 "*" 時視為預設值（查無對應 key 時使用）
+   *   - 查無對應且無預設值時，回退為原始 $n 值
+   *   - 範例：$1{1:上半年,2:下半年} → $1="2" 時輸出「下半年」
    * 由數字大到小處理，避免 $12 被誤拆成 $1+"2"
    * @param {Array} m - exec 的結果陣列（m[0]=全匹配，m[1]=$1...）
-   * @param {string} template - 含 $n 的替換字串
+   * @param {string} template - 含 $n 或 $n{...} 的替換字串
    * @returns {string}
    */
   _applyTemplate(m, template) {
+    let result = template;
+
+    // Step 1：先處理 $n{key:val,...} 對照表語法（含 {} 整體替換）
+    result = result.replace(/\$(\d+)\{([^}]+)\}/g, (_, nStr, tableBody) => {
+      const n   = parseInt(nStr, 10);
+      const val = m[n] != null ? m[n] : '';
+      let defaultVal = null;
+      for (const entry of tableBody.split(',')) {
+        const colonIdx = entry.indexOf(':');
+        if (colonIdx < 0) continue;
+        const key = entry.slice(0, colonIdx).trim();
+        const v   = entry.slice(colonIdx + 1).trim();
+        if (key === '*') { defaultVal = v; continue; }
+        if (key === val) return v;
+      }
+      return defaultVal !== null ? defaultVal : val;
+    });
+
+    // Step 2：再處理剩餘的 $n（普通引用），由數字大到小避免 $12 誤拆
     const indices = [];
     const re = /\$(\d+)/g;
     let hit;
-    while ((hit = re.exec(template)) !== null) {
+    while ((hit = re.exec(result)) !== null) {
       const n = parseInt(hit[1], 10);
       if (!indices.includes(n)) indices.push(n);
     }
     indices.sort((a, b) => b - a);
-    let result = template;
     for (const n of indices) {
       result = result.replace(new RegExp(`\\$${n}`, 'g'), m[n] != null ? m[n] : '');
     }

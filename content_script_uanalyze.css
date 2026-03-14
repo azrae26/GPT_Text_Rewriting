@@ -177,7 +177,7 @@ textarea[name="system_prompt"] {
   background-color: #dc3545;
 }
 
-/* 通知元素樣式 */
+/* 通知元素樣式（z-index 設為最高，確保不被替換預覽等圖層遮住） */
 .notification-element {
   position: fixed;
   top: 20px;
@@ -187,7 +187,7 @@ textarea[name="system_prompt"] {
   color: white;
   padding: 20px;
   border-radius: 10px;
-  z-index: 10000;
+  z-index: 10002;
   max-width: 400px;
   box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
   font-family: Arial, sans-serif;

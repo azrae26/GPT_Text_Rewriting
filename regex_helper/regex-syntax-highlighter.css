@@ -120,3 +120,31 @@
   color: #aaa;
   font-style: italic;
 }
+
+/* template capture group 引用 $n */
+.re-sh-capture {
+  color: #008cff;
+  font-weight: bold;
+}
+
+/* template 對照表 {} 括號 */
+.re-sh-table-brace {
+  color: #aaa;
+  font-weight: bold;
+}
+
+/* template 對照表 key */
+.re-sh-table-key {
+  color: #e07a00;
+  font-weight: bold;
+}
+
+/* template 對照表 key:val 之間的冒號 */
+.re-sh-table-colon {
+  color: #aaa;
+}
+
+/* template 對照表 entry 之間的逗號 */
+.re-sh-table-sep {
+  color: #aaa;
+}

@@ -4,7 +4,7 @@
   position: absolute;
   left: 14px;
   top: -22px;
-  z-index: 10001;
+  z-index: 1201;
 }
 
 /* 其他組容器（手動替換組圖層最高） */
@@ -15,7 +15,7 @@
   position: fixed;
   left: 50px;
   top: 50px;
-  z-index: 10001;
+  z-index: 1201;
 }
 
 /* 手動替換組容器 */
