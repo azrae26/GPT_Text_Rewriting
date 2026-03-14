@@ -99,11 +99,6 @@ const DiffHighlighter = {
       if (op ===  1) return { type: 'insert', b: text };
       /* op === -1 */ return { type: 'delete', a: text };
     });
-    const t = new Date(); const ts = `${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`;
-    console.log(`[DiffHighlighter][${ts}] 📝 DMP ops (${ops.length}):`, ops.map(o => `[${o.type}] a=${JSON.stringify(o.a||'')} b=${JSON.stringify(o.b||'')}`));
-    // #region agent log
-    fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:computeDiffDMP',message:'after DMP',data:{opsLen:ops.length},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-    // #endregion
     return ops;
   },
 
@@ -288,10 +283,6 @@ const DiffHighlighter = {
         LogUtils.warn(`[DiffHighlighter] _mergeByRule 達迭代上限 (${iterCount})，略過剩餘規則合併`);
         break;
       }
-      // #region agent log
-      if (iterCount > 50) { fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:_mergeByRule',message:'loop iteration',data:{iterCount,groupsLen:groups.length},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{}); }
-      // #endregion
-
       // ── Step 1：重建 old/new 全文與各 group 的跨度 ──
       let oldText = '', newText = '';
       const gOS = [], gNS = [], gOL = [], gNL = []; // old/new start, old/new length
@@ -721,25 +712,13 @@ const DiffHighlighter = {
     const normToOrig = this.buildNormToOrig(contentText);
     // hide 模式：DMP 前先對 introNorm 套用自訂規則正規化，讓等價差異消失成 equal
     const ops = this.computeDiffDMP(introText, contentText, this.displayMode === 'hide');
-    // #region agent log
-    fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'before groupOps',data:{opsLen:ops.length},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     const grouped = this.groupOps(ops);
-    // #region agent log
-    fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'after groupOps',data:{groupsLen:grouped.length},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
     const postProcessed = this.postProcessGroups(grouped);
-    // #region agent log
-    fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'after postProcessGroups',data:{groupsLen:postProcessed.length},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     // hide 模式：pre-DMP 已處理等價差異，不再需要 applyCustomRules（避免迭代爆炸）
     // show 模式：照常合併碎片以便偵測等價群組並顯示灰色泡泡
     const groups = (this.displayMode === 'hide')
       ? postProcessed
       : this.applyCustomRules(postProcessed);
-    // #region agent log
-    fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'after applyCustomRules',data:{groupsLen:groups.length},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
-    // #endregion
     this.annotateGroupsWithIndices(groups);
     // 將正規化空間的索引轉回原始 content 位置（含空白的真實 index）
     for (const g of groups) {
@@ -748,16 +727,7 @@ const DiffHighlighter = {
       if (g.contentInsertIdx != null) g.contentInsertIdx = normToOrig[g.contentInsertIdx] ?? g.contentInsertIdx;
     }
 
-    const t = new Date(); const ts = `${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`;
-    console.log(`[DiffHighlighter][${ts}] 🔍 groups (${groups.length}):`, groups.map((g,i) => `[${i}] type=${g.type} old=${JSON.stringify(g.oldText||'')} new=${JSON.stringify(g.newText||'')} contentStart=${g.contentStartIdx} contentInsert=${g.contentInsertIdx}`));
-
-    // #region agent log
-    fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'before renderBubbles',data:{groupsLen:groups.length},timestamp:Date.now(),hypothesisId:'E'})}).catch(()=>{});
-    // #endregion
     this.renderBubbles(groups, contentText);
-    // #region agent log
-    fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'after renderBubbles',data:{},timestamp:Date.now(),hypothesisId:'F'})}).catch(()=>{});
-    // #endregion
   },
 
   // ─────────────────────────────────────────────────
@@ -791,9 +761,6 @@ const DiffHighlighter = {
     let groupIdx = 0;
     for (const g of groups) {
       if (g.type === 'equal') continue;
-      // #region agent log
-      fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:renderBubbles',message:'group loop',data:{groupIdx,type:g.type},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
-      // #endregion
       groupIdx++;
 
       // hide 模式：符合自訂規則等價的 replace 群組不顯示泡泡

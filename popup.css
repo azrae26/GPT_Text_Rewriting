@@ -357,6 +357,22 @@ input[type="checkbox"] {
   display: none;
 }
 
+/* ── 比對規則分頁：語法高亮容器 ── */
+.diff-rules-highlight-container {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+/* diffCustomRules textarea 撐滿容器（父層可能是 block 或 flex） */
+#diffCustomRules {
+  width: 100%;
+  box-sizing: border-box;
+  min-height: 330px;
+}
+
 /* 顏色選擇器容器 */
 .color-picker {
   display: flex;

@@ -674,6 +674,13 @@ document.addEventListener('DOMContentLoaded', async function() {
     LogUtils.warn('HighlightPreviewManager 未載入');
   }
 
+  // 初始化比對規則語法高亮
+  if (typeof RegexSyntaxHighlighter !== 'undefined') {
+    RegexSyntaxHighlighter.initTextarea(diffCustomRulesInput, { format: 'diffRule' });
+  } else {
+    LogUtils.warn('RegexSyntaxHighlighter 未載入');
+  }
+
   // 生成設定組合管理
   function updateGenerationSettingsSelect() {
     generationSettingsSelect.innerHTML = '<option value="">選擇設定組合</option>';

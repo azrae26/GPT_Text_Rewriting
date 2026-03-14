@@ -144,6 +144,7 @@ Service Worker（importScripts 載入依賴）。負責：
 | `notification.js` | `Notification` | 頁面通知顯示（show/update/remove） |
 | `status_monitor/status_monitor.js` | — | 右下角狀態指示器，監控同步和爬蟲狀態 |
 | `regex_helper/regex-helper.js` | `RegexHelper` | 正規表達式工具，供 highlight 和 replace 使用 |
+| `regex_helper/regex-syntax-highlighter.js` | `RegexSyntaxHighlighter` | 正則語法高亮模組：tokenize 正則字串、產生帶 span 的 HTML、`initTextarea()` 接上 mirror 層，可複用於任意 textarea/input |
 | `diff-highlighter/diff-highlighter.js` | — | 改寫前後差異高亮顯示 |
 | `diff-highlighter/diff-match-patch.js` | — | Google diff-match-patch 函式庫 |
 | `google_translator/google-translate.js` | — | Google Cloud Translation API 封裝 |

@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="popup.css">
   <link rel="stylesheet" href="text_highlight/highlight-color-picker.css">
   <link rel="stylesheet" href="SettingsIO/settings-io.css">
+  <link rel="stylesheet" href="regex_helper/regex-syntax-highlighter.css">
 </head>
 <body>
   <div class="main-tab-container">
@@ -71,7 +72,8 @@
       </div>
 
       <div id="diff-rules-tab" class="tab-content">
-        <textarea id="diffCustomRules" placeholder="每行一條規則，逗點分隔（舊文字,新文字）
+        <div class="diff-rules-highlight-container">
+          <textarea id="diffCustomRules" placeholder="每行一條規則，逗點分隔（舊文字,新文字）
 支援正則表達式：/regex/
 範例：
 2H23,
@@ -79,6 +81,7 @@
 2Q23,2023年第二季
 /[12]H\d{2}/,
 /[1-4]Q\d{2}/,/20\d{2}年第[1-4]季/"></textarea>
+        </div>
       </div>
       
       <button id="rewrite">改寫文字</button>
@@ -569,6 +572,7 @@
   <script src="popup/stock-controller.js"></script>
   <script src="text_highlight/highlight-color-picker.js"></script>
   <script src="text_highlight/highlight-popup-preview.js"></script>
+  <script src="regex_helper/regex-syntax-highlighter.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

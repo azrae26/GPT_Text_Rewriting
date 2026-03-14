@@ -1,0 +1,122 @@
+/**
+ * regex_helper/regex-syntax-highlighter.css
+ * 正則語法高亮 mirror 層樣式
+ * 供 RegexSyntaxHighlighter.initTextarea() 使用
+ */
+
+/* ── container：包住 textarea 與 mirror ── */
+.regex-highlight-container {
+  position: relative;
+  width: 100%;           /* 確保撐滿父元素（flex 子元素不一定自動拉伸） */
+  box-sizing: border-box;
+}
+
+/* ── textarea 在 container 內撐滿寬度、加大行距 ── */
+.regex-highlight-container textarea {
+  width: 100%;
+  box-sizing: border-box;
+  line-height: 1.6;
+}
+
+/* ── mirror：與 textarea 完全疊合的背後高亮層 ── */
+.regex-highlight-mirror {
+  position: absolute;
+  top: 0;
+  left: 0;
+  /* right/bottom 不設，寬高由 _syncMirror 透過 JS 撐滿 textarea */
+  pointer-events: none;     /* 讓點擊穿透到 textarea */
+  overflow: hidden;
+  white-space: pre-wrap;    /* 對齊 textarea 換行行為 */
+  word-wrap: break-word;
+  background-color: #fff;  /* 保持白底，讓上層透明 textarea 看起來白色背景 */
+  z-index: 0;
+}
+
+/* ── textarea：字透明、底透明，游標保持可見 ── */
+.regex-highlight-textarea {
+  position: relative;
+  z-index: 1;
+  color: transparent !important;
+  background: transparent !important;
+  caret-color: #333 !important;   /* 游標保持深色可見 */
+}
+
+/* ── 選取文字背景（需讓選取可見） ── */
+.regex-highlight-textarea::selection {
+  background: rgba(100, 160, 255, 0.35);
+  color: transparent;
+}
+
+/* ════════════════════════════════════════════
+   Token 顏色定義
+   ════════════════════════════════════════════ */
+
+/* 正則分隔符 / */
+.re-sh-delim {
+  color: #aaa;
+  font-weight: bold;
+}
+
+/* flags（如 gimsuy） */
+.re-sh-flags {
+  color: #bbb;
+  font-style: italic;
+}
+
+/* 跳脫序列 \d \s \w 等 */
+.re-sh-escape {
+  color: #ffa33a;
+  font-weight: bold;
+}
+
+/* 字元類 [...] */
+.re-sh-charclass {
+  color: #22ce00;
+}
+
+/* 群組 () (?:) (?=) (?<!) 等 */
+.re-sh-group {
+  color: #008cff;
+  font-weight: bold;
+}
+
+/* 量詞 * + ? {n,m} */
+.re-sh-quant {
+  color: #c67bff;
+  font-weight: bold;
+}
+
+/* alternation | */
+.re-sh-alt {
+  color: #ff4444;
+  font-weight: bold;
+}
+
+/* 錨點 ^ $ */
+.re-sh-anchor {
+  color: #999;
+  font-weight: bold;
+}
+
+/* 萬用字元 . */
+.re-sh-dot {
+  color: #7799dd;
+  font-weight: bold;
+}
+
+/* 純文字 / 逗號（非正則部分） */
+.re-sh-literal {
+  color: #000;
+}
+
+/* diffRule 逗號分隔符 */
+.re-sh-comma {
+  color: #aaa;
+  font-weight: bold;
+}
+
+/* 註解行（# 開頭） */
+.re-sh-comment {
+  color: #aaa;
+  font-style: italic;
+}
