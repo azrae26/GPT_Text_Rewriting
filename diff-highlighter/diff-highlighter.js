@@ -62,9 +62,30 @@ const DiffHighlighter = {
   //      導致相鄰的多個差異合併成一個超大 replace，讓自訂規則無法拆分）
   //    回傳 ops 陣列：{type:'equal'|'insert'|'delete', a?, b?}
   // ─────────────────────────────────────────────────
+
+  /**
+   * 建立正規化索引 → 原始 content 索引的對應表
+   * result[j] = 原始 content 中第 j 個非空白字元的位置
+   * result[contentNorm.length] = content.length（供區間結尾使用）
+   */
+  buildNormToOrig(content) {
+    const result = [];
+    let j = 0;
+    for (let i = 0; i < content.length; i++) {
+      if (!/\s/.test(content[i])) {
+        result[j] = i;
+        j++;
+      }
+    }
+    result[j] = content.length;
+    return result;
+  },
+
   computeDiffDMP(introText, contentText) {
+    const introNorm   = (introText   || '').replace(/\s/g, '');
+    const contentNorm = (contentText || '').replace(/\s/g, '');
     const dmp   = new diff_match_patch();  // eslint-disable-line new-cap
-    const diffs = dmp.diff_main(introText, contentText);
+    const diffs = dmp.diff_main(introNorm, contentNorm);
     // 不呼叫 diff_cleanupSemantic：它會過度合併相鄰差異，使自訂規則失效
     const ops = diffs.map((diff) => {
       const op   = diff[0];
@@ -236,17 +257,26 @@ const DiffHighlighter = {
   _mergeByRule(groups, rule) {
     const { oldMatcher, newMatcher } = rule;
 
-    let _iterCount = 0;
     let changed = true;
     let iterCount = 0;
     const MAX_ITER = 150; // 防止無限迴圈：某些自訂規則會導致 split→match→split 無限增長
-    while (changed) {
-      // 防止自訂規則 regex 組合在某些文字上觸發無限迴圈
-      if (++_iterCount > 500) {
+    const CYCLE_WINDOW = 15; // 循環偵測：保留最近 N 筆指紋
+    const recentFps = [];
+    const toFingerprint = (grps) =>
+      grps.map(g => `${g.type}:${(g.oldText||'')}|${(g.newText||'')}|${(g.text||'')}`).join(';');
+    const onChanged = () => {
+      changed = true;
+      const fp = toFingerprint(groups);
+      if (recentFps.includes(fp)) {
         const t = new Date(); const ts = `${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`;
-        LogUtils.warn(`[DiffHighlighter][${ts}] ⚠️ _mergeByRule 超過 500 次迭代，強制中止`);
-        break;
+        LogUtils.warn(`[DiffHighlighter][${ts}] ⚠️ _mergeByRule 偵測到循環，提前結束`);
+        changed = false;
+        return;
       }
+      recentFps.push(fp);
+      if (recentFps.length > CYCLE_WINDOW) recentFps.shift();
+    };
+    while (changed) {
       changed = false;
       iterCount++;
       if (iterCount > MAX_ITER) {
@@ -418,14 +448,14 @@ const DiffHighlighter = {
             const nS = findGi(gNS, gNL, nm.start), nE = findGi(gNS, gNL, nm.end - 1);
             if (oS >= 0 && oE >= 0 && nS >= 0 && nE >= 0 &&
                 Math.max(oS, nS) <= Math.min(oE, nE)) {
-              if (attempt(om, nm)) { changed = true; break outer; }
+              if (attempt(om, nm)) { onChanged(); break outer; }
             }
           }
         }
       } else if (oldMatcher) {
-        for (const om of oldMs) { if (attempt(om, null)) { changed = true; break; } }
+        for (const om of oldMs) { if (attempt(om, null)) { onChanged(); break; } }
       } else if (newMatcher) {
-        for (const nm of newMs) { if (attempt(null, nm)) { changed = true; break; } }
+        for (const nm of newMs) { if (attempt(null, nm)) { onChanged(); break; } }
       }
     }
 
@@ -606,6 +636,7 @@ const DiffHighlighter = {
     this.clearBubbles();
     if (!introText.trim() || !contentText.trim()) return;
 
+    const normToOrig = this.buildNormToOrig(contentText);
     const ops = this.computeDiffDMP(introText, contentText);
     // #region agent log
     fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'before groupOps',data:{opsLen:ops.length},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
@@ -623,6 +654,12 @@ const DiffHighlighter = {
     fetch('http://127.0.0.1:7889/ingest/dc8a3397-2e40-4c0b-bad3-f2a991e05b90',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'2be7ed'},body:JSON.stringify({sessionId:'2be7ed',location:'diff-highlighter.js:runDiff',message:'after applyCustomRules',data:{groupsLen:groups.length},timestamp:Date.now(),hypothesisId:'D'})}).catch(()=>{});
     // #endregion
     this.annotateGroupsWithIndices(groups);
+    // 將正規化空間的索引轉回原始 content 位置（含空白的真實 index）
+    for (const g of groups) {
+      if (g.contentStartIdx  != null) g.contentStartIdx  = normToOrig[g.contentStartIdx]  ?? g.contentStartIdx;
+      if (g.contentEndIdx    != null) g.contentEndIdx    = normToOrig[g.contentEndIdx]    ?? g.contentEndIdx;
+      if (g.contentInsertIdx != null) g.contentInsertIdx = normToOrig[g.contentInsertIdx] ?? g.contentInsertIdx;
+    }
 
     const t = new Date(); const ts = `${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`;
     console.log(`[DiffHighlighter][${ts}] 🔍 groups (${groups.length}):`, groups.map((g,i) => `[${i}] type=${g.type} old=${JSON.stringify(g.oldText||'')} new=${JSON.stringify(g.newText||'')} contentStart=${g.contentStartIdx} contentInsert=${g.contentInsertIdx}`));
