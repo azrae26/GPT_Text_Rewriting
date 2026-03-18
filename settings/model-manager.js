@@ -42,7 +42,9 @@ const ModelManager = {
 
     if (type === 'openai') {
       // OpenAI 無「關閉」語義，off 等同預設，只顯示預設與各級
-      return this.THINKING_LEVEL_OPTIONS.filter(o => o.value !== 'off');
+      const base = this.THINKING_LEVEL_OPTIONS.filter(o => o.value !== 'off');
+      if (ml.includes('5.1')) return base.filter(o => o.value !== 'minimal');
+      return base;
     }
 
     if (type === 'gemini' || ml.includes('gemini')) {

@@ -27,6 +27,27 @@
 // === 通用日誌工具函數 ===
 // 統一的日誌格式工具，支援自動檔名檢測的 [FileName][Time] 格式
 const LogUtils = {
+  /** 是否將日誌同步注入頁面 top context（供 Chrome DevTools MCP 讀取，除錯時開啟） */
+  pageLogEnabled: true,
+
+  /**
+   * 將日誌寫入 sessionStorage，供 Chrome DevTools MCP 的 evaluate_script 讀取
+   * 使用 sessionStorage 而非 <script> 注入，避免觸發頁面 CSP 限制
+   * Content Script 與頁面共享同一個 sessionStorage（同源策略允許）
+   * @param {string} level - 日誌等級（log/error/warn）
+   * @param {string} message - 已格式化的完整訊息
+   */
+  _logToPage(level, message) {
+    try {
+      if (!this.pageLogEnabled || typeof sessionStorage === 'undefined') return;
+      const KEY = '__ai_ext_logs__';
+      const existing = JSON.parse(sessionStorage.getItem(KEY) || '[]');
+      existing.push({ level, message, t: Date.now() });
+      if (existing.length > 300) existing.splice(0, existing.length - 300);
+      sessionStorage.setItem(KEY, JSON.stringify(existing));
+    } catch (e) {}
+  },
+
   /**
    * 將 kebab-case 轉換為 PascalCase
    * @param {string} str - 要轉換的字串
@@ -97,6 +118,7 @@ const LogUtils = {
     } else {
       console.log(`%c[AI助手]%c[${fileName}][${currentTime}] ${message}`, 'color:rgb(179, 0, 255); font-weight: bold;', 'color: inherit;');
     }
+    this._logToPage('log', `[${fileName}][${currentTime}] ${message}`);
   },
 
   /**
@@ -112,6 +134,7 @@ const LogUtils = {
     } else {
       console.log(`%c[AI助手]%c[${fileName}][${currentTime}] ${message}`, 'color:rgb(179, 0, 255); font-weight: bold;', 'color: inherit;');
     }
+    this._logToPage('log', `[${fileName}][${currentTime}] ${message}`);
   },
 
   /**
@@ -127,6 +150,7 @@ const LogUtils = {
     } else {
       console.error(`%c[AI助手]%c[${fileName}][${currentTime}] ❌ ${message}`, 'color:rgb(179, 0, 255); font-weight: bold;', 'color: inherit;');
     }
+    this._logToPage('error', `[${fileName}][${currentTime}] ❌ ${message}`);
   },
 
   /**
@@ -142,6 +166,7 @@ const LogUtils = {
     } else {
       console.warn(`%c[AI助手]%c[${fileName}][${currentTime}] ⚠️ ${message}`, 'color:rgb(179, 0, 255); font-weight: bold;', 'color: inherit;');
     }
+    this._logToPage('warn', `[${fileName}][${currentTime}] ⚠️ ${message}`);
   }
 };
 const DefaultSettings = {
