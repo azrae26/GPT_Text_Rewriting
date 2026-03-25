@@ -88,6 +88,12 @@ textarea[name="system_prompt"] {
 
 /* 針對 https://crawler-api.uanalyze.com.tw/ai_model 頁面的樣式修改結束 */
 
+/* 研究報告內容框：用 CSS 設行距，確保 highlight 初始化時 getComputedStyle 已能讀到正確值 */
+textarea[name="content"] {
+  line-height: 1.7;
+  overflow-y: auto !important;
+}
+
 
 /* 改寫按鈕容器樣式 */
 #gpt-button-container {
