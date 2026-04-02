@@ -25,6 +25,15 @@ div.btn-group button.MuiButtonBase-root.MuiButton-root.MuiButton-contained.MuiBu
   margin-top: 1rem !important;
 }
 
+/* 資料日期輸入框加寬，避免最後一個字被截斷 */
+input[placeholder="YYYY/MM/DD"] {
+  width: 125px !important;
+}
+.MuiInputBase-root:has(input[placeholder="YYYY/MM/DD"]),
+.MuiTextField-root:has(input[placeholder="YYYY/MM/DD"]) {
+  min-width: 200px !important;
+}
+
 /* 針對 https://data.uanalyze.twobitto.com/research-reports/ 頁面的樣式修改結束 */
 
 /* 同步狀態指示器樣式 */

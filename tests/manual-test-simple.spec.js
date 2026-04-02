@@ -66,7 +66,7 @@ const path = require('path');
   
   // 步驟 2: 導航到 UAnalyze 測試頁面
   console.log('🔍 步驟 2: 導航到 UAnalyze 研究報告頁面...');
-  await page.goto('https://data.uanalyze.twobitto.com/research-reports/create');
+  await page.goto('https://data.uanalyze.twobitto.com/research-reports/263494/edit');
   await page.waitForTimeout(2000);
   console.log('✅ 已導航到:', page.url());
   console.log('');
