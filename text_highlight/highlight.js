@@ -314,6 +314,7 @@ const TextHighlight = {
       lastText: '',
       positions: new Map(),
       textNaturalOffset: null, // 新增：文字自然偏移緩存
+      scrollHeightRatio: 1,    // textarea.scrollHeight / div.scrollHeight 縮放比（修正底部偏移）
       lineInfo: {
         lastLineCount: 0,
         lastLinePositions: [], // 儲存每行的起始位置
@@ -544,6 +545,11 @@ const TextHighlight = {
         
         this.cache.lastText = text;
         this.cache.positions.clear();
+
+        // 計算 div 與 textarea 的 scrollHeight 縮放比，修正底部位置偏移
+        const divScrollH = this.cache.div.scrollHeight;
+        const taScrollH = textArea.scrollHeight;
+        this.cache.scrollHeightRatio = (divScrollH > 0 && taScrollH > 0) ? taScrollH / divScrollH : 1;
         
         // 🎯 計算文字的自然偏移量（只需計算一次）
         if (this.cache.textNaturalOffset === null && text.length > 0) {
@@ -615,7 +621,7 @@ const TextHighlight = {
           } else {
             // 不在同一行，保存當前矩形並開始新的矩形
             const rawTop = currentRect.top - this.cache.div.getBoundingClientRect().top;
-            const calculatedTop = rawTop - (this.cache.textNaturalOffset || 0);
+            const calculatedTop = (rawTop - (this.cache.textNaturalOffset || 0)) * (this.cache.scrollHeightRatio || 1);
             const calculatedLeft = currentRect.left - this.cache.div.getBoundingClientRect().left;
             
             positions.push({
@@ -642,10 +648,11 @@ const TextHighlight = {
         
         // 添加最後一個矩形
         if (currentRect) {
-          const rawTop = currentRect.top - this.cache.div.getBoundingClientRect().top;
-          const calculatedTop = rawTop - (this.cache.textNaturalOffset || 0);
-          const calculatedLeft = currentRect.left - this.cache.div.getBoundingClientRect().left;
-          
+          const _divRect = this.cache.div.getBoundingClientRect();
+          const rawTop = currentRect.top - _divRect.top;
+          const calculatedTop = (rawTop - (this.cache.textNaturalOffset || 0)) * (this.cache.scrollHeightRatio || 1);
+          const calculatedLeft = currentRect.left - _divRect.left;
+
           positions.push({
             top: calculatedTop,
             left: calculatedLeft,
@@ -679,6 +686,7 @@ const TextHighlight = {
       this.cache.lastText = '';
       this.cache.positions.clear();
       this.cache.textNaturalOffset = null; // 重置文字自然偏移
+      this.cache.scrollHeightRatio = 1;    // 重置縮放比
       
       // 同時清理全局快取
       TextHighlight.GlobalPositionCache.clear();

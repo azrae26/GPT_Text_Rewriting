@@ -607,6 +607,21 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
+// 監聽高亮設置變更，直接從 storage 更新，不依賴 sendMessage
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area !== 'local') return;
+  if (!changes.highlightWords && !changes.highlightColors) return;
+
+  const words = changes.highlightWords
+    ? changes.highlightWords.newValue.split('\n').filter(w => w.trim())
+    : TextHighlight.targetWords;
+  const colors = changes.highlightColors
+    ? changes.highlightColors.newValue
+    : TextHighlight.wordColors;
+
+  TextHighlight.setTargetWords(words, colors || {});
+});
+
 // 確保在頁面加載完後初始化擴展
 if (document.readyState === 'loading') {
   LogUtils.log('頁面仍在載入中，等待 DOMContentLoaded 事件');
