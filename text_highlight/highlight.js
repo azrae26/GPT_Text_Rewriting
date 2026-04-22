@@ -499,15 +499,19 @@ const TextHighlight = {
       }
       
       if (needsUpdate) {
+        // Chrome 在 div(white-space:pre-wrap) 結尾有 \n 時不計入 scrollHeight，
+        // 但 textarea 會增加；補 zero-width space 讓兩者一致
+        const divContent = text.endsWith('\n') ? text + '\u200b' : text;
+
         // 強制清空並重新設置，確保同步
         this.cache.div.textContent = '';
         // 強制 DOM 同步
         this.cache.div.offsetHeight; // 觸發重排
-        this.cache.div.textContent = text;
+        this.cache.div.textContent = divContent;
         
-        // 立即驗證更新結果
+        // 立即驗證更新結果（與 divContent 比對，而非 text）
         const verifyText = this.cache.div.textContent || '';
-        if (verifyText.length !== text.length) {
+        if (verifyText.length !== divContent.length) {
           // 重新創建 div 作為最後手段
           this.cache.div.remove();
           this.cache.div = document.createElement('div');
@@ -540,7 +544,7 @@ const TextHighlight = {
             height: ${textArea.offsetHeight}px;
           `;
           textArea.parentElement.appendChild(this.cache.div);
-          this.cache.div.textContent = text;
+          this.cache.div.textContent = divContent;
         }
         
         this.cache.lastText = text;
