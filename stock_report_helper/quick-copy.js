@@ -21,7 +21,7 @@
 // 配置常量
 const CONFIG = {
     URLS: {
-        RESEARCH_LIST: 'https://data.uanalyze.twobitto.com/research-reports'
+        RESEARCH_LIST: 'https://data.uanalyze.com.tw/research-reports'
     },
     SELECTORS: {
         TOOLBAR: '.MuiDataGrid-toolbarContainer',

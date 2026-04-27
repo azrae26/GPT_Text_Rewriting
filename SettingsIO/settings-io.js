@@ -1123,7 +1123,7 @@ class SettingsIO {
       
       // 嘗試發送到所有 tabs
       try {
-        const tabs = await chrome.tabs.query({url: 'https://data.uanalyze.twobitto.com/*'});
+        const tabs = await chrome.tabs.query({url: 'https://data.uanalyze.com.tw/*'});
         
         for (const tab of tabs) {
           try {

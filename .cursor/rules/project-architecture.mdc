@@ -5,7 +5,7 @@ alwaysApply: true
 
 # AI 文章改寫助手 - 專案架構總覽
 
-Chrome Extension (Manifest V3)，主要針對 `data.uanalyze.twobitto.com` 提供 AI 改寫、翻譯、文字替換、股票匹配等功能。
+Chrome Extension (Manifest V3)，主要針對 `data.uanalyze.com.tw` 提供 AI 改寫、翻譯、文字替換、股票匹配等功能。
 
 ## 執行環境說明
 

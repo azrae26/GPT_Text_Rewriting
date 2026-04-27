@@ -65,7 +65,7 @@ const StatusMonitor = {
    */
   isTargetWebsite() {
     const currentUrl = window.location.href;
-    return currentUrl.startsWith('https://data.uanalyze.twobitto.com/');
+    return currentUrl.startsWith('https://data.uanalyze.com.tw/');
   },
 
   /**

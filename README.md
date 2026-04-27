@@ -350,7 +350,7 @@ AI 文章改寫助手是一個 Chrome 擴展，專為提升文章寫作效率而
 
 ## 使用限制
 
-- 僅支持特定網域：`https://data.uanalyze.twobitto.com/research-reports/*` 和 `https://data.uanalyze.twobitto.com/ai/assistants*`
+- 僅支持特定網域：`https://data.uanalyze.com.tw/research-reports/*` 和 `https://data.uanalyze.com.tw/ai/assistants*`
 - 單次處理文本長度限制：視選擇的 AI 模型而定
 - API 調用頻率受限於相應服務商規定
 - 同時進行的改寫任務數量不限

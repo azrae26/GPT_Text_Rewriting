@@ -12,7 +12,7 @@
     "downloads"
   ],
   "host_permissions": [
-    "https://data.uanalyze.twobitto.com/*",
+    "https://data.uanalyze.com.tw/*",
     "https://pro.uanalyze.com.tw/*",
     "https://mopsov.twse.com.tw/*",
     "https://www.googleapis.com/*",
@@ -25,12 +25,12 @@
   "content_scripts": [
     {
       "matches": [
-        "https://data.uanalyze.twobitto.com/*"
+        "https://data.uanalyze.com.tw/*"
       ],
       "exclude_matches": [
-        "https://data.uanalyze.twobitto.com/ai/assistants/create",
-        "https://data.uanalyze.twobitto.com/ai/assistants/*/edit",
-        "https://data.uanalyze.twobitto.com/gpt/summaries*"
+        "https://data.uanalyze.com.tw/ai/assistants/create",
+        "https://data.uanalyze.com.tw/ai/assistants/*/edit",
+        "https://data.uanalyze.com.tw/gpt/summaries*"
       ],
       "js": [
         "default.js",
@@ -133,7 +133,7 @@
     },
     {
       "resources": ["google_translator/gen-lang-client-0507957210-3b8a690087e2.json"],
-      "matches": ["https://data.uanalyze.twobitto.com/*"]
+      "matches": ["https://data.uanalyze.com.tw/*"]
     },
     {
       "resources": [
