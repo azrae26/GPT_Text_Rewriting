@@ -246,6 +246,7 @@ class SettingsIO {
       SettingsIO.CONSTANTS.KEYS.SYNC_ERROR,
       'syncDebugLogs',
       'stockCrawlerState',
+      'stockCrawlLog',  // 排除爬取記錄，30分鐘爬一次會持續觸發
       'lastModified',  // 避免時間戳更新造成的連鎖反應
       'cloudUpdateSignal'  // 排除雲端更新訊號，避免觸發新的上傳
     ];
