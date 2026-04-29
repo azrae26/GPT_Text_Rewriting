@@ -49,8 +49,8 @@ const TextProcessor = {
    */
   _getDateFromPage() {
     try {
-      // 找到日期輸入框
-      const dateInput = document.querySelector('input[placeholder="YYYY/MM/DD"]');
+      // 找到日期輸入框（MUI DatePicker，placeholder 為空，以 class 辨識）
+      const dateInput = document.querySelector('input.MuiPickersInputBase-input');
       if (!dateInput || !dateInput.value) {
         return '';
       }

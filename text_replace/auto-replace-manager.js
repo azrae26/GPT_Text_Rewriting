@@ -440,7 +440,7 @@ const AutoReplaceManager = {
       await new Promise(resolve => setTimeout(resolve, this.CONFIG.YEAR_FETCH_DELAY));
       
       // 嘗試從指定的CSS選擇器獲取年份
-      const dateInput = document.querySelector('.MuiInputBase-root.MuiOutlinedInput-root.MuiInputBase-colorPrimary.MuiInputBase-formControl.MuiInputBase-adornedEnd.css-1oy18r0 input');
+      const dateInput = document.querySelector('input.MuiPickersInputBase-input');
       
       if (dateInput && dateInput.value) {
         const dateValue = dateInput.value;
