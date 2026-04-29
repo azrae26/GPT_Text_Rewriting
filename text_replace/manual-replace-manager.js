@@ -49,7 +49,7 @@ const ManualReplaceManager = {
   _updateRule(rule, index, isMainGroup = false) {
     if (isMainGroup) {
       this._rules.mainGroup = rule;
-      // 主組由調用者控制預覽更新時機，避免重複觸發
+      this._updatePreviews();
     } else {
       this._rules.extraGroups[index] = rule;
       this._updatePreviews();
@@ -380,7 +380,7 @@ const ManualReplaceManager = {
           fromInput.value = selectedText;
           toInput.value = '';
           
-          // 更新主組規則
+          // 更新主組規則（內部已觸發 _updatePreviews）
           this._updateRule({ from: selectedText, to: '' }, 0, true);
           
           // 有選取文字時展開輸入框
@@ -388,9 +388,6 @@ const ManualReplaceManager = {
           
           // 更新替換按鈕狀態
           updateButton();
-          
-          // 🚀 立即更新預覽，提供即時反饋
-          this._updatePreviews();
           
         } else if (!selectedText && fromInput.value) {
           LogUtils.log(`🧹 清空主組內容`);
