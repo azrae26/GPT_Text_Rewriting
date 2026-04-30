@@ -6,6 +6,8 @@
   "permissions": [
     "storage",
     "activeTab",
+    "alarms",
+    "tabs",
     "https://azrae26.github.io/*"
   ],
   "host_permissions": [
