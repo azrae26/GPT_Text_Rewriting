@@ -3,7 +3,7 @@ let pendingRewriteRequest = null;
 
 const REMOTE_BASE_URL = 'https://azrae26.github.io';
 const UPDATE_ALARM_NAME = 'checkForUpdates';
-const UPDATE_INTERVAL_MINUTES = 1;
+const UPDATE_INTERVAL_MINUTES = 0.25; // 15 秒
 
 async function checkForUpdates() {
   try {
