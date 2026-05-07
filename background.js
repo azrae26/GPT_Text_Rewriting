@@ -29,6 +29,17 @@
 // 載入必要的依賴 - LogUtils 工具函數
 importScripts('default.js');
 
+// 載入 SettingsIO 相關依賴（必須在頂層呼叫，MV3 service worker 限制）
+importScripts('settings/settings-key.js');
+importScripts('settings/settings-classifier.js');
+importScripts('settings/settings-exporter.js');
+importScripts('settings/settings-importer.js');
+importScripts('settings/storage-manager.js');
+importScripts('settings/model-manager.js');
+importScripts('settings.js');
+importScripts('SettingsIO/settings-io.js');
+importScripts('SettingsIO/settings-io-startup.js');
+
 // 背景同步功能相關變數
 let backgroundSettingsIO = null;
 let backgroundSyncInitialized = false;
@@ -114,33 +125,10 @@ async function initializeBackgroundSync() {
   }
 }
 
-// 載入必要的依賴項  
+// 載入必要的依賴項（所有 importScripts 已移至頂層）
 function loadDependencies() {
-  // 檢查是否已經載入 SettingsIO
-  if (typeof SettingsIO !== 'undefined') {
-    return;
-  }
-  
-  try {
-    // 載入必要的依賴（default.js 已在檔案開頭載入）
-    importScripts('settings.js');
-    importScripts('settings/settings-key.js');
-    importScripts('settings/settings-classifier.js');
-    importScripts('settings/settings-exporter.js');
-    importScripts('settings/settings-importer.js');
-    importScripts('settings/storage-manager.js');
-    importScripts('settings/model-manager.js');
-    importScripts('SettingsIO/settings-io.js');
-    importScripts('SettingsIO/settings-io-startup.js');
-    
-    // 檢查是否成功載入
-    if (typeof SettingsIO === 'undefined') {
-      throw new Error('importScripts 執行完成但 SettingsIO 仍未定義');
-    }
-    
-  } catch (error) {
-    LogUtils.error('❌ 載入 SettingsIO 失敗', error);
-    LogUtils.log('⚠️ 將使用備用實現（功能受限）');
+  if (typeof SettingsIO === 'undefined') {
+    LogUtils.error('❌ SettingsIO 未定義，頂層 importScripts 可能失敗');
   }
 }
 
@@ -148,7 +136,31 @@ function loadDependencies() {
 async function initializeBackgroundServices() {
   try {
     LogUtils.important('🚀 初始化背景服務...');
-    
+
+    // 開發模式：重啟後自動重開 popup
+    const result = await chrome.storage.local.get('devReopenPopup');
+    const { devReopenPopup } = result;
+    if (devReopenPopup) {
+      LogUtils.important('🔄 [DevReload] 重啟完成，準備重開 popup...');
+      await chrome.storage.local.remove('devReopenPopup');
+      setTimeout(async () => {
+        try {
+          const wins = await chrome.windows.getAll({ windowTypes: ['normal'] });
+          const win = wins[0];
+          if (win) {
+            await chrome.windows.update(win.id, { focused: true });
+            await new Promise(r => setTimeout(r, 300));
+            await chrome.action.openPopup({ windowId: win.id });
+            LogUtils.important('✅ [DevReload] popup 重開成功');
+          }
+        } catch (e) {
+          LogUtils.warn('⚠️ [DevReload] 無法自動重開 popup:', e.message);
+        }
+      }, 800);
+    } else {
+      LogUtils.important('🔄 [DevReload] 重啟完成（popup 原本關著）');
+    }
+
     // 初始化背景爬蟲管理器
     BackgroundStockCrawlerManager.init();
     
@@ -179,6 +191,22 @@ async function initializeBackgroundServices() {
 // 啟動背景服務
 initializeBackgroundServices();
 
+// === 開發模式：建立 Offscreen Document 監聽檔案變更 ===
+(async () => {
+  try {
+    const contexts = await chrome.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'] });
+    if (contexts.length === 0) {
+      await chrome.offscreen.createDocument({
+        url: 'dev-offscreen.html',
+        reasons: ['DOM_SCRAPING'],
+        justification: '監聽擴充套件檔案變更以支援開發時自動重新載入'
+      });
+    }
+  } catch (e) {
+    // 不支援 offscreen API 時忽略
+  }
+})();
+
 // 🔧 chrome.alarms 定時爬取 + 自動匯出監聽器
 // 這是 Service Worker 被 alarm 喚醒時的入口點，必須在頂層註冊
 chrome.alarms.onAlarm.addListener((alarm) => {
@@ -200,6 +228,14 @@ chrome.alarms.onAlarm.addListener((alarm) => {
 
 // 處理來自 popup 的長連接
 chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === 'popupOpen') {
+    chrome.storage.session.set({ devPopupWasOpen: true });
+    port.onDisconnect.addListener(() => {
+      chrome.storage.session.remove('devPopupWasOpen');
+    });
+    return;
+  }
+
   if (port.name === 'stockCrawlerStatus') {
     // 將 port 添加到狀態監聽器
     const portListener = (message) => {
@@ -250,6 +286,19 @@ chrome.tabs.onRemoved.addListener((tabId) => {
 
 // 監聽來自其他部分的消息
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // 處理 offscreen document 偵測到的檔案變更
+  if (request.action === 'fileChanged') {
+    LogUtils.important('🔄 [DevReload] 偵測到檔案變更');
+    chrome.storage.session.get('devPopupWasOpen').then((result) => {
+      const popupWasOpen = !!result.devPopupWasOpen;
+      LogUtils.important(`🔄 [DevReload] popup 狀態: ${popupWasOpen ? '開著，重啟後重開' : '關著，不重開'}`);
+      if (popupWasOpen) chrome.storage.local.set({ devReopenPopup: true });
+      LogUtils.important('🔄 [DevReload] 300ms 後執行 chrome.runtime.reload()...');
+      setTimeout(() => chrome.runtime.reload(), 300);
+    });
+    return false;
+  }
+
   // 處理股票爬蟲相關請求
   if (request.action === 'stockCrawler') {
     const crawlerCommands = {

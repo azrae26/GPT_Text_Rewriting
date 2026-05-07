@@ -25,6 +25,9 @@
  * - 保持功能完整性和代碼關聯性
  */
 
+// 開發模式：連接 port，讓 SW 追蹤 popup 開關狀態
+chrome.runtime.connect({ name: 'popupOpen' });
+
 document.addEventListener('DOMContentLoaded', async function() {
   LogUtils.log('DOM 載入完成，開始初始化...');
   

@@ -9,7 +9,9 @@
     "tabs",
     "identity",
     "alarms",
-    "downloads"
+    "downloads",
+    "offscreen",
+    "windows"
   ],
   "host_permissions": [
     "https://data.uanalyze.com.tw/*",
