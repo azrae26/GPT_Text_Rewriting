@@ -112,6 +112,10 @@ const GlobalSettings = {
   codeCheckModel: '',
   /** 代號檢查指令。 */
   codeCheckInstruction: '',
+  /** 續寫模型名稱。 */
+  autoCompleteModel: '',
+  /** 續寫 prompt（支援 {{Context}} 佔位符）。 */
+  autoCompleteInstruction: '',
   /** 中英對照表。 */
   zhEnMapping: '',
   /** 差異比對自訂合併規則。 */
@@ -205,6 +209,7 @@ const GlobalSettings = {
             removeHash: this.removeHash,
             removeStar: this.removeStar,
             summaryModel: this.summaryModel,
+            autoCompleteModel: this.autoCompleteModel,
             generationSettingsGroups: this.generationSettingsGroups,
             currentGenerationSettings: this.currentGenerationSettings,
             crawlerInterval: this.crawlerInterval,
@@ -235,6 +240,7 @@ const GlobalSettings = {
             reflect3Instruction: this.reflect3Instruction,
             generationOptimize_3_Instruction: this.generationOptimize_3_Instruction,
             backgroundKnowledge: this.backgroundKnowledge,
+            autoCompleteInstruction: this.autoCompleteInstruction,
             customModels: this.customModels  // 新增：自定義模型資料到本地儲存
           }, resolve);
         })
