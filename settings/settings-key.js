@@ -16,11 +16,12 @@ class KeyClassifier {
   static CATEGORIES = {
     // 核心設定：API 金鑰、模型選擇等基本配置
     CORE_SETTINGS: [
-      'apiKeys', 'model', 'fullRewriteModel', 'shortRewriteModel', 
+      'apiKeys', 'model', 'fullRewriteModel', 'shortRewriteModel',
       'autoRewriteModel', 'rephraseModel', 'translateModel', 'reflectModel', 'optimizeModel',
       'generateModel', 'reflect1Model', 'generationOptimize_1_Model',
       'reflect2Model', 'generationOptimize_2_Model', 'reflect3Model',
       'generationOptimize_3_Model', 'summaryModel', 'confirmModel',
+      'autoCompleteModel',     // 續寫模型
       'removeHash', 'removeStar', 'firstRun',
       'crawlerAutoEnabled',    // 爬蟲自動啟用狀態（需要匯出/匯入）
       'crawlerInterval'        // 爬蟲間隔分鐘數（需要匯出/匯入）
@@ -44,7 +45,7 @@ class KeyClassifier {
       'reflect2Instruction', 'generationOptimize_2_Instruction',
       'reflect3Instruction', 'generationOptimize_3_Instruction',
       'backgroundKnowledge', 'stockList', 'stockChangeLog', 'stockCrawlLog',
-      'diffCustomRules'
+      'diffCustomRules', 'autoCompleteInstruction'
     ],
 
     // 內部系統狀態：同步狀態、錯誤信息等系統內部數據

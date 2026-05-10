@@ -135,6 +135,7 @@ window.SettingsLoader = {
           'codeCheckModel',       // 代號檢查模型
           'zhEnMapping',
           'diffCustomRules',
+          'autoCompleteInstruction',  // 續寫 prompt
           'reflectInstruction',
           'optimizeInstruction',
           'generateInstruction',
@@ -239,9 +240,9 @@ window.SettingsLoader = {
     const syncModelKeys = [
       'model', 'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel',
       'rephraseModel', 'translateModel', 'reflectModel', 'optimizeModel', 'generateModel',
-      'reflect1Model', 'generationOptimize_1_Model', 'reflect2Model', 
-      'generationOptimize_2_Model', 'reflect3Model', 'generationOptimize_3_Model', 
-      'summaryModel'
+      'reflect1Model', 'generationOptimize_1_Model', 'reflect2Model',
+      'generationOptimize_2_Model', 'reflect3Model', 'generationOptimize_3_Model',
+      'summaryModel', 'autoCompleteModel'
     ];
     
     syncModelKeys.forEach(key => {
@@ -254,7 +255,8 @@ window.SettingsLoader = {
       'optimizeInstruction', 'generateInstruction', 'reflect1Instruction',
       'generationOptimize_1_Instruction', 'reflect2Instruction', 'generationOptimize_2_Instruction',
       'reflect3Instruction', 'generationOptimize_3_Instruction', 'backgroundKnowledge',
-      'summaryInstruction', 'codeCheckInstruction', 'zhEnMapping', 'diffCustomRules', 'stockList', 'stockChangeLog', 'stockCrawlLog'
+      'summaryInstruction', 'codeCheckInstruction', 'zhEnMapping', 'diffCustomRules', 'stockList', 'stockChangeLog', 'stockCrawlLog',
+      'autoCompleteInstruction'
     ];
     
     localInstructionKeys.forEach(key => {
@@ -398,9 +400,9 @@ window.SettingsLoader = {
     const modelSettingKeys = [
       'model', 'fullRewriteModel', 'shortRewriteModel', 'autoRewriteModel',
       'rephraseModel', 'translateModel', 'reflectModel', 'optimizeModel', 'generateModel',
-      'reflect1Model', 'generationOptimize_1_Model', 'reflect2Model', 
-      'generationOptimize_2_Model', 'reflect3Model', 'generationOptimize_3_Model', 
-      'summaryModel', 'codeCheckModel'
+      'reflect1Model', 'generationOptimize_1_Model', 'reflect2Model',
+      'generationOptimize_2_Model', 'reflect3Model', 'generationOptimize_3_Model',
+      'summaryModel', 'codeCheckModel', 'autoCompleteModel'
     ];
 
     let settingsUpdated = false;

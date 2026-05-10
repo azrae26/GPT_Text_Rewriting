@@ -25,16 +25,17 @@ window.AutoComplete = {
   isInitialized: false,
   autoCompleteTimer: null,
   isAIGenerating: false,  // 新增：標記是否正在 AI 生成內容
-  
+  cachedSettings: null,   // 快取設定，避免每次觸發都重新載入
+
   // 初始化
-  initialize() {
+  async initialize() {
     if (this.isInitialized) {
       LogUtils.log('已經初始化過，跳過');
       return;
     }
 
     LogUtils.log('開始初始化...');
-    
+
     // 檢查是否在正確的頁面上
     const textArea = document.querySelector('textarea[name="content"]');
     if (!textArea) {
@@ -43,12 +44,32 @@ window.AutoComplete = {
     }
 
     try {
+      // 初始化時載入一次設定並快取
+      await this._loadAndCacheSettings();
+
+      // 監聽 storage 變更，保持快取同步
+      chrome.storage.onChanged.addListener((changes, area) => {
+        if (area === 'sync' || area === 'local') {
+          this._loadAndCacheSettings();
+        }
+      });
+
       this.setupEventListeners();
       this.setupAutoComplete(textArea);
       this.isInitialized = true;
       LogUtils.log('初始化完成');
     } catch (error) {
       LogUtils.error('初始化失敗:', error);
+    }
+  },
+
+  // 載入並快取設定
+  async _loadAndCacheSettings() {
+    try {
+      this.cachedSettings = await window.GlobalSettings.loadSettings();
+      LogUtils.log('設定快取已更新');
+    } catch (error) {
+      LogUtils.warn('快取設定更新失敗，保留舊快取:', error.message);
     }
   },
 
@@ -205,12 +226,16 @@ window.AutoComplete = {
       // 顯示處理中通知
       await window.Notification.showNotification('正在生成自動完成內容...', true);
 
-      // 載入設置
-      const settings = await window.GlobalSettings.loadSettings();
-      
-      const model = settings.autoRewriteModel;
+      // 使用快取設定，避免 extension context 失效時崩潰
+      const settings = this.cachedSettings;
+      if (!settings) {
+        LogUtils.warn('設定尚未載入，請稍後再試');
+        return;
+      }
+
+      const model = settings.autoCompleteModel || settings.autoRewriteModel;
       if (!model) {
-        LogUtils.warn('未設置自動改寫模型');
+        LogUtils.warn('未設置續寫模型');
         return;
       }
       
@@ -318,7 +343,7 @@ Nvidia 認證仍在進行中：自法人一個月前的台灣 AI 論壇以來，
       ];
 
       // 準備 API 請求
-      const instruction = 
+      const defaultInstruction =
 `上下文為背景知識。
 我正在寫一篇分析文，但我缺乏靈感，請根據前文內容及敍事邏輯，以相同的語氣和風格，自然地接續最後一個字撰寫下去。
 續寫長度請在100字左右。
@@ -326,6 +351,7 @@ Nvidia 認證仍在進行中：自法人一個月前的台灣 AI 論壇以來，
 續寫的內容不需有結語，只需自然地接著寫下去。
 續寫時不要加入任何解釋或說明。
 續寫時不必包含前文內容，只需接著最後一個字寫。`;
+      const instruction = settings.autoCompleteInstruction || defaultInstruction;
       LogUtils.log('準備發送 API 請求');
       const { endpoint, body } = window.TextProcessor._prepareApiConfig(
         model,

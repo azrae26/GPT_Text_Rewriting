@@ -746,7 +746,7 @@ const ModelManager = {
       'rephraseModel', 'translateModel', 'generateModel', 'reflect1Model',
       'generationOptimize_1_Model', 'reflect2Model', 'generationOptimize_2_Model',
       'reflect3Model', 'generationOptimize_3_Model', 'summaryModel',
-      'codeCheckModel', 'reflectModel', 'optimizeModel'
+      'codeCheckModel', 'reflectModel', 'optimizeModel', 'autoCompleteModel'
     ];
 
     // 更新主要的模型選擇器（API 提供者）

@@ -101,6 +101,8 @@ document.addEventListener('DOMContentLoaded', async function() {
   const summaryInstructionInput = document.getElementById('summaryInstruction');
   const codeCheckModelSelect = document.getElementById('codeCheckModel');
   const codeCheckInstructionInput = document.getElementById('codeCheckInstruction');
+  const autoCompleteModelSelect = document.getElementById('autoCompleteModel');
+  const autoCompleteInstructionInput = document.getElementById('autoCompleteInstruction');
 
   const highlightWordsInput = document.getElementById('highlight-words');
   const stockListInput = document.getElementById('stock-list-input');
@@ -181,6 +183,8 @@ document.addEventListener('DOMContentLoaded', async function() {
   summaryInstructionInput.value = settings.summaryInstruction || '';
   codeCheckModelSelect.value = settings.codeCheckModel || '';
   codeCheckInstructionInput.value = settings.codeCheckInstruction || '';
+  autoCompleteModelSelect.value = settings.autoCompleteModel || '';
+  autoCompleteInstructionInput.value = settings.autoCompleteInstruction || '';
   zhEnMappingInput.value = settings.zhEnMapping || '';
   diffCustomRulesInput.value = settings.diffCustomRules || '';
   stockListInput.value = settings.stockList || '';
@@ -330,6 +334,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       'translateInstruction': { type: 'input', element: translateInstructionInput },
       'summaryInstruction': { type: 'input', element: summaryInstructionInput },
       'codeCheckInstruction': { type: 'input', element: codeCheckInstructionInput },
+      'autoCompleteInstruction': { type: 'input', element: autoCompleteInstructionInput },
       'zhEnMapping': { type: 'input', element: zhEnMappingInput },
       'diffCustomRules': { type: 'input', element: diffCustomRulesInput },
       'crawlerInterval': { 
@@ -356,6 +361,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       'translateModel': { type: 'model', element: translateModelSelect },
       'summaryModel': { type: 'model', element: summaryModelSelect },
       'codeCheckModel': { type: 'model', element: codeCheckModelSelect },
+      'autoCompleteModel': { type: 'model', element: autoCompleteModelSelect },
       'reflectModel': { type: 'model', element: reflectModelSelect },
       'optimizeModel': { type: 'model', element: optimizeModelSelect }
     },
@@ -914,6 +920,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         { setting: 'generationOptimize_3_Model', element: generationOptimize_3_ModelSelect },
         { setting: 'summaryModel', element: summaryModelSelect },
         { setting: 'codeCheckModel', element: codeCheckModelSelect },
+        { setting: 'autoCompleteModel', element: autoCompleteModelSelect },
         { setting: 'reflectModel', element: reflectModelSelect },
         { setting: 'optimizeModel', element: optimizeModelSelect }
       ];

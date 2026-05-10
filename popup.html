@@ -30,6 +30,7 @@
         <div class="tab" data-tab="rephrase">重述</div>
         <div class="tab" data-tab="short">10字內改寫</div>
         <div class="tab" data-tab="auto">雙擊改寫</div>
+        <div class="tab" data-tab="auto-complete">續寫</div>
         <div class="tab" data-tab="summary">關鍵要點</div>
         <div class="tab" data-tab="code-check">代號檢查</div>
         <div class="tab" data-tab="diff-rules">比對</div>
@@ -86,6 +87,12 @@
         </div>
       </div>
       
+      <div id="auto-complete-tab" class="tab-content">
+        <select id="autoCompleteModel" class="model-select">
+        </select>
+        <textarea id="autoCompleteInstruction" placeholder="輸入續寫 prompt"></textarea>
+      </div>
+
       <button id="rewrite">改寫文字</button>
     </div>
   </div>
