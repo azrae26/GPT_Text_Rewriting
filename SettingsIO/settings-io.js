@@ -233,8 +233,7 @@ class SettingsIO {
 
   setupStorageListener() {
     chrome.storage.local.onChanged.addListener(this.handleStorageChange);
-    chrome.storage.sync.onChanged.addListener(this.handleStorageChange);
-    
+
     chrome.storage.sync.onChanged.addListener(this.handleCloudUpdateSignal.bind(this));
   }
 

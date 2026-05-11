@@ -14,17 +14,19 @@
 class KeyClassifier {
   // 基於鍵值性質的分類系統
   static CATEGORIES = {
-    // 核心設定：API 金鑰、模型選擇等基本配置
+    // 核心設定：API 金鑰、模型選擇等基本配置（存 Chrome sync storage，Chrome 自動同步）
     CORE_SETTINGS: [
       'apiKeys', 'model', 'fullRewriteModel', 'shortRewriteModel',
       'autoRewriteModel', 'rephraseModel', 'translateModel', 'reflectModel', 'optimizeModel',
       'generateModel', 'reflect1Model', 'generationOptimize_1_Model',
       'reflect2Model', 'generationOptimize_2_Model', 'reflect3Model',
       'generationOptimize_3_Model', 'summaryModel', 'confirmModel',
-      'autoCompleteModel',     // 續寫模型
+      'autoCompleteModel',          // 續寫模型
       'removeHash', 'removeStar', 'firstRun',
-      'crawlerAutoEnabled',    // 爬蟲自動啟用狀態（需要匯出/匯入）
-      'crawlerInterval'        // 爬蟲間隔分鐘數（需要匯出/匯入）
+      'crawlerAutoEnabled',         // 爬蟲自動啟用狀態
+      'crawlerInterval',            // 爬蟲間隔分鐘數
+      'generationSettingsGroups',   // 生成設定組合（僅含模型名稱，小型資料）
+      'currentGenerationSettings'   // 當前使用的生成設定組合名稱
     ],
 
     // 界面狀態：分頁、位置、展開狀態等 UI 相關
@@ -61,10 +63,9 @@ class KeyClassifier {
       'settingsIODeviceId'     // 設備唯一ID（用於訊號驅動同步的自我識別）
     ],
 
-    // 用戶數據：替換規則、自定義模型、高亮設定等
+    // 用戶數據：替換規則、自定義模型、高亮設定等（存 local storage，透過 Drive 同步）
     USER_DATA: [
       'autoReplaceRules', 'manualReplaceRules', 'customModels',
-      'generationSettingsGroups', 'currentGenerationSettings',
       'highlightWords', 'highlightColors', 'highlightStyle', 'autoSyncEnabled',
       'replaceContent', 'confirmContent'
     ],

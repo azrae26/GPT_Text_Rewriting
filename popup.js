@@ -959,4 +959,35 @@ document.addEventListener('DOMContentLoaded', async function() {
     }, 500); // 延遲500ms執行，確保所有初始化完成
   }, 0);
 
+  // 監聽 sync storage 變更，即時更新模型 dropdown（Chrome 自動同步後觸發）
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    if (areaName !== 'sync') return;
+
+    const modelMap = {
+      'autoRewriteModel': autoRewriteModelSelect,
+      'fullRewriteModel': fullRewriteModelSelect,
+      'shortRewriteModel': shortRewriteModelSelect,
+      'rephraseModel': rephraseModelSelect,
+      'translateModel': translateModelSelect,
+      'generateModel': generateModelSelect,
+      'reflect1Model': reflect1ModelSelect,
+      'generationOptimize_1_Model': generationOptimize_1_ModelSelect,
+      'reflect2Model': reflect2ModelSelect,
+      'generationOptimize_2_Model': generationOptimize_2_ModelSelect,
+      'reflect3Model': reflect3ModelSelect,
+      'generationOptimize_3_Model': generationOptimize_3_ModelSelect,
+      'summaryModel': summaryModelSelect,
+      'codeCheckModel': codeCheckModelSelect,
+      'autoCompleteModel': autoCompleteModelSelect,
+      'reflectModel': reflectModelSelect,
+      'optimizeModel': optimizeModelSelect,
+    };
+
+    for (const [key, element] of Object.entries(modelMap)) {
+      if (changes[key] !== undefined && element) {
+        element.value = changes[key].newValue || '';
+      }
+    }
+  });
+
 }); 

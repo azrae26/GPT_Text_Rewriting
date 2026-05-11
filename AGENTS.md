@@ -1,4 +1,4 @@
-> **同步提醒**：本檔案與 `AGENTS.md` 內容相同，更新時必須同步更新另一份。
+> **同步提醒**：本檔案與 `CLAUDE.md` 內容相同，更新時必須同步更新另一份。
 > **Skill 同步**：`.claude/skills/`、`.cursor/skills/`、`.codex/skills/` 三份 skill 內容相同，修改時必須三個都改。
 
 # AI 文章改寫助手 - 專案架構
