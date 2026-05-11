@@ -1261,6 +1261,15 @@ class SettingsIO {
       action: 'storageChange'
     });
     
+    // CORE_SETTINGS 存在 sync storage，不走 handleStorageChange，需在此補排程自動匯出
+    const coreSettingChanges = Object.keys(changes).filter(key =>
+      key !== 'cloudUpdateSignal' && this.isSettingsKey(key)
+    );
+    if (coreSettingChanges.length > 0) {
+      LogUtils.log(`📁 偵測到 sync 設定變更，排程自動匯出: ${coreSettingChanges.join(', ')}`);
+      this.scheduleAutoExport();
+    }
+
     // 只處理包含 cloudUpdateSignal 的變更
     if (!changes.cloudUpdateSignal) {
       LogUtils.log('跳過非相關變更 (no cloudUpdateSignal)');
