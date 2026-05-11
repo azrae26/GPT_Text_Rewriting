@@ -170,8 +170,8 @@ const TextProcessor = {
             body.generationConfig = { thinkingConfig: { thinkingLevel: thinkingLevel } };
           }
         }
-      } else if (['minimal', 'low', 'medium', 'high'].includes(thinkingLevel)) {
-        // OpenAI 推理模型使用 reasoning_effort（GPT-5 系列支援 minimal）
+      } else if (['minimal', 'low', 'medium', 'high', 'xhigh'].includes(thinkingLevel)) {
+        // OpenAI 推理模型使用 reasoning_effort（GPT-5 系列支援 minimal；gpt-5.4 支援 xhigh）
         body.reasoning_effort = thinkingLevel;
       }
     }

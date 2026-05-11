@@ -27,7 +27,8 @@ const ModelManager = {
     { value: 'minimal', label: '最小' },
     { value: 'low', label: '低' },
     { value: 'medium', label: '中' },
-    { value: 'high', label: '高' }
+    { value: 'high', label: '高' },
+    { value: 'xhigh', label: '超高' }
   ],
 
   /**
@@ -43,7 +44,8 @@ const ModelManager = {
     if (type === 'openai') {
       // OpenAI 無「關閉」語義，off 等同預設，只顯示預設與各級
       const base = this.THINKING_LEVEL_OPTIONS.filter(o => o.value !== 'off');
-      if (ml.includes('5.1')) return base.filter(o => o.value !== 'minimal');
+      if (ml.includes('5.1')) return base.filter(o => o.value !== 'minimal' && o.value !== 'xhigh');
+      if (ml.includes('5.4')) return base.filter(o => o.value !== 'minimal');
       return base;
     }
 
