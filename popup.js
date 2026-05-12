@@ -78,6 +78,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   const rewriteButton = document.getElementById('rewrite');
   const translateModelSelect = document.getElementById('translateModel');
   const translateInstructionInput = document.getElementById('translateInstruction');
+  const singleStepModeCheckbox = document.getElementById('singleStepMode');
   const removeHashCheckbox = document.getElementById('removeHash');
   const removeStarCheckbox = document.getElementById('removeStar');
   const zhEnMappingInput = document.getElementById('zhEnMapping');
@@ -158,6 +159,7 @@ document.addEventListener('DOMContentLoaded', async function() {
   rephraseModelSelect.value = settings.rephraseModel || '';
   translateModelSelect.value = settings.translateModel || '';
   translateInstructionInput.value = settings.translateInstruction || '';
+  singleStepModeCheckbox.checked = settings.singleStepMode !== undefined ? settings.singleStepMode : false;
   removeHashCheckbox.checked = settings.removeHash !== undefined ? settings.removeHash : true;
   removeStarCheckbox.checked = settings.removeStar !== undefined ? settings.removeStar : true;
   generateModelSelect.value = settings.generateModel || '';
@@ -366,15 +368,15 @@ document.addEventListener('DOMContentLoaded', async function() {
       'optimizeModel': { type: 'model', element: optimizeModelSelect }
     },
     settings: {
-      'removeHash': { 
-        type: 'checkbox', 
+      'removeHash': {
+        type: 'checkbox',
         element: removeHashCheckbox,
-        logMessage: '移除##設置已更新:' 
+        logMessage: '移除##設置已更新:'
       },
-      'removeStar': { 
-        type: 'checkbox', 
+      'removeStar': {
+        type: 'checkbox',
         element: removeStarCheckbox,
-        logMessage: '移除**設置已更新:' 
+        logMessage: '移除**設置已更新:'
       }
     }
   };
@@ -486,6 +488,13 @@ document.addEventListener('DOMContentLoaded', async function() {
   }
 
   setupEventHandlers();
+
+  // 單步模式：獨立處理，不存入生成設定組合
+  singleStepModeCheckbox.addEventListener('change', async function() {
+    await GlobalSettings.saveSingleSetting('singleStepMode', this.checked);
+    LogUtils.log('單步模式已更新:', this.checked);
+    triggerContentScriptUpdate();
+  });
 
   // 功能按鈕事件處理
   rewriteButton.addEventListener('click', function() {

@@ -165,7 +165,7 @@ const Notification = {
           LogUtils.log('更新進度條 - 當前批次:', currentBatch, '總批次:', totalBatches);
           // 設定 data-segments 屬性
           const totalBatchesNum = parseInt(totalBatches);
-          const stepsPerBatch = isTranslation ? 3 : 7; // 翻譯有3個步驟，生成有7個步驟
+          const stepsPerBatch = isTranslation ? (window.TranslateManager?.isSingleStepMode ? 1 : 3) : 7; // 翻譯有3個步驟，生成有7個步驟
           const totalSegments = totalBatchesNum * stepsPerBatch;
           if (totalSegments > 60) {
             progressBar.setAttribute('data-segments', 'most');
@@ -212,7 +212,7 @@ const Notification = {
         const progressBar = this.notificationElement.querySelector('.progress-bar');
         if (progressBar) {
           const totalBatchesNum = parseInt(totalBatches);
-          const stepsPerBatch = isTranslation ? 3 : 7;
+          const stepsPerBatch = isTranslation ? (window.TranslateManager?.isSingleStepMode ? 1 : 3) : 7;
           const totalSegments = totalBatchesNum * stepsPerBatch;
           progressBar.innerHTML = Array.from({ length: totalSegments }, (_, i) => {
             const isCompleted = i < (isTranslation ? window.TranslateManager.completedStepsCount : window.GenerationManager.completedStepsCount);
@@ -250,7 +250,7 @@ const Notification = {
       ${currentBatch && totalBatches && !isCancelTranslation && !isCancelGeneration ? `
         <div class="progress-bar" ${
           (() => {
-            const stepsPerBatch = isTranslation ? 3 : 7;
+            const stepsPerBatch = isTranslation ? (window.TranslateManager?.isSingleStepMode ? 1 : 3) : 7;
             const totalSegments = parseInt(totalBatches) * stepsPerBatch;
             if (totalSegments > 60) return 'data-segments="most"';
             if (totalSegments > 40) return 'data-segments="more"';
@@ -258,7 +258,7 @@ const Notification = {
             return '';
           })()
         }>
-          ${Array.from({ length: parseInt(totalBatches) * (isTranslation ? 3 : 7) }, (_, i) => {
+          ${Array.from({ length: parseInt(totalBatches) * (isTranslation ? (window.TranslateManager?.isSingleStepMode ? 1 : 3) : 7) }, (_, i) => {
             const isCompleted = i < (isTranslation ? window.TranslateManager.completedStepsCount : window.GenerationManager.completedStepsCount);
             return `<div class="progress-segment ${isCompleted ? 'completed' : ''}"></div>`;
           }).join('')}

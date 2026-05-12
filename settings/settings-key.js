@@ -22,7 +22,7 @@ class KeyClassifier {
       'reflect2Model', 'generationOptimize_2_Model', 'reflect3Model',
       'generationOptimize_3_Model', 'summaryModel', 'confirmModel',
       'autoCompleteModel',          // 續寫模型
-      'removeHash', 'removeStar', 'firstRun',
+      'removeHash', 'removeStar', 'singleStepMode', 'firstRun',
       'crawlerAutoEnabled',         // 爬蟲自動啟用狀態
       'crawlerInterval',            // 爬蟲間隔分鐘數
       'generationSettingsGroups',   // 生成設定組合（僅含模型名稱，小型資料）

@@ -5,6 +5,7 @@ yarn-debug.log
 yarn-error.log
 
 # IDE/編輯器
+.claude/worktrees/
 .vscode/
 .idea/
 *.swp

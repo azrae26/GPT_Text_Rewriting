@@ -39,6 +39,7 @@ class TranslateAdapter {
     this.maxFinalRetries = 3;
     this.selectionStart = null;
     this.selectionEnd = null;
+    this.isSingleStepMode = false;
 
     // checkbox 管理
     this.removeHashCheckbox = null;
@@ -169,8 +170,9 @@ class TranslateAdapter {
     button.classList.add('canceling');
 
     const settings = await GlobalSettings.loadSettings();
+    this.isSingleStepMode = settings.singleStepMode || false;
     const model = settings.translateModel;
-    
+
     // 如果沒有選擇模型，使用預設模型
     const finalModel = model || GlobalSettings.getDefaultModel();
     if (!finalModel) {
@@ -349,16 +351,27 @@ class TranslateAdapter {
           this.retryFailedBatches();
         }, 15000);
       } else if (this.isAllBatchesCompleted()) {
-        // 所有批次都成功完成，開始反思和優化
-        LogUtils.important('✅ 所有翻譯批次已完成，開始分區塊反思和優化流程');
-        try {
-          const finalText = await this.processAllBlocks();
-          // 移除立即重置，讓 processAllBlocks 負責延遲重置
+        if (this.isSingleStepMode) {
+          // 單步模式：跳過反思和優化，直接完成
+          LogUtils.important('✅ 單步模式：跳過反思和優化，直接完成');
+          this.controller.setState('completed');
+          setTimeout(() => {
+            if (this.controller.state === 'completed') {
+              this.resetTranslation();
+            }
+          }, 100);
           await Notification.showNotification(TranslateConfig.STAGES.COMPLETED, false);
-        } catch (error) {
-          LogUtils.error('反思優化處理失敗:', error);
-          this.resetTranslation();
-          await Notification.showNotification('反思優化處理失敗: ' + error.message, false);
+        } else {
+          // 多步驟模式：開始反思和優化
+          LogUtils.important('✅ 所有翻譯批次已完成，開始分區塊反思和優化流程');
+          try {
+            await this.processAllBlocks();
+            await Notification.showNotification(TranslateConfig.STAGES.COMPLETED, false);
+          } catch (error) {
+            LogUtils.error('反思優化處理失敗:', error);
+            this.resetTranslation();
+            await Notification.showNotification('反思優化處理失敗: ' + error.message, false);
+          }
         }
       } else {
         // 有些批次最終失敗了，結束流程
@@ -658,6 +671,7 @@ class TranslateAdapter {
     this.batchInterval = 5000;
     this.selectionStart = null;
     this.selectionEnd = null;
+    this.isSingleStepMode = false;
 
     if (this.timeoutId) {
       clearTimeout(this.timeoutId);

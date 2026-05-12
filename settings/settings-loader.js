@@ -290,8 +290,10 @@ window.SettingsLoader = {
       defaultSettings?.confirmContent : syncResult.confirmContent;
     settingsInstance.removeHash = syncResult.removeHash === undefined ? 
       defaultSettings?.removeHash : syncResult.removeHash;
-    settingsInstance.removeStar = syncResult.removeStar === undefined ? 
+    settingsInstance.removeStar = syncResult.removeStar === undefined ?
       defaultSettings?.removeStar : syncResult.removeStar;
+    settingsInstance.singleStepMode = syncResult.singleStepMode === undefined ?
+      false : syncResult.singleStepMode;
 
     LogUtils.log('預設值設定載入完成');
   },
