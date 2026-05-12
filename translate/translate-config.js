@@ -45,8 +45,11 @@ window.TranslateConfig = {
     ],
     DEFAULT_INTERVAL: 12000, // 預設間隔（毫秒），25次以上用12秒
     TEXT_LIMIT: {
-      LINE: 4100,           // 單行最大字數
-      BATCH: 3600           // 批次最大字數
+      LINE: 4600,           // 超長單行觸發門檻
+      BATCH: 3600,          // 主切點門檻
+      HARD: 4600,           // 備選標點啟用門檻
+      FORCE: 5100,          // 強制回退切點門檻
+      LONG_LINE_MAX: 3600   // 超長行內部每塊上限
     },
     MAX_PREVIOUS_BLOCKS: 3  // 最大前文區塊數
   },

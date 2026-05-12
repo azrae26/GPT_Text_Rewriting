@@ -42,73 +42,206 @@ class TranslationService {
    * @returns {Array<string>} 分割後的段落陣列
    */
   splitTextIntoParagraphs(text) {
+    const { BATCH, HARD, FORCE, LINE, LONG_LINE_MAX } = TranslateConfig.BATCH.TEXT_LIMIT;
     const paragraphs = [];
     let currentBatch = '';
-    
-    // 添加到段落
-    const addToParagraphs = (text) => {
-      if (text.trim()) paragraphs.push(text);
+    let lastCutPoint = null; // { paragraphsLength, batchSnapshot } 記錄最近合法切點
+
+    const addToParagraphs = (t) => {
+      if (t.trim()) paragraphs.push(t);
     };
 
-    // 處理長行
+    // 在當前位置切塊
+    const flush = (batch) => {
+      addToParagraphs(batch);
+      lastCutPoint = null;
+    };
+
+    // 判斷是否有合法句號（排除小數點、數字編號）
+    const isSentencePeriod = (line) => {
+      // 排除：數字.數字（小數）、行首數字. （編號列表）
+      return /(?<!\d)[.。](?!\d)/.test(line) && !/^\s*\d+\.\s/.test(line);
+    };
+
+    // 判斷是否有備選標點（排除千分位逗號）
+    const isOtherPunctuation = (line) => {
+      const hasCommaSpace = /(?<!\d),(?!\d)\s/.test(line) || /[，]\s/.test(line);
+      const hasDashSpace = /-\s/.test(line);
+      const hasClosingBracket = /[）\]】」』〉》]/.test(line);
+      return hasCommaSpace || hasDashSpace || hasClosingBracket;
+    };
+
+    // 語義切點：在此行之前切（完全無標點時的最後備選）
+    const SEMANTIC_STARTS = /^(但|然而|因此|所以|此外|另外|首先|其次|最後|然後|接著|總之|雖然|如果|However|But|Therefore|Thus|Furthermore|Moreover|Additionally|Meanwhile|Finally|Although|Though)\b/;
+    const isSemanticBoundary = (line) => SEMANTIC_STARTS.test(line.trim());
+
+    // 超長單行處理：按句號切，每塊上限 LONG_LINE_MAX
     const processLongLine = (line) => {
-      const maxLength = TranslateConfig.BATCH.TEXT_LIMIT.LINE;  // 1700
-      const segments = line.match(/[^.。]+[.。]/g) || []; // 使用正則表達式匹配句號
-      let currentBatch = '';
-      
-      for (const segment of segments) {
-        if ((currentBatch + segment).length <= maxLength) {
-          currentBatch += segment;
+      const segments = line.match(/(?:[^.。]|(?<=\d)\.(?=\d))+[.。]/g) || [];
+      let buf = '';
+      for (const seg of segments) {
+        if ((buf + seg).length <= LONG_LINE_MAX) {
+          buf += seg;
         } else {
-          // 當前批次已經接近限制，加入段落
-          if (currentBatch) {
-            addToParagraphs(currentBatch);
-          }
-          currentBatch = segment;
+          if (buf) addToParagraphs(buf);
+          buf = seg;
         }
       }
-      
-      // 處理最後一個批次
-      if (currentBatch) {
-        addToParagraphs(currentBatch);
-      }
-      
-      // 返回最後一個句號之後的剩餘文本
-      return line.replace(/.*[.。]/, '');
+      if (buf) addToParagraphs(buf);
+      // 返回最後句號後的剩餘（貪婪匹配到最後一個句號）
+      return line.replace(/^[\s\S]*[.。](?!\d)/, '');
     };
 
-    // 按換行分割文本
-    text.split('\n').forEach(line => {
-      if (line.length > TranslateConfig.BATCH.TEXT_LIMIT.LINE) {
+    // 不可分割區塊狀態
+    let inBlock = null; // null | 'table' | 'code' | 'quote'
+    let blockBuffer = '';
+
+    const lines = text.split('\n');
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const trimmed = line.trim();
+
+      // ── Code block 偵測 ──
+      if (trimmed.startsWith('```')) {
+        if (inBlock === 'code') {
+          // 結束 code block
+          blockBuffer += '\n' + line;
+          flush(currentBatch);
+          currentBatch = blockBuffer;
+          blockBuffer = '';
+          inBlock = null;
+          continue;
+        } else if (inBlock === null) {
+          // 開始 code block：先切掉目前 batch
+          if (currentBatch) { flush(currentBatch); currentBatch = ''; }
+          inBlock = 'code';
+          blockBuffer = line;
+          continue;
+        }
+      }
+
+      if (inBlock === 'code') {
+        blockBuffer += '\n' + line;
+        continue;
+      }
+
+      // ── 引用區塊 ──
+      if (trimmed.startsWith('>')) {
+        if (inBlock === null) {
+          if (currentBatch) { flush(currentBatch); currentBatch = ''; }
+          inBlock = 'quote';
+          blockBuffer = line;
+        } else if (inBlock === 'quote') {
+          blockBuffer += '\n' + line;
+        }
+        continue;
+      } else if (inBlock === 'quote') {
+        // 引用結束
+        flush(blockBuffer);
+        blockBuffer = '';
+        inBlock = null;
+        // 繼續處理當前行（不 continue）
+      }
+
+      // ── Markdown 表格 ──
+      if (trimmed.startsWith('|')) {
+        if (inBlock === null) {
+          if (currentBatch) { flush(currentBatch); currentBatch = ''; }
+          inBlock = 'table';
+          blockBuffer = line;
+        } else if (inBlock === 'table') {
+          blockBuffer += '\n' + line;
+        }
+        continue;
+      } else if (inBlock === 'table') {
+        // 表格結束
+        flush(blockBuffer);
+        blockBuffer = '';
+        inBlock = null;
+        // 繼續處理當前行
+      }
+
+      // ── 空行 → 立即切 ──
+      if (!trimmed) {
+        if (currentBatch) { flush(currentBatch); currentBatch = ''; }
+        continue;
+      }
+
+      // ── 標題行 → 切在標題之前，標題留給下一塊 ──
+      if (/^#{1,6}\s/.test(trimmed)) {
+        if (currentBatch) { flush(currentBatch); currentBatch = ''; }
+        currentBatch = line;
+        continue;
+      }
+
+      // ── 超長單行 ──
+      if (line.length > LINE) {
+        if (currentBatch) { flush(currentBatch); currentBatch = ''; }
         const remainder = processLongLine(line);
         currentBatch = remainder;
-        return;
+        continue;
       }
 
-      // 組合新批次
+      // ── 正常行：累積並判斷切點 ──
       const newBatch = currentBatch ? `${currentBatch}\n${line}` : line;
 
-      // 檢查標點符號，按優先順序
-      const hasPeriodAtEnd = /[.。]$/.test(line.trim());
-      const hasCommaSpace = /[,，][ \t]/.test(line);
-      const hasPeriodSpace = /[.。][ \t]/.test(line);
-      const hasDashSpace = /-[ \t]/.test(line);
-      const hasClosingParenthesis = /\)/.test(line);
-      const hasSpace = / /.test(line);
-
-      // 標點符號檢查結果
-      const hasPunctuation = hasPeriodAtEnd || hasCommaSpace || hasPeriodSpace || hasDashSpace || hasClosingParenthesis || hasSpace;
-
-      // 如果有標點符號，且長度超過限制，則添加到段落
-      if (hasPunctuation && newBatch.length > TranslateConfig.BATCH.TEXT_LIMIT.BATCH) {
-        addToParagraphs(newBatch);
-        currentBatch = '';
-      } else {
-        currentBatch = newBatch;
+      // 語義切點：在這行之前切（僅當 batch 已有內容）
+      if (currentBatch && isSemanticBoundary(line) && newBatch.length > BATCH) {
+        flush(currentBatch);
+        currentBatch = line;
+        continue;
       }
-    });
 
+      // 主切點：> BATCH 且有句號
+      if (newBatch.length > BATCH && isSentencePeriod(line)) {
+        flush(newBatch);
+        currentBatch = '';
+        continue;
+      }
+
+      // 記錄合法切點（> BATCH 時，有句號或語義詞都可作為回退點）
+      if (newBatch.length > BATCH && (isSentencePeriod(line) || isSemanticBoundary(line))) {
+        lastCutPoint = { batch: newBatch };
+      }
+
+      // 備選切點：> HARD 且有其他標點
+      if (newBatch.length > HARD && isOtherPunctuation(line)) {
+        flush(newBatch);
+        currentBatch = '';
+        continue;
+      }
+
+      // 強制回退：> FORCE
+      if (newBatch.length > FORCE) {
+        if (lastCutPoint) {
+          // 回退到最近合法切點
+          flush(lastCutPoint.batch);
+          // 把超出部分重新放回 currentBatch
+          const overflowStart = lastCutPoint.batch.length;
+          currentBatch = newBatch.slice(overflowStart).replace(/^\n/, '');
+        } else {
+          // 無合法切點，強制在此切
+          flush(newBatch);
+          currentBatch = '';
+        }
+        lastCutPoint = null;
+        continue;
+      }
+
+      currentBatch = newBatch;
+
+      // 更新合法切點記錄（超過 BATCH 後開始記錄）
+      if (newBatch.length > BATCH && (isSentencePeriod(line) || isOtherPunctuation(line) || isSemanticBoundary(line))) {
+        lastCutPoint = { batch: newBatch };
+      }
+    }
+
+    // 處理剩餘的不可分割區塊
+    if (blockBuffer) addToParagraphs(blockBuffer);
+    // 處理剩餘 batch
     addToParagraphs(currentBatch);
+
     return paragraphs;
   }
 

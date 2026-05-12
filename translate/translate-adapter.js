@@ -330,7 +330,7 @@ class TranslateAdapter {
       return;
     }
 
-    let finalTranslatedText = batchIndex > 0 ? '\n' + translatedText : translatedText;
+    let finalTranslatedText = batchIndex > 0 ? '\n\n' + translatedText : translatedText;
 
     if (settings && settings.removeHash) {
       finalTranslatedText = finalTranslatedText.replace(/##\s*|\s*##/g, '');
@@ -535,7 +535,7 @@ class TranslateAdapter {
     }
 
     // 按照原始順序組合結果
-    const finalText = finalTexts.join('\n');
+    const finalText = finalTexts.map(t => t.trim()).join('\n\n');
       
     // 最後檢查取消狀態，防止更新已取消的翻譯
     this.controller.checkCancellation();
