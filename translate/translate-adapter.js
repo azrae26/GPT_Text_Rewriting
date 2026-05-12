@@ -36,7 +36,8 @@ class TranslateAdapter {
     this.timeoutId = null;
     this.batchInterval = 5000;
     this.finalRetryAttempts = 0;
-    this.maxFinalRetries = 3;
+    this.globalDeadlineId = null;
+    this.pendingBatches = new Set();
     this.selectionStart = null;
     this.selectionEnd = null;
     this.isSingleStepMode = false;
@@ -163,7 +164,10 @@ class TranslateAdapter {
     this.batchInterval = TranslateConfigUtils.getBatchInterval(this.totalBatches);
     this.completedTranslations.clear();
     this.failedTranslations.clear();
+    this.pendingBatches.clear();
+    this.finalRetryAttempts = 0;
     this.timeoutId = null;
+    this.globalDeadlineId = null;
 
     // 更新按鈕狀態
     button.textContent = '取消';
@@ -221,23 +225,27 @@ class TranslateAdapter {
     const batchIndex = this.currentBatchIndex;
 
     this.currentBatchIndex++;
+    this.pendingBatches.add(batchIndex);
 
     try {
       const translatedText = await this.service.translateBatch(originalText, batchIndex, this.controller);
-      
+
       const settings = await GlobalSettings.loadSettings();
       this.updateTranslatedText(batchIndex, translatedText, settings);
       this.completedTranslations.add(batchIndex);
+      this.pendingBatches.delete(batchIndex);
 
       // 檢查是否需要處理完成邏輯
       await this.checkAndHandleCompletion();
     } catch (error) {
       if (error.message === '翻譯請求已取消') {
+        this.pendingBatches.delete(batchIndex);
         return;
       }
       LogUtils.error(`批次 ${batchIndex + 1} 翻譯錯誤:`, error);
       this.failedTranslations.add(batchIndex);
-      
+      this.pendingBatches.delete(batchIndex);
+
       // 檢查是否需要處理完成邏輯
       await this.checkAndHandleCompletion();
     }
@@ -249,13 +257,39 @@ class TranslateAdapter {
   scheduleNextBatch() {
     if (!this.controller.isCancelled() && this.currentBatchIndex < this.translationQueue.length) {
       this.timeoutId = setTimeout(() => {
-        // 在執行前再次檢查取消狀態
         if (!this.controller.isCancelled()) {
           this.processNextBatch();
           this.scheduleNextBatch();
         }
       }, this.batchInterval);
+    } else if (!this.controller.isCancelled()) {
+      // 所有批次已送出，啟動全局死線
+      this.startGlobalDeadline();
     }
+  }
+
+  /**
+   * 啟動全局死線計時器（所有批次送出後90秒）
+   */
+  startGlobalDeadline() {
+    if (this.globalDeadlineId) return;
+    LogUtils.log(`全局死線計時器啟動，${TranslateConfig.API.GLOBAL_DEADLINE / 1000} 秒後到期`);
+    this.globalDeadlineId = setTimeout(() => {
+      this.handleGlobalDeadline();
+    }, TranslateConfig.API.GLOBAL_DEADLINE);
+  }
+
+  /**
+   * 全局死線到期：把所有仍在等待的批次標記為失敗
+   */
+  handleGlobalDeadline() {
+    if (this.pendingBatches.size === 0) return;
+    LogUtils.warn(`⏰ 全局死線到期，${this.pendingBatches.size} 個批次仍未回應，標記為失敗`);
+    for (const idx of this.pendingBatches) {
+      this.failedTranslations.add(idx);
+    }
+    this.pendingBatches.clear();
+    this.checkAndHandleCompletion();
   }
 
   /**
@@ -337,19 +371,17 @@ class TranslateAdapter {
     if (this.isAllBatchesProcessed()) {
       clearTimeout(this.timeoutId);
       
-      // 如果有失敗的批次且還沒達到重試上限，嘗試重試
-      if (this.failedTranslations.size > 0 && this.finalRetryAttempts < this.maxFinalRetries) {
-        LogUtils.important(`🔄 檢測到 ${this.failedTranslations.size} 個失敗批次，開始第 ${this.finalRetryAttempts + 1} 次最終重試`);
+      // 如果有失敗的批次且尚未進行過批次重試，觸發一輪重試
+      if (this.failedTranslations.size > 0 && this.finalRetryAttempts === 0) {
+        LogUtils.important(`🔄 檢測到 ${this.failedTranslations.size} 個失敗批次，等待 ${TranslateConfig.API.RETRY_WAIT / 1000} 秒後重試`);
         await Notification.showNotification(`
           檢測到 ${this.failedTranslations.size} 個失敗批次<br>
-          開始第 ${this.finalRetryAttempts + 1}/${this.maxFinalRetries} 次重試<br>
-          等待 15 秒後開始...
+          等待 ${TranslateConfig.API.RETRY_WAIT / 1000} 秒後重試...
         `, true);
-        
-        // 等待 15 秒再開始重試
+
         setTimeout(() => {
           this.retryFailedBatches();
-        }, 15000);
+        }, TranslateConfig.API.RETRY_WAIT);
       } else if (this.isAllBatchesCompleted()) {
         if (this.isSingleStepMode) {
           // 單步模式：跳過反思和優化，直接完成
@@ -536,44 +568,53 @@ class TranslateAdapter {
     const failedIndexes = Array.from(this.failedTranslations);
     LogUtils.important(`🔄 開始重試失敗的批次: [${failedIndexes.join(', ')}]`);
 
-    for (const batchIndex of failedIndexes) {
-      if (this.controller.isCancelled()) {
-        LogUtils.log('翻譯已取消，停止重試');
-        break;
-      }
+    // 清空失敗列表，讓每個批次重新跑 A→B→C
+    this.failedTranslations.clear();
 
-      try {
-        const originalText = this.translationQueue[batchIndex];
-        LogUtils.log(`重試批次 ${batchIndex + 1}/${this.totalBatches}`);
+    // 按照與主流程相同的 batchInterval 間隔逐一送出失敗批次
+    // 每個批次送出後不等它回應，各自非同步走 A→B→C
+    const dispatchRetryBatch = (batchIndex) => {
+      if (this.controller.isCancelled()) return;
 
-        await Notification.showNotification(`
-          重試失敗批次 ${batchIndex + 1}/${this.totalBatches}<br>
-          第 ${this.finalRetryAttempts}/${this.maxFinalRetries} 次重試
-        `, true);
+      const originalText = this.translationQueue[batchIndex];
+      this.pendingBatches.add(batchIndex);
+      LogUtils.log(`重試批次 ${batchIndex + 1}/${this.totalBatches}`);
 
-        const translatedText = await this.service.translateBatch(originalText, batchIndex, this.controller);
+      this.service.translateBatch(originalText, batchIndex, this.controller)
+        .then(async (translatedText) => {
+          const settings = await GlobalSettings.loadSettings();
+          this.updateTranslatedText(batchIndex, translatedText, settings);
+          this.completedTranslations.add(batchIndex);
+          this.pendingBatches.delete(batchIndex);
+          LogUtils.important(`✅ 批次 ${batchIndex + 1} 重試成功`);
+          await this.checkAndHandleCompletion();
+        })
+        .catch((error) => {
+          if (error.message !== '翻譯請求已取消') {
+            LogUtils.error(`批次 ${batchIndex + 1} 重試失敗:`, error);
+            this.failedTranslations.add(batchIndex);
+          }
+          this.pendingBatches.delete(batchIndex);
+          this.checkAndHandleCompletion();
+        });
+    };
 
-        // 重試成功，更新狀態
-        const settings = await GlobalSettings.loadSettings();
-        this.updateTranslatedText(batchIndex, translatedText, settings);
-        this.failedTranslations.delete(batchIndex);
-        this.completedTranslations.add(batchIndex);
-
-        LogUtils.important(`✅ 批次 ${batchIndex + 1} 重試成功`);
-
-        // 重試間隔20秒（除了最後一個）
-        if (batchIndex !== failedIndexes[failedIndexes.length - 1]) {
-          await new Promise(resolve => setTimeout(resolve, 20000));
-        }
-
-      } catch (error) {
-        LogUtils.error(`批次 ${batchIndex + 1} 重試失敗:`, error);
-        // 保持在失敗列表中
+    // 按 batchInterval 間隔逐一送出
+    for (let i = 0; i < failedIndexes.length; i++) {
+      if (i === 0) {
+        dispatchRetryBatch(failedIndexes[i]);
+      } else {
+        await new Promise(resolve => setTimeout(resolve, this.batchInterval));
+        if (this.controller.isCancelled()) break;
+        dispatchRetryBatch(failedIndexes[i]);
       }
     }
 
-    // 重試完成後，再次檢查完成狀態
-    await this.checkAndHandleCompletion();
+    // 最後一個批次送出後，啟動全局死線（再等90秒）
+    if (!this.controller.isCancelled()) {
+      this.globalDeadlineId = null;
+      this.startGlobalDeadline();
+    }
   }
 
   /**
@@ -622,6 +663,13 @@ class TranslateAdapter {
       this.timeoutId = null;
     }
 
+    if (this.globalDeadlineId) {
+      LogUtils.log('清除全局死線計時器');
+      clearTimeout(this.globalDeadlineId);
+      this.globalDeadlineId = null;
+    }
+    this.pendingBatches.clear();
+
     // 等待所有活動請求完成
     LogUtils.log('等待活動請求完成...');
     const waitForRequests = async () => {
@@ -666,6 +714,7 @@ class TranslateAdapter {
     this.translationQueue = [];
     this.completedTranslations.clear();
     this.failedTranslations.clear();
+    this.pendingBatches.clear();
     this.finalRetryAttempts = 0;
     this.completedStepsCount = 0;
     this.batchInterval = 5000;
@@ -676,6 +725,11 @@ class TranslateAdapter {
     if (this.timeoutId) {
       clearTimeout(this.timeoutId);
       this.timeoutId = null;
+    }
+
+    if (this.globalDeadlineId) {
+      clearTimeout(this.globalDeadlineId);
+      this.globalDeadlineId = null;
     }
 
     LogUtils.important('✅ 重置完成');

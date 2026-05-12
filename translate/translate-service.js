@@ -260,7 +260,7 @@ class TranslationService {
       const { endpoint, body } = TextProcessor._prepareApiConfig(finalModel, replaceParams, settings.reflectInstruction, []);
       
       // 使用改進的請求方法，整合 AbortController
-      const reflectionResult = await this.sendRequestWithRetry(
+      const reflectionResult = await this.sendRequestWithHedging(
         endpoint, 
         body, 
         apiKey, 
@@ -379,7 +379,7 @@ class TranslationService {
         context  // 加入中英對照表
       );
 
-      const optimizedResult = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'optimize', controller);
+      const optimizedResult = await this.sendRequestWithHedging(endpoint, body, apiKey, isGemini, true, 'optimize', controller);
       
       // 強化的取消檢查：檢查當前狀態和開始時狀態
       if (controller.isCancelled() || 
@@ -440,7 +440,7 @@ class TranslationService {
       );
 
       LogUtils.log(`📝 正在翻譯第 ${batchIndex + 1} 批次`);
-      const translatedText = await this.sendRequestWithRetry(endpoint, body, apiKey, isGemini, true, 'translate', controller);
+      const translatedText = await this.sendRequestWithHedging(endpoint, body, apiKey, isGemini, true, 'translate', controller);
 
       return translatedText.trim();
     } catch (error) {
@@ -453,7 +453,8 @@ class TranslationService {
   }
 
   /**
-   * 處理 API 請求並支援重試機制
+   * 對沖請求：立即發 A，40秒無回應發 B，再40秒發 C，誰先回用誰
+   * 全局死線由 TranslateAdapter 外部管理（所有批次送出後90秒）
    * @param {string} endpoint - API 端點
    * @param {Object} body - 請求體
    * @param {string} apiKey - API 金鑰
@@ -463,91 +464,108 @@ class TranslationService {
    * @param {TranslationController} controller - 翻譯控制器
    * @returns {Promise<string>} API 回應
    */
-  async sendRequestWithRetry(endpoint, body, apiKey, isGemini, showProgress, requestType = 'translate', controller) {
-    const maxRetries = TranslateConfig.API.RETRY.MAX_RETRIES;
-    let attempt = 0;
-    let requestController;
+  sendRequestWithHedging(endpoint, body, apiKey, isGemini, showProgress, requestType = 'translate', controller) {
+    return new Promise((resolve, reject) => {
+      let resolved = false;
+      let pendingCount = 0;
+      let allLaunched = false;
+      let bestResult = null; // { text, ratio } — 當全部低於門檻時取最高
+      let timerB = null;
+      let timerC = null;
 
-    // 如果 apiKey 為空，嘗試從設定中獲取
-    if (!apiKey) {
-      const settings = await GlobalSettings.loadSettings();
-      const model = body.model; // 從 body 中獲取模型名稱，不使用預設值
-      
-      if (model) {
-        // 使用動態 API 金鑰獲取
-        const apiType = GlobalSettings.getModelApiType(model);
-        const apiKeyName = GlobalSettings.getApiKeyNameForModel(model);
-        apiKey = settings.apiKeys[apiKeyName];
-      }
-    }
+      const checkRatio = requestType === 'translate';
+      const threshold = TranslateConfig.CHINESE_RATIO_THRESHOLD;
 
-    while (attempt < maxRetries) {
-      try {
-        // 在每次重試前檢查取消狀態
-        controller.checkCancellation();
+      const clearHedgeTimers = () => {
+        clearTimeout(timerB);
+        clearTimeout(timerC);
+      };
 
-        const startTime = Date.now();  // 記錄開始時間
+      // 所有已送出的請求都回來了，且沒有任何一個通過門檻
+      const checkAllDone = () => {
+        if (resolved || !allLaunched || pendingCount > 0) return;
+        resolved = true;
+        if (bestResult) {
+          LogUtils.warn(`所有對沖請求中文比例均低於門檻，取最高者 (${(bestResult.ratio * 100).toFixed(1)}%)`);
+          resolve(bestResult.text);
+        } else {
+          reject(new Error('所有對沖請求均失敗'));
+        }
+      };
 
-        // 創建新的請求控制器並添加到活動請求集合
-        requestController = new AbortController();
-        this._activeRequests.add(requestController);
-        LogUtils.log(`添加請求到活動集合，當前數量: ${this._activeRequests.size}`);
-
-        // 建立一個帶有超時的 Promise
-        const timeoutPromise = new Promise((_, reject) => {
-          setTimeout(() => {
-            reject(new Error('請求超時'));
-          }, TranslateConfigUtils.getTimeout(requestType));
-        });
-
-        // 使用統一的 AbortController 和 text-processor.js 的請求機制
-        const requestPromise = TextProcessor._sendRequest(
-          endpoint, 
-          body, 
-          apiKey, 
-          isGemini, 
-          showProgress, 
-          requestType
-        );
-
-        // 使用 Promise.race 來競爭，誰先完成就用誰的結果
-        const response = await Promise.race([
-          requestPromise,
-          timeoutPromise
-        ]);
-
-        // 如果請求成功但已經超時，則忽略這個回應
-        if (Date.now() - startTime > TranslateConfigUtils.getTimeout(requestType)) {
-          LogUtils.log(`收到回應但已超時 (${requestType})，忽略此回應`);
-          attempt++;
-          continue;
+      const attempt = (label) => {
+        if (resolved) return;
+        if (controller.isCancelled()) {
+          if (!resolved) { resolved = true; clearHedgeTimers(); reject(new Error('翻譯請求已取消')); }
+          return;
         }
 
-        return response;
-      } catch (error) {
-        // 如果是取消錯誤，直接拋出不重試
-        if (error.message === '翻譯請求已取消' || error.name === 'AbortError') {
-          LogUtils.log('檢測到取消請求，停止重試');
-          throw error;
-        }
+        pendingCount++;
+        const ctrl = new AbortController();
+        this._activeRequests.add(ctrl);
+        LogUtils.log(`添加請求到活動集合 [${label}]，當前數量: ${this._activeRequests.size}`);
 
-        // 其他錯誤進行重試
-        if (attempt < maxRetries - 1) {
-          attempt++;
-          const errorMessage = error.status ? `狀態碼 ${error.status}` : error.message;
-          LogUtils.log(`收到錯誤 (${errorMessage})，等待 ${TranslateConfig.API.RETRY.DELAY/1000} 秒後進行第 ${attempt} 次重試...`);
-          await new Promise(resolve => setTimeout(resolve, TranslateConfig.API.RETRY.DELAY));
-          continue;
-        }
-        throw error;
-      } finally {
-        // 從活動請求集合中移除
-        if (requestController) {
-          this._activeRequests.delete(requestController);
-          LogUtils.log(`從活動集合移除請求，剩餘數量: ${this._activeRequests.size}`);
-        }
-      }
-    }
+        TextProcessor._sendRequest(endpoint, body, apiKey, isGemini, showProgress, requestType)
+          .then(result => {
+            if (resolved) return;
+
+            if (checkRatio) {
+              const ratio = this._calculateChineseRatio(result);
+              LogUtils.log(`對沖請求 [${label}] 中文比例: ${(ratio * 100).toFixed(1)}%`);
+              if (ratio >= threshold) {
+                resolved = true;
+                clearHedgeTimers();
+                LogUtils.log(`[${label}] 通過門檻，採用結果`);
+                resolve(result);
+              } else {
+                LogUtils.warn(`[${label}] 中文比例低於門檻 (${(threshold * 100)}%)，繼續等待其他對沖請求`);
+                if (!bestResult || ratio > bestResult.ratio) {
+                  bestResult = { text: result, ratio };
+                }
+              }
+            } else {
+              // reflect / optimize 不檢查比例，直接採用
+              resolved = true;
+              clearHedgeTimers();
+              LogUtils.log(`對沖請求 [${label}] 最先回應，採用結果`);
+              resolve(result);
+            }
+          })
+          .catch(err => {
+            if (err.message === '翻譯請求已取消' || err.name === 'AbortError') {
+              if (!resolved) { resolved = true; clearHedgeTimers(); reject(err); }
+            }
+            // 其他錯誤：等後續對沖請求或全局死線
+          })
+          .finally(() => {
+            this._activeRequests.delete(ctrl);
+            LogUtils.log(`從活動集合移除請求 [${label}]，剩餘數量: ${this._activeRequests.size}`);
+            pendingCount--;
+            checkAllDone();
+          });
+      };
+
+      attempt('A');
+      timerB = setTimeout(() => attempt('B'), TranslateConfig.API.HEDGE_INTERVAL);
+      timerC = setTimeout(() => {
+        allLaunched = true;
+        attempt('C');
+      }, TranslateConfig.API.HEDGE_INTERVAL * 2);
+    });
+  }
+
+  /**
+   * 計算文字中的中文比例（先去除數字再計算）
+   * @param {string} text
+   * @returns {number} 0~1 的比例
+   */
+  _calculateChineseRatio(text) {
+    if (!text || !text.trim()) return 0;
+    const withoutNumbers = text.replace(/[0-9０-９]/g, '');
+    const nonSpace = withoutNumbers.replace(/\s/g, '');
+    if (!nonSpace) return 0;
+    const chineseChars = (nonSpace.match(/[一-鿿㐀-䶿]/g) || []).length;
+    return chineseChars / nonSpace.length;
   }
 
   /**

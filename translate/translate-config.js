@@ -17,23 +17,18 @@
  */
 window.TranslateConfig = {
   // API 相關配置
+  CHINESE_RATIO_THRESHOLD: 0.5, // 翻譯結果中文比例門檻（去除數字後）
+
   API: {
-    // 重試機制配置
-    RETRY: {
-      MAX_RETRIES: 3,        // 最大重試次數
-      DELAY: 8000,          // 重試延遲時間（毫秒）
-      TIMEOUT: {
-        TRANSLATE: 20000,   // 翻譯超時時間（毫秒）
-        REFLECT: 40000,     // 反思超時時間（毫秒）
-        OPTIMIZE: 20000     // 優化超時時間（毫秒）
-      }
-    },
+    HEDGE_INTERVAL: 40000,   // A→B、B→C 的對沖間隔（毫秒）
+    GLOBAL_DEADLINE: 90000,  // 所有批次送出後的全局死線（毫秒）
+    RETRY_WAIT: 15000,       // 批次重試層等待時間（毫秒）
     // 間隔配置
     INTERVAL: {
       WAIT: {
-        NONE: 0,            // 無等待
-        SHORT: 2000,        // 短等待（2秒）
-        LONG: 2000          // 長等待（2秒）
+        NONE: 0,             // 無等待
+        SHORT: 2000,         // 短等待（2秒）
+        LONG: 2000           // 長等待（2秒）
       }
     }
   },
@@ -42,13 +37,13 @@ window.TranslateConfig = {
   BATCH: {
     // 根據批次數量決定發送間隔 [批次數, 間隔毫秒]
     INTERVALS: [
-      [5, 500],             // 5次以下，0.5秒
-      [10, 2000],           // 10次以下，2秒
-      [15, 5000],           // 15次以下，5秒
-      [20, 6000],           // 20次以下，6秒
-      [25, 7000]            // 25次以下，7秒
+      [5, 500],              // 5次以下，0.5秒
+      [10, 3000],            // 10次以下，3秒
+      [15, 6000],            // 15次以下，6秒
+      [20, 8000],            // 20次以下，8秒
+      [25, 10000]            // 25次以下，10秒
     ],
-    DEFAULT_INTERVAL: 5000, // 預設間隔（毫秒）
+    DEFAULT_INTERVAL: 12000, // 預設間隔（毫秒），25次以上用12秒
     TEXT_LIMIT: {
       LINE: 4100,           // 單行最大字數
       BATCH: 3600           // 批次最大字數
@@ -78,16 +73,6 @@ window.TranslateConfigUtils = {
       ([count]) => totalBatches <= count
     );
     return found ? found[1] : window.TranslateConfig.BATCH.DEFAULT_INTERVAL;
-  },
-
-  /**
-   * 根據請求類型獲取超時時間
-   * @param {string} requestType - 請求類型 ('translate', 'reflect', 'optimize')
-   * @returns {number} 超時時間（毫秒）
-   */
-  getTimeout(requestType) {
-    const upperType = requestType.toUpperCase();
-    return window.TranslateConfig.API.RETRY.TIMEOUT[upperType] || 20000;
   },
 
   /**
