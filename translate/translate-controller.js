@@ -74,14 +74,13 @@ class TranslationController {
    */
   reset() {
     LogUtils.log('🔄 重置控制器');
-    
+
     if (this.abortController) {
       this.abortController.abort();
     }
-    
+
     this.abortController = new AbortController();
     this.setState('idle');
-    this.observers.clear();
   }
 
   /**
