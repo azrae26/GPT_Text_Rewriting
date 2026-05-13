@@ -191,9 +191,9 @@ class TranslationService {
         // 繼續處理當前行
       }
 
-      // ── 空行 → 立即切 ──
+      // ── 空行 → 保留段落間距，不作為批次切點 ──
       if (!trimmed) {
-        if (currentBatch) { flush(currentBatch); currentBatch = ''; }
+        if (currentBatch) currentBatch += '\n' + line;
         continue;
       }
 
