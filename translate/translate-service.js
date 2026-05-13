@@ -57,10 +57,24 @@ class TranslationService {
       lastCutPoint = null;
     };
 
+    const isSentencePeriodAt = (source, index) => {
+      const char = source[index];
+      if (char !== '.' && char !== '。') return false;
+
+      const prev = source[index - 1] || '';
+      const next = source[index + 1] || '';
+      return !/[.\d]/.test(prev) && !/[.\d]/.test(next);
+    };
+
     // 判斷是否有合法句號（排除小數點、數字編號）
     const isSentencePeriod = (line) => {
       // 排除：數字.數字（小數）、行首數字. （編號列表）、省略號（連續多點）
-      return /(?<![.\d])[.。](?![.\d])/.test(line) && !/^\s*\d+\.\s/.test(line);
+      for (let i = 0; i < line.length; i++) {
+        if (isSentencePeriodAt(line, i)) {
+          return !/^\s*\d+\.\s/.test(line);
+        }
+      }
+      return false;
     };
 
     // 判斷是否有備選標點（排除千分位逗號）
@@ -75,9 +89,24 @@ class TranslationService {
     const SEMANTIC_STARTS = /^(但|然而|因此|所以|此外|另外|首先|其次|最後|然後|接著|總之|雖然|如果|However|But|Therefore|Thus|Furthermore|Moreover|Additionally|Meanwhile|Finally|Although|Though)\b/;
     const isSemanticBoundary = (line) => SEMANTIC_STARTS.test(line.trim());
 
-    // 超長單行處理：按句號切，每塊上限 LONG_LINE_MAX
+    // 超長單行處理：按合法句號切，每塊上限 LONG_LINE_MAX
     const processLongLine = (line) => {
-      const segments = line.match(/(?:[^.。]|(?<=\d)\.(?=\d))+[.。]/g) || [];
+      const segments = [];
+      let segmentStart = 0;
+
+      for (let i = 0; i < line.length; i++) {
+        if (!isSentencePeriodAt(line, i)) continue;
+
+        let segmentEnd = i + 1;
+        while (segmentEnd < line.length && /\s/.test(line[segmentEnd])) {
+          segmentEnd++;
+        }
+
+        segments.push(line.slice(segmentStart, segmentEnd));
+        segmentStart = segmentEnd;
+        i = segmentEnd - 1;
+      }
+
       let buf = '';
       for (const seg of segments) {
         if ((buf + seg).length <= LONG_LINE_MAX) {
@@ -88,8 +117,8 @@ class TranslationService {
         }
       }
       if (buf) addToParagraphs(buf);
-      // 返回最後句號後的剩餘（貪婪匹配到最後一個句號）
-      return line.replace(/^[\s\S]*[.。](?!\d)/, '');
+      // 返回最後合法句號後的剩餘，確保省略號等原文符號不被丟失
+      return line.slice(segmentStart);
     };
 
     // 不可分割區塊狀態
@@ -739,4 +768,4 @@ class TranslationService {
 // 導出到全局
 window.TranslationService = TranslationService;
 
-LogUtils.log('翻譯服務模組已載入'); 
+LogUtils.log('翻譯服務模組已載入');

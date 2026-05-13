@@ -159,7 +159,6 @@ class TranslateAdapter {
 
     this.controller.setState('translating');
     this.currentBatchIndex = 0;
-    LogUtils.warn(`🔍 點擊翻譯時 textarea 含 "..." 的位置: ${[...textToTranslate.matchAll(/\.{2,}/g)].map(m => `pos=${m.index} "${textToTranslate.substring(Math.max(0,m.index-10), m.index+m[0].length+10)}"`).join(' | ') || '（無連續點）'}`);
     this.translationQueue = this.service.splitTextIntoParagraphs(textToTranslate);
     this.totalBatches = this.translationQueue.length;
     this.batchInterval = TranslateConfigUtils.getBatchInterval(this.totalBatches);
@@ -360,28 +359,7 @@ class TranslateAdapter {
       return;
     }
 
-    const beforeReplace = textArea.value;
     textArea.value = textArea.value.replace(originalText, finalTranslatedText);
-    if (textArea.value === beforeReplace) {
-      LogUtils.warn(`⚠️ 批次 ${batchIndex + 1} 替換失敗！原始文本在 textarea 中找不到`);
-      const idx = beforeReplace.indexOf(originalText.substring(0, 50));
-      if (idx !== -1) {
-        const taSlice = beforeReplace.substring(idx, idx + originalText.length);
-        let diffPos = -1;
-        for (let i = 0; i < Math.min(originalText.length, taSlice.length); i++) {
-          if (originalText[i] !== taSlice[i]) { diffPos = i; break; }
-        }
-        if (diffPos !== -1) {
-          const ctxStart = Math.max(0, diffPos - 20);
-          const ctxEnd = diffPos + 60;
-          LogUtils.warn(`第一個差異位置: ${diffPos}`);
-          LogUtils.warn(`originalText[${ctxStart}-${ctxEnd}]: "${originalText.substring(ctxStart, ctxEnd)}"`);
-          LogUtils.warn(`textarea   [${ctxStart}-${ctxEnd}]: "${taSlice.substring(ctxStart, ctxEnd)}"`);
-        } else if (taSlice.length !== originalText.length) {
-          LogUtils.warn(`長度不同: original=${originalText.length}, textarea段=${taSlice.length}`);
-        }
-      }
-    }
     textArea.dispatchEvent(new Event('input', { bubbles: true }));
   }
 
@@ -829,4 +807,4 @@ class TranslateAdapter {
 // 創建全局實例，保持向後兼容
 window.TranslateManager = new TranslateAdapter();
 
-LogUtils.important('📚 翻譯適配器模組已載入'); 
+LogUtils.important('📚 翻譯適配器模組已載入');
