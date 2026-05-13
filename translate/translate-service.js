@@ -59,8 +59,8 @@ class TranslationService {
 
     // 判斷是否有合法句號（排除小數點、數字編號）
     const isSentencePeriod = (line) => {
-      // 排除：數字.數字（小數）、行首數字. （編號列表）
-      return /(?<!\d)[.。](?!\d)/.test(line) && !/^\s*\d+\.\s/.test(line);
+      // 排除：數字.數字（小數）、行首數字. （編號列表）、省略號（連續多點）
+      return /(?<![.\d])[.。](?![.\d])/.test(line) && !/^\s*\d+\.\s/.test(line);
     };
 
     // 判斷是否有備選標點（排除千分位逗號）
