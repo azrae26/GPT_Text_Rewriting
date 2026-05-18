@@ -72,11 +72,13 @@ const Notification = {
     const apiKeyPrefix = apiKeyMatch ? apiKeyMatch[1] : (isLoading ? '未知' : this.lastApiKeyPrefix);
     const currentBatch = batchMatch ? batchMatch[1] : null;
     const totalBatches = batchMatch ? batchMatch[2] : null;
+    const translateStages = window.TranslateConfig?.STAGES || {};
+    const generationStages = window.GenerationConfig?.STAGES || {};
 
     // 判斷是否為取消翻譯的通知
-    const isCancelTranslation = message === TranslateConfig.STAGES.CANCELLED;
+    const isCancelTranslation = message === translateStages.CANCELLED;
     // 判斷是否為取消生成的通知
-    const isCancelGeneration = message === GenerationConfig.STAGES.CANCELLED;
+    const isCancelGeneration = message === generationStages.CANCELLED;
     
     // 如果是取消通知，立即清理並顯示
     if (isCancelTranslation || isCancelGeneration) {
@@ -88,44 +90,44 @@ const Notification = {
     }
     
     // 判斷是否為生成相關的通知（優先判斷，因為更具體）
-    const isGeneration = message.includes(GenerationConfig.STAGES.INITIAL) || 
-                        message.includes(GenerationConfig.STAGES.REFLECT_1) || 
-                        message.includes(GenerationConfig.STAGES.OPTIMIZE_1) || 
-                        message.includes(GenerationConfig.STAGES.REFLECT_2) || 
-                        message.includes(GenerationConfig.STAGES.OPTIMIZE_2) || 
-                        message.includes(GenerationConfig.STAGES.REFLECT_3) || 
-                        message.includes(GenerationConfig.STAGES.OPTIMIZE_3) || 
-                        message === GenerationConfig.STAGES.COMPLETED;
+    const isGeneration = message.includes(generationStages.INITIAL || '\u0000') ||
+                        message.includes(generationStages.REFLECT_1 || '\u0000') ||
+                        message.includes(generationStages.OPTIMIZE_1 || '\u0000') ||
+                        message.includes(generationStages.REFLECT_2 || '\u0000') ||
+                        message.includes(generationStages.OPTIMIZE_2 || '\u0000') ||
+                        message.includes(generationStages.REFLECT_3 || '\u0000') ||
+                        message.includes(generationStages.OPTIMIZE_3 || '\u0000') ||
+                        message === generationStages.COMPLETED;
     
     // 判斷是否為翻譯相關的通知
     const isTranslation = !isGeneration && (
-      message.includes(TranslateConfig.STAGES.INITIAL) || 
-      message.includes(TranslateConfig.STAGES.REFLECT) || 
-      message.includes(TranslateConfig.STAGES.OPTIMIZE) || 
+      message.includes(translateStages.INITIAL || '\u0000') ||
+      message.includes(translateStages.REFLECT || '\u0000') ||
+      message.includes(translateStages.OPTIMIZE || '\u0000') ||
       isCancelTranslation
     );
 
     // 判斷翻譯階段
     let translationPhase = '初步翻譯中';
-    if (message.includes(TranslateConfig.STAGES.REFLECT)) {
+    if (message.includes(translateStages.REFLECT || '\u0000')) {
       translationPhase = '反思翻譯中';
-    } else if (message.includes(TranslateConfig.STAGES.OPTIMIZE)) {
+    } else if (message.includes(translateStages.OPTIMIZE || '\u0000')) {
       translationPhase = '優化翻譯中';
     }
 
     // 判斷生成階段
     let generationPhase = '初始生成中';
-    if (message.includes(GenerationConfig.STAGES.REFLECT_1)) {
+    if (message.includes(generationStages.REFLECT_1 || '\u0000')) {
       generationPhase = '反思一中';
-    } else if (message.includes(GenerationConfig.STAGES.OPTIMIZE_1)) {
+    } else if (message.includes(generationStages.OPTIMIZE_1 || '\u0000')) {
       generationPhase = '生成優化一中';
-    } else if (message.includes(GenerationConfig.STAGES.REFLECT_2)) {
+    } else if (message.includes(generationStages.REFLECT_2 || '\u0000')) {
       generationPhase = '反思二中';
-    } else if (message.includes(GenerationConfig.STAGES.OPTIMIZE_2)) {
+    } else if (message.includes(generationStages.OPTIMIZE_2 || '\u0000')) {
       generationPhase = '生成優化二中';
-    } else if (message.includes(GenerationConfig.STAGES.REFLECT_3)) {
+    } else if (message.includes(generationStages.REFLECT_3 || '\u0000')) {
       generationPhase = '反思三中';
-    } else if (message.includes(GenerationConfig.STAGES.OPTIMIZE_3)) {
+    } else if (message.includes(generationStages.OPTIMIZE_3 || '\u0000')) {
       generationPhase = '生成優化三中';
     }
 
@@ -139,6 +141,21 @@ const Notification = {
     if (isFirstNotification) {
       this.notificationElement = document.createElement('div');
       this.notificationElement.classList.add('notification-element');
+      Object.assign(this.notificationElement.style, {
+        position: 'fixed',
+        top: '20px',
+        right: '20px',
+        zIndex: '2147483647',
+        maxWidth: '320px',
+        padding: '12px 16px',
+        borderRadius: '8px',
+        background: '#1f2937',
+        color: '#ffffff',
+        boxShadow: '0 12px 30px rgba(0, 0, 0, 0.25)',
+        fontSize: '14px',
+        lineHeight: '1.5',
+        fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
+      });
       document.body.appendChild(this.notificationElement);
       LogUtils.log('通知元素已創建並添加到 DOM');
       this.currentCount = 0;

@@ -2,7 +2,7 @@
  * text_complete/auto-complete.js - AI 自動完成功能模組
  * 功能：智能文本續寫和自動完成功能
  * 職責：
- * - 快捷鍵觸發：監聽連續三次 Ctrl 按鍵觸發 AI 自動完成
+ * - 快捷鍵觸發：監聽連續三次 Ctrl/Alt 按鍵觸發 AI 自動完成
  * - 智能續寫：基於前文內容生成相關的後續文本
  * - 上下文分析：分析游標位置前的文本內容作為生成依據
  * - 生成狀態管理：防止重複觸發和處理生成過程中的狀態
@@ -21,11 +21,180 @@ window.AutoComplete = {
   // 計數器和時間戳
   ctrlCount: 0,
   lastCtrlTime: 0,
+  altCount: 0,
+  lastAltTime: 0,
   isProcessing: false,
   isInitialized: false,
   autoCompleteTimer: null,
   isAIGenerating: false,  // 新增：標記是否正在 AI 生成內容
   cachedSettings: null,   // 快取設定，避免每次觸發都重新載入
+
+  _isNotionPage() {
+    return window.location.hostname === 'www.notion.so' || window.location.hostname.endsWith('.notion.so');
+  },
+
+  _getTextArea() {
+    return document.querySelector('textarea[name="content"]');
+  },
+
+  _getNotionTextBeforeCursor(notionRoot, currentLeaf, savedRange) {
+    const leaves = Array.from(notionRoot.querySelectorAll('[data-content-editable-leaf="true"], [contenteditable="true"][role="textbox"]'));
+    if (!leaves.includes(currentLeaf)) {
+      const contextRange = document.createRange();
+      contextRange.setStart(notionRoot, 0);
+      contextRange.setEnd(savedRange.startContainer, savedRange.startOffset);
+      return contextRange.toString();
+    }
+
+    const parts = [];
+    for (const leaf of leaves) {
+      if (leaf === currentLeaf) {
+        const leafRange = document.createRange();
+        leafRange.setStart(leaf, 0);
+        leafRange.setEnd(savedRange.startContainer, savedRange.startOffset);
+        parts.push(leafRange.toString());
+        break;
+      }
+
+      parts.push(leaf.innerText || leaf.textContent || '');
+    }
+
+    return parts.join('\n');
+  },
+
+  _getNotionTextAfterCursor(notionRoot, currentLeaf, savedRange) {
+    const leaves = Array.from(notionRoot.querySelectorAll('[data-content-editable-leaf="true"], [contenteditable="true"][role="textbox"]'));
+    if (!leaves.includes(currentLeaf)) {
+      const contextRange = document.createRange();
+      contextRange.setStart(savedRange.startContainer, savedRange.startOffset);
+      contextRange.setEnd(notionRoot, notionRoot.childNodes.length);
+      return contextRange.toString();
+    }
+
+    const parts = [];
+    let collectAfterCurrentLeaf = false;
+    for (const leaf of leaves) {
+      if (leaf === currentLeaf) {
+        const leafRange = document.createRange();
+        leafRange.setStart(savedRange.startContainer, savedRange.startOffset);
+        leafRange.setEnd(leaf, leaf.childNodes.length);
+        parts.push(leafRange.toString());
+        collectAfterCurrentLeaf = true;
+        continue;
+      }
+
+      if (collectAfterCurrentLeaf) {
+        parts.push(leaf.innerText || leaf.textContent || '');
+      }
+    }
+
+    return parts.join('\n');
+  },
+
+  _getNotionRangeTarget() {
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) {
+      return null;
+    }
+
+    const range = selection.getRangeAt(0);
+    const startElement = range.startContainer.nodeType === Node.TEXT_NODE
+      ? range.startContainer.parentElement
+      : range.startContainer;
+
+    if (!startElement) {
+      return null;
+    }
+
+    const editable = startElement.closest('[contenteditable="true"]');
+    if (!editable) {
+      return null;
+    }
+
+    const currentLeaf = startElement.closest('[data-content-editable-leaf="true"], [contenteditable="true"][role="textbox"]') || editable;
+
+    const notionRoot = startElement.closest('.layout.layout-reskin-wider')
+      || startElement.closest('.layout')
+      || document.querySelector('.layout.layout-reskin-wider')
+      || document.querySelector('.layout');
+
+    if (!notionRoot || !notionRoot.contains(range.startContainer)) {
+      return null;
+    }
+
+    const savedRange = range.cloneRange();
+
+    return {
+      type: 'notion',
+      element: currentLeaf,
+      getTextBeforeCursor() {
+        return window.AutoComplete._getNotionTextBeforeCursor(notionRoot, currentLeaf, savedRange);
+      },
+      getTextAfterCursor() {
+        return window.AutoComplete._getNotionTextAfterCursor(notionRoot, currentLeaf, savedRange);
+      },
+      insertText(text) {
+        currentLeaf.focus();
+
+        const currentSelection = window.getSelection();
+        currentSelection.removeAllRanges();
+        currentSelection.addRange(savedRange);
+
+        if (!document.execCommand('insertText', false, text)) {
+          savedRange.deleteContents();
+          savedRange.insertNode(document.createTextNode(text));
+          savedRange.collapse(false);
+          currentSelection.removeAllRanges();
+          currentSelection.addRange(savedRange);
+        }
+
+        currentLeaf.dispatchEvent(new InputEvent('input', {
+          bubbles: true,
+          inputType: 'insertText',
+          data: text
+        }));
+      }
+    };
+  },
+
+  _getEditorTarget() {
+    const textArea = this._getTextArea();
+    if (textArea) {
+      return {
+        type: 'textarea',
+        element: textArea,
+        getTextBeforeCursor() {
+          const cursorPosition = textArea.selectionStart;
+          return textArea.value.substring(0, cursorPosition);
+        },
+        getTextAfterCursor() {
+          const cursorPosition = textArea.selectionStart;
+          return textArea.value.substring(cursorPosition);
+        },
+        insertText(text) {
+          const cursorPosition = textArea.selectionStart;
+          const textBeforeCursor = textArea.value.substring(0, cursorPosition);
+          const textAfterCursor = textArea.value.substring(cursorPosition);
+          textArea.value = textBeforeCursor + text + textAfterCursor;
+
+          const newCursorPosition = textBeforeCursor.length + text.length;
+          textArea.setSelectionRange(newCursorPosition, newCursorPosition);
+
+          const event = new Event('input', { bubbles: true });
+          event.isAIGenerated = true;
+          textArea.dispatchEvent(event);
+
+          LogUtils.log('更新游標位置:', newCursorPosition);
+        }
+      };
+    }
+
+    if (this._isNotionPage()) {
+      return this._getNotionRangeTarget();
+    }
+
+    return null;
+  },
 
   // 初始化
   async initialize() {
@@ -37,8 +206,8 @@ window.AutoComplete = {
     LogUtils.log('開始初始化...');
 
     // 檢查是否在正確的頁面上
-    const textArea = document.querySelector('textarea[name="content"]');
-    if (!textArea) {
+    const textArea = this._getTextArea();
+    if (!textArea && !this._isNotionPage()) {
       LogUtils.log('未找到目標文本區域，可能不在正確的頁面上');
       return;
     }
@@ -55,7 +224,9 @@ window.AutoComplete = {
       });
 
       this.setupEventListeners();
-      this.setupAutoComplete(textArea);
+      if (textArea) {
+        this.setupAutoComplete(textArea);
+      }
       this.isInitialized = true;
       LogUtils.log('初始化完成');
     } catch (error) {
@@ -168,7 +339,8 @@ window.AutoComplete = {
             clearTimeout(this.autoCompleteTimer);
           }
           LogUtils.log('檢測到連續三次 Ctrl，觸發自動完成');
-          this.triggerAutoComplete();
+          this.altCount = 0;
+          this.triggerAutoComplete({ includeBackground: false });
         }
       } else {
         // 重置計數器
@@ -176,6 +348,29 @@ window.AutoComplete = {
       }
       
       this.lastCtrlTime = currentTime;
+    } else if (event.key === 'Alt' && !event.repeat) {
+      event.preventDefault();
+      const currentTime = Date.now();
+      
+      // 檢查是否在 500ms 內的連續按鍵
+      if (currentTime - this.lastAltTime < 500) {
+        this.altCount++;
+        LogUtils.log('Alt 點擊次數:', this.altCount);
+        
+        // 如果是第三次按下，觸發帶背景知識的自動完成
+        if (this.altCount === 3) {
+          if (this.autoCompleteTimer) {
+            clearTimeout(this.autoCompleteTimer);
+          }
+          LogUtils.log('檢測到連續三次 Alt，觸發帶背景知識的自動完成');
+          this.ctrlCount = 0;
+          this.triggerAutoComplete({ includeBackground: true });
+        }
+      } else {
+        this.altCount = 1;
+      }
+      
+      this.lastAltTime = currentTime;
     }
   },
 
@@ -189,18 +384,25 @@ window.AutoComplete = {
           this.ctrlCount = 0;
         }
       }, 1000);
+    } else if (event.key === 'Alt') {
+      setTimeout(() => {
+        const currentTime = Date.now();
+        if (currentTime - this.lastAltTime >= 1000) {
+          this.altCount = 0;
+        }
+      }, 1000);
     }
   },
 
   // 觸發自動完成功能
-  async triggerAutoComplete() {
+  async triggerAutoComplete(options = {}) {
     if (this.isProcessing) {
       LogUtils.log('正在處理中，請稍候...');
       return;
     }
 
-    const textArea = document.querySelector('textarea[name="content"]');
-    if (!textArea) {
+    const editorTarget = this._getEditorTarget();
+    if (!editorTarget) {
       LogUtils.log('錯誤：找不到文本輸入區域');
       return;
     }
@@ -211,8 +413,8 @@ window.AutoComplete = {
       LogUtils.log('開始處理自動完成請求');
       
       // 獲取當前游標位置之前的文本
-      const cursorPosition = textArea.selectionStart;
-      const textBeforeCursor = textArea.value.substring(0, cursorPosition);
+      const textBeforeCursor = editorTarget.getTextBeforeCursor();
+      const textAfterCursor = editorTarget.getTextAfterCursor ? editorTarget.getTextAfterCursor() : '';
       
       // 如果前文為空，不進行處理
       if (!textBeforeCursor.trim()) {
@@ -221,7 +423,8 @@ window.AutoComplete = {
       }
 
       LogUtils.log('前文長度:', textBeforeCursor.length);
-      LogUtils.log('游標位置:', cursorPosition);
+      LogUtils.log('後文長度:', textAfterCursor.length);
+      LogUtils.log('編輯目標:', editorTarget.type);
 
       // 顯示處理中通知
       await window.Notification.showNotification('正在生成自動完成內容...', true);
@@ -265,10 +468,12 @@ window.AutoComplete = {
 {{Context}}`;
       const instruction = settings.autoCompleteInstruction || defaultInstruction;
 
-      // 將 {{Context}} 替換為游標前的實際文字
-      const finalInstruction = instruction.includes('{{Context}}')
+      // 將 {{Context}} 替換為游標前的實際文字，{{background}} 依快捷鍵決定是否帶入後文
+      const instructionWithContext = instruction.includes('{{Context}}')
         ? instruction.replace(/\{\{Context\}\}/g, textBeforeCursor)
         : `${instruction}\n\n${textBeforeCursor}`;
+      const backgroundText = options.includeBackground ? (textAfterCursor.trim() || '無') : '無';
+      const finalInstruction = instructionWithContext.replace(/\{\{background\}\}/g, backgroundText);
 
       LogUtils.log('準備發送 API 請求');
       const { endpoint, body } = window.TextProcessor._prepareApiConfig(
@@ -284,18 +489,7 @@ window.AutoComplete = {
       LogUtils.log('收到 API 回應，生成文本長度:', completedText.length);
       
       // 插入生成的文本
-      const textAfterCursor = textArea.value.substring(cursorPosition);
-      textArea.value = textBeforeCursor + completedText + textAfterCursor;
-      
-      // 更新游標位置
-      const newCursorPosition = textBeforeCursor.length + completedText.length;
-      textArea.setSelectionRange(newCursorPosition, newCursorPosition);
-      LogUtils.log('更新游標位置:', newCursorPosition);
-      
-      // 觸發 input 事件以更新 UI
-      const event = new Event('input', { bubbles: true });
-      event.isAIGenerated = true;  // 標記這是 AI 生成的事件
-      textArea.dispatchEvent(event);
+      editorTarget.insertText(completedText);
       LogUtils.log('觸發 input 事件');
 
       // 顯示完成通知
@@ -308,6 +502,7 @@ window.AutoComplete = {
     } finally {
       this.isProcessing = false;
       this.ctrlCount = 0;
+      this.altCount = 0;
       this.isAIGenerating = false;  // 標記結束生成 AI 內容
       LogUtils.log('重置處理狀態');
     }

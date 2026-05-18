@@ -16,6 +16,7 @@
   "host_permissions": [
     "https://data.uanalyze.com.tw/*",
     "https://pro.uanalyze.com.tw/*",
+    "https://www.notion.so/*",
     "https://mopsov.twse.com.tw/*",
     "https://www.googleapis.com/*",
     "https://api.openai.com/*",
@@ -75,6 +76,29 @@
         "content.js"
       ],
       "css": ["content_script_uanalyze.css", "text_replace/replace.css"]
+    },
+    {
+      "matches": [
+        "https://www.notion.so/*"
+      ],
+      "js": [
+        "default.js",
+        "settings/settings-key.js",
+        "settings/storage-manager.js",
+        "settings/api-key-manager.js",
+        "settings/model-manager.js",
+        "settings/generation-manager.js",
+        "settings/settings-cleanup.js",
+        "settings/settings-classifier.js",
+        "settings/settings-exporter.js",
+        "settings/settings-importer.js",
+        "settings/settings-loader.js",
+        "settings.js",
+        "notification.js",
+        "text-processor.js",
+        "text_complete/auto-complete.js"
+      ],
+      "run_at": "document_idle"
     },
     {
       "matches": [
