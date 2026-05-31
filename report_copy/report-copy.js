@@ -96,6 +96,10 @@ window.ReportCopy = (function () {
   let listEl = null;           // 清單容器
   let hintEl = null;           // 「匹配不到」提示
   let confirmBtn = null;       // 開始複製按鈕
+  let inputEl = null;          // 股票輸入框
+  let dropdownEl = null;       // 自動匹配下拉
+  let suggestions = [];        // 當前下拉候選 [{code, name, exact}]
+  let activeIndex = -1;        // 下拉中以鍵盤標示的項目索引
 
   function isOpen() { return !!overlay; }
 
@@ -106,6 +110,10 @@ window.ReportCopy = (function () {
     listEl = null;
     hintEl = null;
     confirmBtn = null;
+    inputEl = null;
+    dropdownEl = null;
+    suggestions = [];
+    activeIndex = -1;
   }
 
   /** 重繪股票清單與按鈕計數 */
@@ -144,6 +152,151 @@ window.ReportCopy = (function () {
     return true;
   }
 
+  // --------------------- 輸入框自動匹配下拉 ---------------------
+
+  /** 關閉下拉並清空候選狀態 */
+  function closeDropdown() {
+    suggestions = [];
+    activeIndex = -1;
+    if (dropdownEl) {
+      dropdownEl.innerHTML = '';
+      dropdownEl.style.display = 'none';
+    }
+  }
+
+  /** 依輸入框位置把 fixed 下拉對齊到輸入框正下方、等寬 */
+  function positionDropdown() {
+    if (!dropdownEl || !inputEl) return;
+    const r = inputEl.getBoundingClientRect();
+    dropdownEl.style.left = `${r.left}px`;
+    dropdownEl.style.top = `${r.bottom + 2}px`;
+    dropdownEl.style.width = `${r.width}px`;
+  }
+
+  /** 把候選文字中與輸入相符的片段（不分大小寫）包成藍色高亮 span */
+  function renderOptionText(opt, text, query) {
+    opt.innerHTML = '';
+    const q = (query || '').trim();
+    if (!q) { opt.textContent = text; return; }
+
+    const lowerText = text.toLowerCase();
+    const lowerQ = q.toLowerCase();
+    let i = 0;
+    while (i < text.length) {
+      const idx = lowerText.indexOf(lowerQ, i);
+      if (idx === -1) {
+        opt.appendChild(document.createTextNode(text.slice(i)));
+        break;
+      }
+      if (idx > i) opt.appendChild(document.createTextNode(text.slice(i, idx)));
+      const mark = document.createElement('span');
+      mark.className = 'report-copy-match';
+      mark.textContent = text.slice(idx, idx + q.length);
+      opt.appendChild(mark);
+      i = idx + q.length;
+    }
+  }
+
+  /** 依當前 activeIndex 重新標示下拉項目 */
+  function highlightActive() {
+    if (!dropdownEl) return;
+    [...dropdownEl.children].forEach((el, i) => {
+      el.classList.toggle('active', i === activeIndex);
+    });
+  }
+
+  /** 選定一筆候選：加入清單、清空輸入、關閉下拉 */
+  function chooseSuggestion(item) {
+    if (!item) return;
+    const added = addEntry(item.code, item.name);
+    swLog('下拉選定', { 選定: `${item.code} ${item.name}`, exact: item.exact, 新增: added });
+    if (inputEl) inputEl.value = '';
+    if (hintEl) hintEl.textContent = '';
+    closeDropdown();
+    renderList();
+  }
+
+  /** 依輸入內容查詢候選並重繪下拉（完全匹配排第一，已由 StockMatcher 保證） */
+  async function refreshDropdown() {
+    const value = inputEl ? inputEl.value.trim() : '';
+    if (!value) { closeDropdown(); return; }
+
+    const results = await window.StockMatcher.searchStocks(value);
+    // 等待期間輸入框可能已變動，僅以最新輸入為準
+    if (!inputEl || inputEl.value.trim() !== value) return;
+
+    suggestions = results;
+    activeIndex = -1;
+    if (!dropdownEl) return;
+
+    dropdownEl.innerHTML = '';
+    if (results.length === 0) { dropdownEl.style.display = 'none'; return; }
+
+    results.forEach((item, idx) => {
+      const opt = document.createElement('div');
+      opt.className = 'report-copy-option';
+      if (item.exact) opt.classList.add('exact');
+      renderOptionText(opt, `${item.code}  ${item.name}`, value);
+      // mousedown 而非 click：搶在 input 的 blur 之前觸發，避免下拉先被關掉
+      opt.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        chooseSuggestion(item);
+        if (inputEl) inputEl.focus();
+      });
+      opt.addEventListener('mouseenter', () => { activeIndex = idx; highlightActive(); });
+      dropdownEl.appendChild(opt);
+    });
+    positionDropdown();
+    dropdownEl.style.display = 'block';
+  }
+
+  /** 輸入框鍵盤事件：上下選取、Enter 加入、Esc 關閉下拉 */
+  async function onInputKeydown(e) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (suggestions.length === 0) return;
+      e.preventDefault();
+      const dir = e.key === 'ArrowDown' ? 1 : -1;
+      activeIndex = (activeIndex + dir + suggestions.length) % suggestions.length;
+      highlightActive();
+      const el = dropdownEl && dropdownEl.children[activeIndex];
+      if (el) el.scrollIntoView({ block: 'nearest' });
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      if (suggestions.length > 0) { e.preventDefault(); closeDropdown(); }
+      return;
+    }
+
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      // 有標示項 → 選它；否則有候選 → 選第一個（完全匹配已排第一）
+      if (activeIndex >= 0 && suggestions[activeIndex]) {
+        chooseSuggestion(suggestions[activeIndex]);
+        return;
+      }
+      if (suggestions.length > 0) {
+        chooseSuggestion(suggestions[0]);
+        return;
+      }
+      // 無候選時退回原本的解析（例如清單外的純代號）
+      const value = inputEl.value.trim();
+      if (!value) return;
+      const result = await window.StockMatcher.resolveStock(value);
+      if (result.code && result.name) {
+        const added = addEntry(result.code, result.name);
+        swLog('輸入框 Enter 解析', { 輸入: value, 解析: `${result.code} ${result.name}`, 新增: added });
+        inputEl.value = '';
+        if (hintEl) hintEl.textContent = '';
+        closeDropdown();
+        renderList();
+      } else {
+        swLog('輸入框 Enter 匹配不到', { 輸入: value });
+        if (hintEl) hintEl.textContent = '匹配不到';
+      }
+    }
+  }
+
   /** 建立對話框 DOM */
   function buildModal() {
     overlay = document.createElement('div');
@@ -170,29 +323,34 @@ window.ReportCopy = (function () {
     leftLabel.textContent = '股票（輸入代號或公司名後 Enter）';
     leftCol.appendChild(leftLabel);
 
+    // 輸入框 + 下拉包在相對定位容器內，下拉以絕對定位浮在輸入框下方
+    const inputWrap = document.createElement('div');
+    inputWrap.className = 'report-copy-input-wrap';
+
     const input = document.createElement('input');
+    inputEl = input;
     input.type = 'text';
     input.className = 'report-copy-input';
     input.placeholder = '輸入代號或公司名…';
-    input.addEventListener('input', () => { if (hintEl) hintEl.textContent = ''; });
-    input.addEventListener('keydown', async (e) => {
-      if (e.key !== 'Enter') return;
-      e.preventDefault();
-      const value = input.value.trim();
-      if (!value) return;
-      const result = await window.StockMatcher.resolveStock(value);
-      if (result.code && result.name) {
-        const added = addEntry(result.code, result.name);
-        swLog('輸入框 Enter 解析', { 輸入: value, 解析: `${result.code} ${result.name}`, 新增: added });
-        input.value = '';
-        if (hintEl) hintEl.textContent = '';
-        renderList();
-      } else {
-        swLog('輸入框 Enter 匹配不到', { 輸入: value });
-        if (hintEl) hintEl.textContent = '匹配不到';
-      }
+    input.autocomplete = 'off';
+    input.addEventListener('input', () => {
+      if (hintEl) hintEl.textContent = '';
+      refreshDropdown();
     });
-    leftCol.appendChild(input);
+    input.addEventListener('keydown', (e) => onInputKeydown(e));
+    input.addEventListener('blur', () => {
+      // 延遲關閉，讓選項的 mousedown 先觸發（雖已用 preventDefault，仍多一層保險）
+      setTimeout(closeDropdown, 120);
+    });
+    inputWrap.appendChild(input);
+
+    leftCol.appendChild(inputWrap);
+
+    // 下拉掛在 overlay（modal 之外），用 fixed 定位，避免被 modal 的 overflow:auto 裁切
+    dropdownEl = document.createElement('div');
+    dropdownEl.className = 'report-copy-dropdown';
+    dropdownEl.style.display = 'none';
+    overlay.appendChild(dropdownEl);
 
     hintEl = document.createElement('div');
     hintEl.className = 'report-copy-hint';

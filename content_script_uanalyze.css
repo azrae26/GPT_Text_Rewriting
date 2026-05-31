@@ -197,11 +197,49 @@ textarea[name="content"] {
   border-color: #5b8cdb;
 }
 
+.report-copy-input-wrap {
+  position: relative;
+}
+
+.report-copy-dropdown {
+  position: fixed;        /* 掛在 overlay 上、座標由 JS 依輸入框算出，避免被 modal 的 overflow 裁切 */
+  z-index: 100001;        /* 高於 modal */
+  max-height: 240px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.report-copy-option {
+  padding: 6px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.report-copy-option.active {
+  background: #eef3fb;
+}
+
+.report-copy-option.exact {
+  font-weight: 600;
+  color: #ff0000;
+}
+
+/* 與輸入相符的片段高亮（部分或完全匹配時讓符合的字變紅粗體） */
+.report-copy-match {
+  color: #ff0000;
+  font-weight: 600;
+}
+
 .report-copy-hint {
-  min-height: 18px;
+  min-height: 9px;
   color: #d32f2f;
   font-size: 12px;
-  margin: 4px 0;
+  margin: 2px 0;
 }
 
 .report-copy-list {

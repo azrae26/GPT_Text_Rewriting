@@ -268,6 +268,46 @@ window.StockMatcher = {
   },
 
   /**
+   * 依使用者輸入（代號或公司名）搜尋候選股票，供對話框下拉提示。
+   * 排序保證：完全匹配（代號或名稱完全相同）一定排在最前，其後才是前綴匹配、包含匹配。
+   * 判斷是否「完全匹配」請看回傳項目的 exact 旗標。
+   * @param {string} input - 使用者輸入字串
+   * @param {number} [limit=30] - 最多回傳幾筆
+   * @returns {Promise<Array<{code:string, name:string, exact:boolean}>>}
+   */
+  async searchStocks(input, limit = 30) {
+    const q = (input || '').trim().toLowerCase();
+    if (!q) return [];
+
+    const list = await this._ensureStockListLoaded();
+    const scored = [];
+
+    for (const stock of list) {
+      const code = (stock.code || '').toLowerCase();
+      const name = (stock.name || '').toLowerCase();
+      const baseName = this._removeStockSuffixes(stock.name || '').toLowerCase();
+
+      // 優先級越小越靠前：0 完全匹配 → 1 前綴匹配 → 2 包含匹配
+      let rank = -1;
+      if (code === q || name === q || baseName === q) {
+        rank = 0;
+      } else if (code.startsWith(q) || name.startsWith(q) || baseName.startsWith(q)) {
+        rank = 1;
+      } else if (code.includes(q) || name.includes(q) || baseName.includes(q)) {
+        rank = 2;
+      }
+      if (rank === -1) continue;
+
+      scored.push({ code: stock.code, name: stock.name, rank });
+    }
+
+    // 穩定排序：rank 升冪；同 rank 維持清單原順序
+    scored.sort((a, b) => a.rank - b.rank);
+
+    return scored.slice(0, limit).map(s => ({ code: s.code, name: s.name, exact: s.rank === 0 }));
+  },
+
+  /**
    * 從報告內容抽取股票清單（已去重、依出現頻率排序），供對話框預填。
    * @param {string} content - 報告內容文字
    * @returns {Promise<Array<{code:string, name:string}>>}
