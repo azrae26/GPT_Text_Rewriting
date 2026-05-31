@@ -31,23 +31,150 @@ const StockManager = {
   // DOM 元素引用
   stockListInput: null,
   copyButton: null,
-  
+  searchInput: null,
+  searchCount: null,
+  // 搜尋狀態：matches 為每個匹配在文字中的起始索引，index 為目前停留的匹配序號
+  searchMatches: [],
+  searchIndex: -1,
+
   // 初始化
   init(stockListInputElement, triggerContentScriptUpdateFn) {
     LogUtils.log('初始化股票功能管理器');
     this.stockListInput = stockListInputElement;
     this.triggerContentScriptUpdate = triggerContentScriptUpdateFn;
     this.copyButton = document.getElementById('copy-stock-list');
-    
+
     // 綁定複製按鈕事件
     if (this.copyButton) {
       this.copyButton.addEventListener('click', () => this.copyStockList());
     }
-    
+
+    // 初始化搜尋框
+    this.initSearch();
+
     // 初始化股票爬蟲控制器
     StockCrawlerController.init();
-    
+
     LogUtils.log('股票功能管理器初始化完成');
+  },
+
+  // 初始化股票清單搜尋框
+  initSearch() {
+    this.searchInput = document.getElementById('stock-search');
+    this.searchCount = document.getElementById('stock-search-count');
+    const prevBtn = document.getElementById('stock-search-prev');
+    const nextBtn = document.getElementById('stock-search-next');
+    if (!this.searchInput) return;
+
+    // 輸入即時搜尋並跳到第一個匹配
+    this.searchInput.addEventListener('input', () => {
+      this.computeMatches();
+      this.gotoMatch(this.searchMatches.length ? 0 : -1);
+    });
+
+    // Enter：下一個；Shift+Enter：上一個
+    this.searchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        this.stepMatch(e.shiftKey ? -1 : 1);
+      }
+    });
+
+    if (prevBtn) prevBtn.addEventListener('click', () => { this.stepMatch(-1); this.searchInput.focus(); });
+    if (nextBtn) nextBtn.addEventListener('click', () => { this.stepMatch(1); this.searchInput.focus(); });
+  },
+
+  // 計算所有匹配的起始索引（不分大小寫）
+  computeMatches() {
+    const term = this.searchInput.value.trim().toLowerCase();
+    this.searchMatches = [];
+    this.searchIndex = -1;
+    if (term) {
+      const text = this.stockListInput.value.toLowerCase();
+      let from = 0, pos;
+      while ((pos = text.indexOf(term, from)) !== -1) {
+        this.searchMatches.push(pos);
+        from = pos + term.length;
+      }
+    }
+  },
+
+  // 往前/往後跳一個匹配（循環）
+  stepMatch(delta) {
+    if (!this.searchMatches.length) {
+      this.updateSearchCount();
+      return;
+    }
+    const count = this.searchMatches.length;
+    const next = this.searchIndex < 0
+      ? (delta > 0 ? 0 : count - 1)
+      : (this.searchIndex + delta + count) % count;
+    this.gotoMatch(next);
+  },
+
+  // 跳到指定序號的匹配：選取文字並捲動到可見位置
+  gotoMatch(i) {
+    this.searchIndex = i;
+    this.updateSearchCount();
+    if (i < 0) return;
+
+    const ta = this.stockListInput;
+    const start = this.searchMatches[i];
+    const end = start + this.searchInput.value.trim().length;
+    ta.setSelectionRange(start, end);
+
+    // 不搶走搜尋框焦點（避免中文輸入法組字中斷），用鏡像 div 實測匹配的像素高度，
+    // 這樣長行自動換行也能精準命中（單純數 \n 會少算換行的視覺行數）
+    const offsetTop = this.measureOffsetTop(ta, start);
+    const cs = getComputedStyle(ta);
+    let lineHeight = parseFloat(cs.lineHeight);
+    if (isNaN(lineHeight)) lineHeight = parseFloat(cs.fontSize) * 1.4;
+    // 讓匹配行落在可視區中央
+    ta.scrollTop = Math.max(0, offsetTop - ta.clientHeight / 2 + lineHeight / 2);
+  },
+
+  // 用鏡像 div 量測「文字索引 index 起點」距 textarea 內容頂端的像素高度（含換行）
+  measureOffsetTop(ta, index) {
+    const cs = getComputedStyle(ta);
+    const div = document.createElement('div');
+    // 複製所有會影響換行/排版的樣式
+    const props = ['fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'lineHeight',
+      'letterSpacing', 'wordSpacing', 'textTransform', 'textIndent',
+      'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'tabSize'];
+    props.forEach(p => { div.style[p] = cs[p]; });
+    div.style.position = 'absolute';
+    div.style.visibility = 'hidden';
+    div.style.whiteSpace = 'pre-wrap';
+    div.style.wordWrap = 'break-word';
+    div.style.overflowWrap = 'break-word';
+    div.style.boxSizing = 'border-box';
+    div.style.border = '0';
+    // clientWidth 已扣掉邊框與捲軸，加上 padding 後等於 textarea 實際換行寬度
+    div.style.width = ta.clientWidth + 'px';
+    div.style.top = '0';
+    div.style.left = '-9999px';
+
+    div.textContent = ta.value.substring(0, index);
+    const span = document.createElement('span');
+    span.textContent = ta.value.substring(index) || '.';
+    div.appendChild(span);
+    document.body.appendChild(div);
+    const offsetTop = span.offsetTop; // 相對 div padding box 頂端，已含 paddingTop
+    document.body.removeChild(div);
+    return offsetTop;
+  },
+
+  // 更新「目前/總數」提示
+  updateSearchCount() {
+    if (!this.searchCount) return;
+    const total = this.searchMatches.length;
+    if (!this.searchInput.value.trim()) {
+      this.searchCount.textContent = '';
+    } else if (!total) {
+      this.searchCount.textContent = '0';
+    } else {
+      this.searchCount.textContent = `${this.searchIndex + 1}/${total}`;
+    }
   },
 
   // 更新股票清單設定

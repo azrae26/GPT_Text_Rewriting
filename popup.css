@@ -1102,12 +1102,80 @@ input.form-input {
   background-color: #fafafa; /* 只讀狀態稍微灰底 */
 }
 
+/* 股票搜尋框（複製鈕左側） */
+.stock-search-box {
+  position: absolute;
+  top: 0px;
+  right: 52px;
+  margin-top: 10px; /* 對齊複製鈕（複製鈕從通用 button 樣式繼承了 margin-top:10px） */
+  height: 28px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  z-index: 10;
+  overflow: hidden;
+}
+
+.stock-search-input {
+  width: 100px;
+  height: 100%;
+  margin: 0;
+  border: none;
+  outline: none;
+  padding: 0 6px;
+  font-size: 12px;
+  background: transparent;
+  box-sizing: border-box;
+}
+
+.stock-search-count {
+  font-size: 11px;
+  color: #999;
+  padding: 0 4px;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.stock-search-nav {
+  width: 22px;
+  height: 100%;
+  margin: 0;
+  border: none;
+  border-left: 1px solid #eee;
+  border-radius: 0;
+  background: transparent;
+  cursor: pointer;
+  color: #666;
+  font-size: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  flex-shrink: 0;
+  align-self: stretch;
+  box-sizing: border-box;
+}
+
+.stock-search-nav i {
+  line-height: 1;
+  display: block;
+}
+
+.stock-search-nav:hover {
+  background: #f0f0f0;
+  color: #333;
+}
+
 .copy-button {
   position: absolute;
   top: 0px;
   right: 18px;
   width: 28px;
   height: 28px;
+  box-sizing: border-box;
   background: rgba(255, 255, 255, 0.9);
   border: 1px solid #ddd;
   border-radius: 4px;
