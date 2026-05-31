@@ -123,10 +123,17 @@ window.StockMatcher = {
     return container;
   },
 
-  /** 從文本中提取股票代碼和名稱 */
-  _getStockCodes(text, inputCode = '') {
-    const first100Chars = text.substring(0, 100);
-    
+  /**
+   * 從文本中提取股票代碼和名稱
+   * @param {string} text - 文本內容
+   * @param {string} inputCode - 指定股票代號（可選）
+   * @param {boolean} fullScan - true=用全文篩選候選股（複製報告用，抓整篇所有公司）；
+   *                              false（預設）=只用前 100 字篩選（編輯器主股判斷用）
+   */
+  _getStockCodes(text, inputCode = '', fullScan = false) {
+    // 篩選候選股的搜尋範圍：全文掃描時用整篇，否則只看開頭 100 字
+    const scanText = fullScan ? text : text.substring(0, 100);
+
     if (!window.stockListFromSettings) {
         LogUtils.warn('⚠️ 股票代碼提取 - 未找到股票列表');
         return { codes: [], matchedStocks: new Map(), stockCounts: new Map() };
@@ -156,7 +163,7 @@ window.StockMatcher = {
         return lowerSearchText.includes(lowerBaseName);
     };
     
-    // 只在前100字中搜尋可能的股票
+    // 在搜尋範圍（全文或前 100 字）中篩選可能出現的股票
     const potentialStocks = window.stockListFromSettings.filter(stock => {
         // 如果是輸入的代碼，直接加入（不區分大小寫）
         if (stock.code.toLowerCase() === inputCode.toLowerCase()) {
@@ -164,17 +171,17 @@ window.StockMatcher = {
             stockCounts.set(stock.code, 1);
             return true;
         }
-        
-        // 檢查代碼和名稱是否在前100字中出現（不區分大小寫）
-        const hasCode = first100Chars.toLowerCase().includes(stock.code.toLowerCase());
-        const hasName = matchText(stock, first100Chars);
-        const hasBaseNameIfSuffix = this._hasStockSuffixes(stock.name) && 
-            first100Chars.toLowerCase().includes(this._removeStockSuffixes(stock.name).toLowerCase());
-        
+
+        // 檢查代碼和名稱是否在搜尋範圍中出現（不區分大小寫）
+        const hasCode = scanText.toLowerCase().includes(stock.code.toLowerCase());
+        const hasName = matchText(stock, scanText);
+        const hasBaseNameIfSuffix = this._hasStockSuffixes(stock.name) &&
+            scanText.toLowerCase().includes(this._removeStockSuffixes(stock.name).toLowerCase());
+
         return hasCode || hasName || hasBaseNameIfSuffix;
     });
 
-    // 只對前100字中出現的股票計算全文出現次數
+    // 對篩選出的候選股計算全文出現次數
     potentialStocks.forEach(stock => {
         if (stock.code.toLowerCase() === inputCode.toLowerCase()) return;
         
@@ -314,7 +321,8 @@ window.StockMatcher = {
    */
   async getStocksFromContent(content) {
     await this._ensureStockListLoaded();
-    const { codes, matchedStocks } = this._getStockCodes(content || '', '');
+    // fullScan: true → 用整篇報告內容判斷公司，不只前 100 字
+    const { codes, matchedStocks } = this._getStockCodes(content || '', '', true);
     return codes.map(code => ({ code, name: matchedStocks.get(code) || '' }));
   },
 

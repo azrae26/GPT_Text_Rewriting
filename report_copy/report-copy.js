@@ -3,7 +3,7 @@
  *
  * 同一模組同時負責兩種頁面，依 URL / 訊息區分職責：
  * - edit 頁（…/research-reports/{id}/edit）：openDialog() 建立對話框、預填股票、
- *   收集勾選欄位與股票清單，送背景 copyReportToCreate。
+ *   收集勾選欄位與股票清單，送背景 copyReportToCreate；對話框定位在報告框左側不遮蓋內容。
  * - create 頁（…/research-reports/create）：監聽背景推送的 fillReportCopy，
  *   等欄位 render 後依勾選填入（只填不送出）。
  *
@@ -92,6 +92,7 @@ window.ReportCopy = (function () {
   // ========================= 對話框 =========================
 
   let overlay = null;          // 遮罩 DOM
+  let modalEl = null;          // 對話框本體
   let entries = [];            // [{code, name}]
   let listEl = null;           // 清單容器
   let hintEl = null;           // 「匹配不到」提示
@@ -103,9 +104,90 @@ window.ReportCopy = (function () {
 
   function isOpen() { return !!overlay; }
 
+  /** 讀取報告內容框位置，作為對話框定位錨點 */
+  function getReportBoxRect() {
+    const el = document.querySelector('textarea[name="content"]');
+    return el ? el.getBoundingClientRect() : null;
+  }
+
+  /** 依報告框左緣定位對話框（頂部對齊，不遮蓋報告框） */
+  function positionModal() {
+    if (!modalEl) return;
+    const anchor = getReportBoxRect();
+    const gap = 12;
+    const margin = 8;
+    const defaultWidth = 347;
+
+    modalEl.style.transform = 'none';
+    modalEl.style.minWidth = `${defaultWidth}px`;
+    modalEl.style.maxWidth = `${defaultWidth}px`;
+
+    if (!anchor) {
+      modalEl.style.left = '50%';
+      modalEl.style.top = '50%';
+      modalEl.style.transform = 'translate(-50%, -50%)';
+      modalEl.style.maxHeight = '85vh';
+      return;
+    }
+
+    let top = anchor.top;
+    modalEl.style.top = `${top}px`;
+    modalEl.style.maxHeight = `${Math.max(200, Math.min(anchor.height, window.innerHeight - margin * 2))}px`;
+
+    const maxRight = anchor.left - gap;
+    const maxWidth = maxRight - margin;
+    if (maxWidth < defaultWidth) {
+      const fitWidth = Math.max(200, maxWidth);
+      modalEl.style.minWidth = `${fitWidth}px`;
+      modalEl.style.maxWidth = `${fitWidth}px`;
+    }
+
+    const rect = modalEl.getBoundingClientRect();
+    modalEl.style.left = `${maxRight - rect.width}px`;
+
+    if (top + rect.height > window.innerHeight - margin) {
+      top = Math.max(margin, window.innerHeight - rect.height - margin);
+    }
+    if (top < margin) top = margin;
+    modalEl.style.top = `${top}px`;
+  }
+
+  function onDialogReposition() {
+    positionModal();
+    positionDropdown();
+  }
+
+  function onDialogKeydown(e) {
+    if (e.key === 'Escape') closeDialog();
+  }
+
+  function onDialogOutsideClick(e) {
+    if (!overlay) return;
+    if (e.target.closest && e.target.closest('.report-copy-modal, .report-copy-dropdown')) return;
+    if (modalEl && modalEl.contains(e.target)) return;
+    if (dropdownEl && dropdownEl.contains(e.target)) return;
+    closeDialog();
+  }
+
+  function attachDialogListeners() {
+    window.addEventListener('scroll', onDialogReposition, true);
+    window.addEventListener('resize', onDialogReposition);
+    document.addEventListener('keydown', onDialogKeydown);
+    document.addEventListener('mousedown', onDialogOutsideClick);
+  }
+
+  function detachDialogListeners() {
+    window.removeEventListener('scroll', onDialogReposition, true);
+    window.removeEventListener('resize', onDialogReposition);
+    document.removeEventListener('keydown', onDialogKeydown);
+    document.removeEventListener('mousedown', onDialogOutsideClick);
+  }
+
   function closeDialog() {
+    detachDialogListeners();
     if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
     overlay = null;
+    modalEl = null;
     entries = [];
     listEl = null;
     hintEl = null;
@@ -240,6 +322,7 @@ window.ReportCopy = (function () {
       // mousedown 而非 click：搶在 input 的 blur 之前觸發，避免下拉先被關掉
       opt.addEventListener('mousedown', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         chooseSuggestion(item);
         if (inputEl) inputEl.focus();
       });
@@ -301,15 +384,14 @@ window.ReportCopy = (function () {
   function buildModal() {
     overlay = document.createElement('div');
     overlay.className = 'report-copy-overlay';
-    overlay.addEventListener('click', (e) => { if (e.target === overlay) closeDialog(); });
 
-    const modal = document.createElement('div');
-    modal.className = 'report-copy-modal';
+    modalEl = document.createElement('div');
+    modalEl.className = 'report-copy-modal';
 
     const title = document.createElement('div');
     title.className = 'report-copy-title';
     title.textContent = '複製到新報告';
-    modal.appendChild(title);
+    modalEl.appendChild(title);
 
     const cols = document.createElement('div');
     cols.className = 'report-copy-cols';
@@ -317,11 +399,6 @@ window.ReportCopy = (function () {
     // 左欄：股票
     const leftCol = document.createElement('div');
     leftCol.className = 'report-copy-col report-copy-col-left';
-
-    const leftLabel = document.createElement('div');
-    leftLabel.className = 'report-copy-col-label';
-    leftLabel.textContent = '股票（輸入代號或公司名後 Enter）';
-    leftCol.appendChild(leftLabel);
 
     // 輸入框 + 下拉包在相對定位容器內，下拉以絕對定位浮在輸入框下方
     const inputWrap = document.createElement('div');
@@ -350,6 +427,7 @@ window.ReportCopy = (function () {
     dropdownEl = document.createElement('div');
     dropdownEl.className = 'report-copy-dropdown';
     dropdownEl.style.display = 'none';
+    dropdownEl.addEventListener('mousedown', (e) => e.stopPropagation());
     overlay.appendChild(dropdownEl);
 
     hintEl = document.createElement('div');
@@ -386,7 +464,7 @@ window.ReportCopy = (function () {
     });
 
     cols.appendChild(rightCol);
-    modal.appendChild(cols);
+    modalEl.appendChild(cols);
 
     // footer
     const footer = document.createElement('div');
@@ -404,10 +482,12 @@ window.ReportCopy = (function () {
 
     footer.appendChild(cancelBtn);
     footer.appendChild(confirmBtn);
-    modal.appendChild(footer);
+    modalEl.appendChild(footer);
 
-    overlay.appendChild(modal);
+    overlay.appendChild(modalEl);
     document.body.appendChild(overlay);
+    attachDialogListeners();
+    requestAnimationFrame(() => positionModal());
   }
 
   /** 按下「開始複製」：收集勾選欄位 + 股票清單，送背景 */

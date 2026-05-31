@@ -139,19 +139,19 @@ textarea[name="content"] {
 .report-copy-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: transparent;
+  pointer-events: none;
   z-index: 100000;
 }
 
 .report-copy-modal {
+  position: fixed;
+  pointer-events: auto;
   background: #fff;
   border-radius: 8px;
   padding: 20px;
-  min-width: 520px;
-  max-width: 90vw;
+  min-width: 347px;
+  max-width: min(347px, calc(100vw - 16px));
   max-height: 85vh;
   overflow: auto;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
@@ -167,7 +167,7 @@ textarea[name="content"] {
 
 .report-copy-cols {
   display: flex;
-  gap: 20px;
+  gap: 24px;
 }
 
 .report-copy-col {
@@ -175,7 +175,9 @@ textarea[name="content"] {
   min-width: 0;
 }
 
-.report-copy-col-left { flex: 1.4; }
+.report-copy-col-left { flex: 1.55; }
+
+.report-copy-col-right { flex: 0.92; }
 
 .report-copy-col-label {
   font-weight: 600;
@@ -203,6 +205,7 @@ textarea[name="content"] {
 
 .report-copy-dropdown {
   position: fixed;        /* 掛在 overlay 上、座標由 JS 依輸入框算出，避免被 modal 的 overflow 裁切 */
+  pointer-events: auto;
   z-index: 100001;        /* 高於 modal */
   max-height: 240px;
   overflow-y: auto;
@@ -246,8 +249,10 @@ textarea[name="content"] {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  max-height: 260px;
+  /* 固定預留 8 列高度；超過時僅清單區域捲動 */
+  height: calc(var(--report-copy-row-h, 30px) * 8 + 4px * 7);
   overflow-y: auto;
+  flex-shrink: 0;
 }
 
 .report-copy-row {
@@ -255,6 +260,8 @@ textarea[name="content"] {
   align-items: center;
   justify-content: space-between;
   padding: 5px 8px;
+  min-height: var(--report-copy-row-h, 30px);
+  box-sizing: border-box;
   background: #f4f6fa;
   border-radius: 4px;
 }
