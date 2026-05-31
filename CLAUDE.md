@@ -51,7 +51,7 @@ default.js
   → notification.js, undo.js, text-processor.js
   → translate/*, multiple_generation, google_translator
   → stock_matcher, diff-highlighter/*
-  → ui-manager.js, stock_report_helper/*, text_complete
+  → ui-manager.js, report_copy/report-copy.js, stock_report_helper/*, text_complete
   → content.js（最後）
 ```
 
@@ -72,6 +72,7 @@ default.js
 |------|------|
 | 新增設定項 | `settings.js`、`settings/settings-key.js`、`settings/settings-loader.js`、`popup.js`、`popup.html` |
 | 新增改寫功能 | `text-processor.js`（邏輯）、`ui-manager.js`（按鈕）、`content.js`（初始化） |
+| 修改複製到新報告 | `report_copy/report-copy.js`（對話框＋填表）、`ui-manager.js`（複製按鈕）、`background.js`（並行開分頁推送＋`reportCopyLog`）、`stock_matcher/stock-matcher.js`（`resolveStock`/`getStocksFromContent`） |
 | 修改 Notion 續寫 | `manifest.json`、`text_complete/auto-complete.js` |
 | 新增翻譯功能 | `translate/translate-service.js`（邏輯）、`translate/translate-adapter.js`（UI） |
 | 修改爬蟲邏輯 | `stock_crawl/stock-crawler-manager.js`、`background.js` |

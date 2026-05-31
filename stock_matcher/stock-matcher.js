@@ -228,6 +228,56 @@ window.StockMatcher = {
     };
   },
 
+  /**
+   * 確保股票清單已載入（供對外公開方法呼叫，避免呼叫端需先知道要呼叫 _loadStockListFromSettings）。
+   * @private
+   */
+  async _ensureStockListLoaded() {
+    if (!window.stockListFromSettings || window.stockListFromSettings.length === 0) {
+      await this._loadStockListFromSettings();
+    }
+    return window.stockListFromSettings || [];
+  },
+
+  /**
+   * 解析使用者輸入（股票代號或公司名）為 { code, name, raw }。
+   * 供「複製到新報告」對話框使用：呼叫端只需傳字串，內部自行確保股票清單已載入。
+   * 判斷是否匹配成功請用 (code && name) —— 兩者皆非空才算匹配到。
+   * @param {string} input - 股票代號或公司名
+   * @returns {Promise<{code:string, name:string, raw:string}>}
+   */
+  async resolveStock(input) {
+    const raw = (input || '').trim();
+    if (!raw) return { code: '', name: '', raw };
+
+    const list = await this._ensureStockListLoaded();
+
+    // 純代號（4~6 碼，可含一位英文字母，如 00878、2330、6770A）
+    if (/^\d{4,6}[A-Za-z]?$/.test(raw)) {
+      const stock = list.find(s => s.code.toLowerCase() === raw.toLowerCase());
+      return { code: raw, name: stock ? stock.name : '', raw };
+    }
+
+    // 否則當公司名處理：沿用既有匹配邏輯取出現頻率最高者
+    const { codes, matchedStocks } = this._getStockCodes(raw, '');
+    if (codes.length > 0) {
+      const code = codes[0];
+      return { code, name: matchedStocks.get(code) || '', raw };
+    }
+    return { code: '', name: '', raw };
+  },
+
+  /**
+   * 從報告內容抽取股票清單（已去重、依出現頻率排序），供對話框預填。
+   * @param {string} content - 報告內容文字
+   * @returns {Promise<Array<{code:string, name:string}>>}
+   */
+  async getStocksFromContent(content) {
+    await this._ensureStockListLoaded();
+    const { codes, matchedStocks } = this._getStockCodes(content || '', '');
+    return codes.map(code => ({ code, name: matchedStocks.get(code) || '' }));
+  },
+
   /** AI代號檢查功能 */
   async _checkStockCodeWithAI(stockCode, stockName, textContent) {
     try {

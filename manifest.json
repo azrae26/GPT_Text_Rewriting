@@ -69,6 +69,7 @@
         "diff-highlighter/diff-match-patch.js",
         "diff-highlighter/diff-highlighter.js",
         "ui-manager.js",
+        "report_copy/report-copy.js",
         "stock_report_helper/quick-copy.js",
         "stock_report_helper/stock-analyzer.js",
         "text_complete/auto-complete.js",

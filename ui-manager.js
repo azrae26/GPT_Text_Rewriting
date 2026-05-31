@@ -315,6 +315,15 @@ const UIManager = {
       buttonContainer.appendChild(generateButton);
     }
 
+    // 創建複製按鈕（edit 頁與 create 頁；複製本報告欄位到多檔新報告）
+    if (window.ReportCopy && /\/research-reports\/(\d+\/edit|create)/.test(location.pathname)) {
+      const copyButton = document.createElement('button');
+      copyButton.id = 'gpt-copy-button';
+      copyButton.textContent = '複製';
+      copyButton.addEventListener('click', () => window.ReportCopy.openDialog());
+      buttonContainer.appendChild(copyButton);
+    }
+
     // 創建自動替換暫停開關按鈕
     if (window.AutoReplaceManager) {
       const replaceToggleButton = document.createElement('button');

@@ -588,8 +588,73 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return;
   }
 
+  // 處理「複製到新報告」：對每檔股票並行開 create 分頁並推送填表資料
+  if (request.action === 'copyReportToCreate') {
+    const { fields, selected, stockCodes } = request;
+    LogUtils.log(`[ReportCopy] 收到 copyReportToCreate，共 ${stockCodes.length} 檔`, { codes: stockCodes, selected });
+
+    const openAndFill = async (stockCode) => {
+      const tab = await chrome.tabs.create({ url: REPORT_COPY_CREATE_URL, active: false });
+      LogUtils.log(`[ReportCopy] 建立分頁 ${tab.id}（${stockCode}）`);
+      await waitForReportTabLoad(tab.id);
+      LogUtils.log(`[ReportCopy] 分頁 ${tab.id} 載入完成（${stockCode}）`);
+      await sendFillToTab(tab.id, { fields, selected, stockCode });
+      LogUtils.log(`[ReportCopy] 分頁 ${tab.id} 已推送填表（${stockCode}）`);
+      return { tabId: tab.id, stockCode };
+    };
+
+    Promise.all(stockCodes.map(openAndFill))
+      .then(results => {
+        LogUtils.log(`[ReportCopy] 全部完成，共 ${results.length} 檔`, results);
+        sendResponse({ success: true, results });
+      })
+      .catch(error => {
+        LogUtils.error('[ReportCopy] 流程失敗:', error.message);
+        sendResponse({ success: false, error: error.message });
+      });
+    return true; // 保持連接等待異步響應
+  }
+
+  // 處理「複製到新報告」的日誌轉發（集中印在 service worker console）
+  if (request.action === 'reportCopyLog') {
+    const { message: logMessage, data, timestamp } = request;
+    LogUtils.log(`[ReportCopy ${timestamp}] ${logMessage}`, data || '');
+    return null;
+  }
+
   return false; // 未處理的消息，不需要保持連接
 });
+
+// === 「複製到新報告」背景輔助（移植自 F:\Cursor\Crawler\background.js 的推送式流程）===
+const REPORT_COPY_CREATE_URL = 'https://data.uanalyze.com.tw/research-reports/create';
+
+// 等待分頁載入完成（每個 listener 只認自己的 tabId，可並行）
+function waitForReportTabLoad(tabId) {
+  return new Promise(resolve => {
+    chrome.tabs.onUpdated.addListener(function listener(id, info) {
+      if (id === tabId && info.status === 'complete') {
+        chrome.tabs.onUpdated.removeListener(listener);
+        setTimeout(resolve, 100); // 給頁面額外時間初始化 content script
+      }
+    });
+  });
+}
+
+// 向分頁推送填表資料，失敗重試 3 次（content script 可能尚未就緒）
+async function sendFillToTab(tabId, payload) {
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      await chrome.tabs.sendMessage(tabId, { action: 'fillReportCopy', ...payload });
+      return;
+    } catch (error) {
+      retries--;
+      LogUtils.warn(`[ReportCopy] 推送分頁 ${tabId} 失敗（剩餘 ${retries} 次）: ${error.message}`);
+      if (retries > 0) await new Promise(r => setTimeout(r, 300));
+    }
+  }
+  throw new Error(`推送分頁 ${tabId} 填表資料失敗，已達最大重試次數`);
+}
 
 // 監聽插件啟動事件
 chrome.runtime.onInstalled.addListener((details) => {
