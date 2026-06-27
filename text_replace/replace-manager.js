@@ -31,56 +31,50 @@ const ReplaceManager = {
     STORAGE_KEY: 'replacePosition'
   },
 
-  // 🛡️ 防止重複初始化（SPA 頁面返回時防抖）
-  _isInitializing: false,
-  _initTimeout: null,
+  // 🛡️ 重建協調：重建流程含 await，用「進行中」旗標防重疊；進行中又被任何觸發呼叫 → 記待辦、本次結束補跑一次。
+  //   取代舊 _isInitializing 時間鎖——舊鎖建一次便鎖死 1000ms 並「拒絕且丟棄」這期間收到的觸發，而重建觸發是
+  //   mutation 驅動的一次性事件（網站載入文章後 DOM 即轉靜、不再有新觸發），被丟棄那次就再也不重建 → 主組「顯不出來」。
+  //   合流（永不丟棄）＋冪等（已建好就跳過）即根除，毋需時間鎖與自癒補丁。
+  _rebuilding: false,
+  _rebuildPending: false,
 
   /** 初始化替換介面 */
   async initializeReplaceUI() {
+    // 合流：建立中又被任何觸發呼叫 → 記下待辦，本次結束再補跑最後一次（永不丟棄、不重疊）
+    if (this._rebuilding) {
+      this._rebuildPending = true;
+      return;
+    }
+    this._rebuilding = true;
+    this._rebuildPending = false;
     try {
-      // ✨ 防抖：如果正在初始化，跳過重複調用
-      if (this._isInitializing) {
-        return;
-      }
-      
-      // 清除之前的計時器
-      if (this._initTimeout) {
-        clearTimeout(this._initTimeout);
-      }
-      
-      // 設置正在初始化標記
-      this._isInitializing = true;
-      
-      // 1000ms 後才允許下次初始化（避免 SPA 返回時的多次觸發）
-      this._initTimeout = setTimeout(() => {
-        this._isInitializing = false;
-      }, 1000);
-      
       // 先檢查是否應該啟用功能
       if (!window.shouldEnableFeatures()) {
         LogUtils.log('不在目標頁面，移除UI');
         this.removeReplaceUI();
-        this._isInitializing = false;
+        return;
+      }
+
+      // 冪等：替換 UI 已為「目前這個編輯器」建好就免重建——讓多個觸發（globalObserver／textarea 觀察者／URL 變化）
+      //   各自呼叫也只建一次、不閃爍。編輯器重掛後舊主組會脫離或消失（getElementById 找不到，或其 parentElement
+      //   不再等於新 textarea 的父層）→ 條件不成立，照常重建；若 textarea 元素被原地沿用（未重掛）則正確跳過。
+      const existingMain = document.getElementById('text-replace-main');
+      let textArea = window.TextAreaDetector.getTextArea();
+      if (existingMain && textArea && existingMain.parentElement === textArea.parentElement) {
         return;
       }
 
       // 先移除所有現有的UI元素
       this.removeReplaceUI();
 
-      // 使用統一的檢測工具
-      const textArea = window.TextAreaDetector.getTextArea();
+      // 找不到 textarea 則等待動態元素出現
       if (!textArea) {
-        // 🆕 如果找不到元素，嘗試等待動態元素出現
         LogUtils.log('未找到 textarea 元素，嘗試等待動態元素...');
         try {
-          const foundTextArea = await window.TextAreaDetector.waitForTextArea(3000);
+          textArea = await window.TextAreaDetector.waitForTextArea(3000);
           LogUtils.important('🎯 等待成功，找到動態 textarea 元素');
-          // 解除鎖定後遞迴調用
-          this._isInitializing = false;
-          return this.initializeReplaceUI();
         } catch (error) {
           LogUtils.error('等待文本區域元素超時:', error.message);
-          this._isInitializing = false;
           return;
         }
       }
@@ -134,12 +128,14 @@ const ReplaceManager = {
       LogUtils.error('初始化替換介面時出錯:', error);
       // 嘗試清理已創建的元素
       this.removeReplaceUI();
-      // 解除鎖定
-      this._isInitializing = false;
-      if (this._initTimeout) {
-        clearTimeout(this._initTimeout);
-      }
       return null;
+    } finally {
+      this._rebuilding = false;
+      // 建立期間又有觸發 → 補跑一次（合流最後狀態）；排到 macrotask 避免在同一堆疊深遞迴
+      if (this._rebuildPending) {
+        this._rebuildPending = false;
+        setTimeout(() => this.initializeReplaceUI(), 0);
+      }
     }
   },
   
@@ -805,10 +801,10 @@ const ReplaceManager = {
 
     if (isManual) {
       LogUtils.log('初始化手動替換組，使用存儲鍵名:', storageKey);
-      
-      // 初始化預覽
-      window.ManualReplaceManager.PreviewHighlight.initialize(textArea);
-      
+
+      // 預覽容器已由唯一呼叫者 ManualReplaceManager.initializeManualGroups 先行 initialize；
+      // 此處不再重複呼叫（原本雙重 initialize 會多建一個孤兒容器並多一次強制重排）。
+
       // 創建主組
       const mainGroup = createGroupFn(textArea, true);
       mainContainer.appendChild(mainGroup);

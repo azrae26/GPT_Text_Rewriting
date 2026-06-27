@@ -1,6 +1,6 @@
 ---
 name: slowdown-leak-debug
-description: 除錯本插件在 uanalyze 編輯頁「越點越慢／漸進卡頓／記憶體洩漏」。觸發詞：越點越慢、越用越卡、漸進變慢、記憶體洩漏、效能爬升、UI 越來越慢。
+description: 除錯本插件在 uanalyze 編輯頁「越點越慢／漸進卡頓／記憶體洩漏」，或「替換 UI／主組顯不出來、間歇消失、切文章後沒重建」。觸發詞：越點越慢、越用越卡、漸進變慢、記憶體洩漏、效能爬升、UI 越來越慢、顯不出來、主組消失、替換框沒出現。
 ---
 
 # 除錯「越點越慢」— 插件 UI 重建洩漏
@@ -35,10 +35,12 @@ chrome-devtools `evaluate_script` 跑 **main world**，插件 content script 跑
 - `replace-manager._setupTextAreaObserver`：用 MutationObserver 觀察 `textArea.parentElement` 偵測 textarea 被移除——但網站**連 parentElement 一起移除**，觀察者偵測不到自身根節點被移除、不會自我 disconnect → 每次洩漏一個，且閉包扣住**整個舊編輯器**不被 GC（最大宗）。
 - `auto-replace-manager.createInput`：每個 input 各建一個 measureDiv 掛 `document.body`，只靠 `beforeunload` 清（session 內**永不觸發**）→ 累積上百個。改**全模組共用單一 measureDiv**、刪 beforeunload。
 - `manual-replace._setupTextSelection`：`document` 上 `selectionchange` 每次重建都加不移除 → remove-before-add。
+- `manual-replace.PreviewHighlight.initialize`：每次 UI 重建被**呼叫兩次**（`initializeManualGroups` 與 `initializeReplaceGroups` 手動分支各一次），各建一個 `#replace-preview-container` append 到 `textArea.parentElement` 卻不先移除舊的 → 漏孤兒容器＋每次 init 多一次強制重排，**per-init 同步成本隨 session 爬升（越點越慢；不同於 selectionchange，純合成點擊也測得出，不需真實焦點）**。修法：`initialize` 冪等（建前 `this.container.remove()`）＋刪掉重複呼叫（保留唯一呼叫者 `initializeManualGroups` 那次）。
 - `highlight`／`manual-replace`／`diff-highlighter`：`ResizeObserver`、scroll 監聽建了不回收 → 單例化、重建前清。
 
 ## 5. 鐵則
 
 - **在「會被重複呼叫的 init／重建路徑」建立任何 observer/listener，必須重建前先 disconnect/remove 上一個**（存 `this._xxx`），或用元素旗標防重綁，或共用單例。違反 ＝ 洩漏。
 - 「於 unload 清理」對 session 內重建**無效**（beforeunload 不在點擊時觸發）；要綁到元素生命週期或用單例。
+- **重建觸發是 globalObserver 的 mutation 驅動「一次性」事件**：網站載入文章後 DOM 轉靜便不再觸發。重建入口若用「時間鎖**拒絕並丟棄**建立期間收到的觸發」（原 `initializeReplaceUI` 的 `_isInitializing` 建一次鎖死 1000ms），那唯一一次觸發被丟棄後就再也沒有下一次 → 主組移除後**永不重建 →「顯不出來／10 秒以上才出現」**。注意這與越點越慢相反：**主執行緒空閒、worstStall 小，是「沒被重建」非「被卡住」**。**去重要用「合流」不是「丟棄」**：建立中又被任何觸發呼叫 → 記待辦、本次結束補跑最後一次（`_rebuilding`／`_rebuildPending`，永不丟失），再加**冪等**（已為當前編輯器建好就跳過，免重複/閃爍）；如此時間鎖與自癒補丁都不需要。診斷指紋：DOM 探針見 `-main` 卻無 `+main`、且自動組未被移除（`removeReplaceUI` 沒跑）＝ 入口被鎖擋掉了重建。
 - DevReload ＝ offscreen 檔案監看 → 背景 `chrome.runtime.reload()`；改 content script 後**須重載擴充＋刷新頁面**才生效。chrome-devtools 的 `initScript` 註冊在 MCP 重連時會失效，需用 `evaluate` 重裝監測器。

@@ -490,7 +490,11 @@ const ManualReplaceManager = {
 
     initialize(textArea) {
       if (!textArea) return;
-      
+
+      // 冪等：先移除上一個預覽容器。本方法每次 UI 重建都呼叫，container 直接 append 到 textArea.parentElement，
+      // 不先移除舊的就會殘留孤兒容器（每次 init 漏一個，並多做一次強制重排）。存於 this.container 重建前先清。
+      if (this.container) this.container.remove();
+
       this.container = document.createElement('div');
       this.container.id = ManualReplaceManager.CONFIG.PREVIEW_CONTAINER_ID;
       
