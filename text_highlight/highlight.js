@@ -714,7 +714,10 @@ const TextHighlight = {
     setupTextAreaEvents() {
       const textArea = TextHighlight.DOMManager.elements.textArea;
       if (!textArea) return;
-      
+
+      // 先移除上一次綁定的滾動監聽，避免每次重新初始化（編輯器重掛）累積監聽器
+      if (this.cleanup) this.cleanup();
+
       // 使用 ScrollHelper 處理滾動事件
       const removeScrollListener = TextHighlight.ScrollHelper.bindScrollEvent(
         textArea,
@@ -807,18 +810,22 @@ const TextHighlight = {
         });
       };
 
+      // 先斷開上一個 ResizeObserver，避免每次重新初始化（編輯器重掛）累積：
+      // 累積的觀察者每次點擊一起 fire → updateAfterResize/forceUpdate 讀寫 layout → thrashing → 越點越慢
+      if (this._resizeObserver) this._resizeObserver.disconnect();
       const resizeObserver = new ResizeObserver(() => {
         // 清除之前的延遲執行
         if (resizeTimeout) {
           clearTimeout(resizeTimeout);
         }
-        
+
         // 延遲執行更新，避免過於頻繁的更新
         resizeTimeout = setTimeout(() => {
           updateAfterResize();
         }, 100);
       });
-      
+      this._resizeObserver = resizeObserver;
+
       const textArea = TextHighlight.DOMManager.elements.textArea;
       if (textArea) {
         resizeObserver.observe(textArea);

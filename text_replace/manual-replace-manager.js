@@ -518,15 +518,20 @@ const ManualReplaceManager = {
       textArea.parentElement.appendChild(this.container);
       
       // 使用 TextHighlight 的滾動處理器 - 滾動時使用輕量級更新
-      TextHighlight.ScrollHelper.bindScrollEvent(
+      // 先移除上一次的滾動監聽，避免每次 UI 重建累積
+      if (this._removeScroll) this._removeScroll();
+      this._removeScroll = TextHighlight.ScrollHelper.bindScrollEvent(
         textArea,
         () => this._updateScrollVisibility(textArea)
       );
-      
+
       this._setupResizeObserver(textArea);
     },
 
     _setupResizeObserver(textArea) {
+      // 先斷開上一個 ResizeObserver，避免每次 UI 重建（編輯器重掛）累積：
+      // 累積的觀察者每次點擊一起 fire → updateAfterResize 讀寫 layout → thrashing → 越點越慢
+      if (this._resizeObserver) this._resizeObserver.disconnect();
       let resizeTimeout;
 
       const updateAfterResize = () => {
@@ -571,7 +576,8 @@ const ManualReplaceManager = {
           updateAfterResize();
         }, 100);
       });
-      
+      this._resizeObserver = resizeObserver;
+
       if (textArea) {
         resizeObserver.observe(textArea);
       }
