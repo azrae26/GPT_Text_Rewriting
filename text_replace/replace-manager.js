@@ -257,7 +257,7 @@ const ReplaceManager = {
           LogUtils.important('🎯 檢測到新的 textarea 元素，初始化替換介面');
           await this.initializeReplaceUI();
         }
-      }, 300); // 300ms 防抖
+      }, 100); // 100ms 防抖（原 300ms：此 debounce 會 reset，疊在網站渲染表格之上，使手動替換 UI 點擊後 ~0.7s 才出現；早退守衛已防重複建立，縮短可省 ~200ms）
     });
 
     // 監聽整個 document 的變化
