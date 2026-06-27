@@ -75,16 +75,22 @@ const AutoReplaceManager = {
       input.className = 'replace-input';
       input.rows = 1;
       
-      // 創建共用的測量用div
-      const measureDiv = document.createElement('div');
-      measureDiv.style.cssText = `
-        position: fixed;
-        visibility: hidden;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-        padding: 6px 8px;
-      `;
-      document.body.appendChild(measureDiv);
+      // 共用的測量用 div：原本每個 input 各建一個並 append 到 body、只靠（session 內永不觸發的）beforeunload 清，
+      // 每次重建替換 UI 就在 body 累積上百個隱藏 div + beforeunload 閉包 → 記憶體/GC 壓力使越點越慢。
+      // 改為全模組共用同一個（每次使用前都會重設 width/font/內容，共用無副作用）。
+      let measureDiv = AutoReplaceManager._sharedMeasureDiv;
+      if (!measureDiv || !measureDiv.isConnected) {
+        measureDiv = document.createElement('div');
+        measureDiv.style.cssText = `
+          position: fixed;
+          visibility: hidden;
+          white-space: pre-wrap;
+          word-wrap: break-word;
+          padding: 6px 8px;
+        `;
+        document.body.appendChild(measureDiv);
+        AutoReplaceManager._sharedMeasureDiv = measureDiv;
+      }
       
       // 添加輸入事件來自動調整高
       const adjustHeight = (element) => {
@@ -150,12 +156,7 @@ const AutoReplaceManager = {
 
       // 將輸入框添加到容器中
       container.appendChild(input);
-      
-      // 在視窗關閉時清理測量元素
-      window.addEventListener('beforeunload', () => {
-        measureDiv.remove();
-      }, { once: true });
-      
+
       return container;
     },
 

@@ -816,6 +816,10 @@ const DiffHighlighter = {
   // 7. BIND EVENTS
   // ─────────────────────────────────────────────────
   bindEvents() {
+    // 先清掉上一次綁定的 scroll 監聽與 ResizeObserver，避免每次重新初始化（編輯器重掛）累積洩漏
+    if (this._removeScrollListener) { this._removeScrollListener(); this._removeScrollListener = null; }
+    if (this._resizeObserver) { this._resizeObserver.disconnect(); this._resizeObserver = null; }
+
     const ta      = this.contentTextarea;
     const introTa = this.introTextarea;
 

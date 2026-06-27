@@ -413,11 +413,16 @@ const ManualReplaceManager = {
     };
 
     // 🎯 簡化事件綁定，主要使用 selectionchange 事件
-    document.addEventListener('selectionchange', () => {
+    // 先移除上一次的 document selectionchange 監聽：本方法每次 UI 重建都呼叫，textarea 被換掉但這個
+    // document 層級監聽不會隨之消失 → 第 N 次點擊累積 N 個，每次游標/選取變動全部觸發（即使早退也要跑）
+    // → 線性越點越慢（替換組 UI 主要的 document 層級洩漏）。
+    if (this._onSelectionChange) document.removeEventListener('selectionchange', this._onSelectionChange);
+    this._onSelectionChange = () => {
       if (document.activeElement === textArea) {
         handleSelection();
       }
-    });
+    };
+    document.addEventListener('selectionchange', this._onSelectionChange);
     
     // 🔧 補充 mouseup 事件處理一些特殊情況
     textArea.addEventListener('mouseup', () => {

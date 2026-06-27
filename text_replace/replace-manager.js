@@ -202,6 +202,11 @@ const ReplaceManager = {
   
   /** 設置文本區域觀察器 */
   _setupTextAreaObserver(textArea) {
+    // 先斷開上一個觀察者：本方法每次 initializeReplaceUI（每次點擊）都呼叫，但它觀察 textArea.parentElement，
+    // 而網站重掛編輯器時是連 parentElement 一起移除 → 觀察者偵測不到「自身根節點被移除」，不會走到下方的
+    // observer.disconnect() → 每次點擊洩漏一個，且透過閉包持有整個脫離的舊編輯器（157 個 textarea 及其上所有
+    // 監聽器）使其無法被 GC → 記憶體與 GC 壓力隨點擊累積 → 越點越慢。改為重建前先斷開上一個。
+    if (this._textAreaObserver) this._textAreaObserver.disconnect();
     // 如果頁面上的文本區域被替換，重新初始化
     const observer = new MutationObserver((mutations) => {
       for (const mutation of mutations) {
@@ -214,10 +219,11 @@ const ReplaceManager = {
         }
       }
     });
-    
+    this._textAreaObserver = observer;
+
     // 監視文本區域的父元素
     if (textArea.parentElement) {
-      observer.observe(textArea.parentElement, { 
+      observer.observe(textArea.parentElement, {
         childList: true, 
         subtree: true 
       });
