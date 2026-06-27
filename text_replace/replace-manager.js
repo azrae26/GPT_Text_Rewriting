@@ -890,8 +890,11 @@ const ReplaceManager = {
         if (onInitialized) onInitialized();
       });
 
-      // 監聽文本變化
-      textArea.addEventListener('input', () => window.AutoReplaceManager.handleAutoReplace(textArea));
+      // 監聽文本變化（加旗標防重複綁定：initializeReplaceUI 可能被多次呼叫，原本無移除會累積 input 監聽器）
+      if (!textArea._autoReplaceBound) {
+        textArea._autoReplaceBound = true;
+        textArea.addEventListener('input', () => window.AutoReplaceManager.handleAutoReplace(textArea));
+      }
     }
   },
   

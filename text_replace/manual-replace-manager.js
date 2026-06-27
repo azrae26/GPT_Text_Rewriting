@@ -1016,8 +1016,12 @@ const ManualReplaceManager = {
   /** 設置文本區域變化監聽器 */
   /** 🔧 學習 TextHighlight：簡單的事件監聽策略 */
   _setupTextAreaChangeListener(textArea) {
+    // 加旗標防重複綁定：此方法可能對同一 textArea 多次呼叫，原本無移除會累積 input/compositionend 監聽器
+    if (textArea._manualReplaceBound) return;
+    textArea._manualReplaceBound = true;
+
     let updateScheduled = false;
-    
+
     const scheduleUpdate = () => {
       if (!updateScheduled) {
         updateScheduled = true;

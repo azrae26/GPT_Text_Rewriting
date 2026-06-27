@@ -185,17 +185,9 @@ class QuickCopy {
         this.setupUrlChangeListener();
     }
 
+    // 共用 SharedUrlWatcher（已涵蓋 popstate/hashchange），取代各自的全頁 URL 偵測觀察者
     setupUrlChangeListener() {
-        let lastUrl = location.href;
-        new MutationObserver(() => {
-            const url = location.href;
-            if (url !== lastUrl) {
-                lastUrl = url;
-                this.checkAndHandlePage();
-            }
-        }).observe(document, { subtree: true, childList: true });
-
-        window.addEventListener('popstate', () => this.checkAndHandlePage());
+        window.SharedUrlWatcher.subscribe(() => this.checkAndHandlePage());
     }
 
     checkAndHandlePage() {

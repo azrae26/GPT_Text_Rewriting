@@ -306,21 +306,18 @@ function initializeExtension() {
   // 開始第一次URL檢查
   checkAndInitialize();
 
-  // 監聽 URL 變化（添加節流）
-  let lastUrl = location.href;
-  new MutationObserver(() => {
-    const url = location.href;
+  // 監聽 URL 變化（共用 SharedUrlWatcher + 節流）
+  window.SharedUrlWatcher.subscribe(() => {
     const currentTime = Date.now();
-    
-    if (url !== lastUrl && currentTime - lastUrlCheckTime >= minCheckInterval) {
-      lastUrl = url;
+
+    if (currentTime - lastUrlCheckTime >= minCheckInterval) {
       lastUrlCheckTime = currentTime;
-      
+
       // 清除之前的計時器
       if (debounceTimer) {
         clearTimeout(debounceTimer);
       }
-      
+
       // 設置新的計時器
       debounceTimer = setTimeout(() => {
         if (!shouldEnableFeatures()) {
@@ -340,7 +337,7 @@ function initializeExtension() {
         checkAndInitialize();
       }, 500);  // 500ms 的防抖延遲
     }
-  }).observe(document, {subtree: true, childList: true});
+  });
 
   LogUtils.log('Content script fully loaded and initialized');
 

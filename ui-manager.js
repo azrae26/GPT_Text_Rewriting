@@ -44,15 +44,16 @@ const UIManager = {
 
     // 創建比對切換按鈕（三態循環：hide → show → off → hide）
     // hide：隱藏等價差異（預設，綠色），show：顯示等價差異（橘色），off：關閉（灰色）
-    const DIFF_MODES = ['hide', 'show', 'off'];
-    let diffModeIdx = 0;
+    this._DIFF_MODES = ['hide', 'show', 'off'];
+    this._diffModeIdx = 0;
     const diffToggleBtn = document.createElement('button');
+    this._diffToggleBtn = diffToggleBtn;
     diffToggleBtn.id = 'gpt-diff-toggle';
     diffToggleBtn.textContent = '比對';
     diffToggleBtn.classList.add('gpt-diff-toggle-hide');
     diffToggleBtn.addEventListener('click', () => {
-      diffModeIdx = (diffModeIdx + 1) % DIFF_MODES.length;
-      const mode = DIFF_MODES[diffModeIdx];
+      this._diffModeIdx = (this._diffModeIdx + 1) % this._DIFF_MODES.length;
+      const mode = this._DIFF_MODES[this._diffModeIdx];
       diffToggleBtn.className = '';
       diffToggleBtn.id = 'gpt-diff-toggle';
       if (mode !== 'off') diffToggleBtn.classList.add(`gpt-diff-toggle-${mode}`);
@@ -155,6 +156,9 @@ const UIManager = {
           return;
         }
 
+        // 翻譯時自動關閉比對
+        this.setDiffOff();
+
         if (window.TranslateManager && window.TranslateManager.handleTranslateClick) {
           window.TranslateManager.handleTranslateClick(translateButton);
         } else {
@@ -207,6 +211,9 @@ const UIManager = {
             googleTranslateButton.classList.remove('dropdown-open');
             return;
           }
+
+          // 翻譯時自動關閉比對
+          this.setDiffOff();
 
           // 設置選中的語言
           window.GoogleTranslateManager.setTargetLanguage(lang.code);
@@ -277,6 +284,8 @@ const UIManager = {
 
           // 如果已設置目標語言，直接開始翻譯
           if (window.GoogleTranslateManager.targetLanguage) {
+            // 翻譯時自動關閉比對
+            this.setDiffOff();
             LogUtils.log('開始翻譯，目標語言:', window.GoogleTranslateManager.targetLanguage);
             window.GoogleTranslateManager.handleGoogleTranslateClick(googleTranslateButton);
           } else {
@@ -367,20 +376,19 @@ const UIManager = {
     // 初始化按鈕狀態
     this.updateButtonStates();
 
-    // 監聽URL變化
-    let lastUrl = location.href;
-    new MutationObserver(async () => {
-      const url = location.href;
-      if (url !== lastUrl) {
-        lastUrl = url;
+    // 監聽 URL 變化：改用共用 SharedUrlWatcher，且全域只訂閱一次。
+    // 原本每次 _setupTextArea 都 new 一個永不斷開的全 document 觀察者 → 編輯器每次重掛就洩漏一個，越點越慢。
+    if (!this._urlWatchBound) {
+      this._urlWatchBound = true;
+      window.SharedUrlWatcher.subscribe(async () => {
         LogUtils.log('URL變化檢測到，重新檢查是否需要初始化UI');
         if (window.shouldEnableFeatures()) {
           await this.initializeAllUI();
         } else {
           this.removeAllUI();
         }
-      }
-    }).observe(document, {subtree: true, childList: true});
+      });
+    }
   },
 
   /** 處理雙擊改寫事件 */
@@ -524,6 +532,23 @@ const UIManager = {
     this.removeRewriteButton();
     this.removeStockCodeFeature();
     window.ReplaceManager.removeReplaceUI();
+  },
+
+  /**
+   * 強制將比對按鈕設為 off 狀態
+   * ⚠️ 翻譯功能會呼叫此方法，因為翻譯結果不應與原文比對
+   */
+  setDiffOff() {
+    if (!this._diffToggleBtn) return;
+    // 已是 off 就不重複操作
+    const currentMode = this._DIFF_MODES[this._diffModeIdx];
+    if (currentMode === 'off') return;
+
+    this._diffModeIdx = this._DIFF_MODES.indexOf('off'); // = 2
+    this._diffToggleBtn.className = '';
+    this._diffToggleBtn.id = 'gpt-diff-toggle';
+    if (window.DiffHighlighter) window.DiffHighlighter.toggle('off');
+    LogUtils.log('比對按鈕已自動設為 off');
   },
 
   /** 檢查文本內容並更新按鈕狀態 */

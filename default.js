@@ -451,8 +451,42 @@ const TextAreaDetector = {
   }
 };
 
+// === 共用 URL 變化監聽（單一真相）===
+// 意圖：原本 content.js / ui-manager.js / stock-analyzer.js / quick-copy.js 各自開一個「全 document subtree
+//       MutationObserver」只為輪詢 location.href —— 每次 DOM 變動都觸發 4 個觀察者；ui-manager 更在每次
+//       _setupTextArea 都新建一個永不斷開的觀察者，編輯器重掛就洩漏一個（越點越多越慢）。收斂成這「一個」共用觀察者。
+// gotcha：content script 在 isolated world，無法 patch 主世界 router 的 history.pushState，故仍以 DOM 變動輪詢
+//        location.href 跨世界偵測 SPA 路由；popstate/hashchange 補上前進後退與 hash 導航。
+const SharedUrlWatcher = (() => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return { subscribe() { return () => {}; }, check() {} };
+  }
+  const subscribers = new Set();
+  let lastUrl = location.href;
+  const notify = () => {
+    const url = location.href;
+    if (url === lastUrl) return; // 早退：絕大多數 DOM 變動不伴隨 URL 變化，成本僅一次字串比對
+    const prev = lastUrl;
+    lastUrl = url;
+    subscribers.forEach(cb => {
+      try { cb(url, prev); } catch (e) { LogUtils.error('SharedUrlWatcher 回呼錯誤', e); }
+    });
+  };
+  // MutationObserver 回呼本身已按 microtask 批次合併，每批只比對一次 location.href
+  new MutationObserver(notify).observe(document, { subtree: true, childList: true });
+  window.addEventListener('popstate', notify);
+  window.addEventListener('hashchange', notify);
+  return {
+    /** 訂閱 URL 變化，回傳取消訂閱函式。cb(newUrl, prevUrl) */
+    subscribe(cb) { if (typeof cb === 'function') subscribers.add(cb); return () => subscribers.delete(cb); },
+    /** 保險：外部可主動觸發一次比對 */
+    check: notify
+  };
+})();
+
 // 將 DefaultSettings、LogUtils 和 TextAreaDetector 暴露到適當的全域物件
 if (typeof window !== 'undefined') {
+  window.SharedUrlWatcher = SharedUrlWatcher;
   // 瀏覽器環境
   window.DefaultSettings = DefaultSettings;
   window.LogUtils = LogUtils;

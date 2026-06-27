@@ -340,18 +340,9 @@ class StockAnalyzer {
         this.setupUrlChangeListener();
     }
 
-    // 設置 URL 監聽器
+    // 設置 URL 監聽器：共用 SharedUrlWatcher（已涵蓋 popstate/hashchange），取代各自的全頁 URL 偵測觀察者
     setupUrlChangeListener() {
-        let lastUrl = location.href;
-        new MutationObserver(() => {
-            const url = location.href;
-            if (url !== lastUrl) {
-                lastUrl = url;
-                this.checkAndHandlePage();
-            }
-        }).observe(document, { subtree: true, childList: true });
-
-        window.addEventListener('popstate', () => this.checkAndHandlePage());
+        window.SharedUrlWatcher.subscribe(() => this.checkAndHandlePage());
     }
 
     // 檢查和處理頁面

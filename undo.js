@@ -8,13 +8,17 @@ const UndoManager = {
   MAX_HISTORY_SIZE: 50,
   isUndoRedoOperation: false,
   inputHistories: new Map(),
+  _autoIdSeq: 0, // 給無 name/id 的元素分配穩定唯一序號
 
-  /** 獲取輸入元素的唯一標識 */
-  getInputId: element => 
-    element ? 
-    `input-${element.tagName.toLowerCase()}-${element.name || element.id || 
-      Array.from(document.querySelectorAll(element.tagName)).indexOf(element)}` :
-    (LogUtils.error('getInputId: element is undefined'), 'unknown'),
+  /** 獲取輸入元素的唯一標識
+   * 意圖：原本對無 name/id 的元素用 querySelectorAll(tagName).indexOf —— 每次呼叫就全頁掃同類元素 O(n)，
+   * 在 157+ textarea 的編輯頁演變成每次 DOM 變動 O(n²)。改為在元素上快取一次性序號：O(1)，且不隨 DOM 位置漂移更穩定。 */
+  getInputId(element) {
+    if (!element) return (LogUtils.error('getInputId: element is undefined'), 'unknown');
+    if (element._undoId) return element._undoId;
+    const key = element.name || element.id || `auto${++this._autoIdSeq}`;
+    return (element._undoId = `input-${element.tagName.toLowerCase()}-${key}`);
+  },
 
   /** 檢查是否為有效的輸入元素 */
   isValidInput: element => 
@@ -169,22 +173,35 @@ document.addEventListener('keydown', event => {
   }
 });
 
-// 初始化所有輸入元素
+const INPUT_SELECTOR =
+  `textarea, input[type="${['text', 'search', 'url', 'tel', 'password'].join('"], input[type="')}"]`;
+
+// 首次全頁掃描（僅 DOMContentLoaded 用一次）
 const initializeInputs = () => {
-  document.querySelectorAll(
-    `textarea, input[type="${['text', 'search', 'url', 'tel', 'password'].join('"], input[type="')}"]`
-  ).forEach(input => {
+  document.querySelectorAll(INPUT_SELECTOR).forEach(input => {
     if (!input._historyInitialized) UndoManager.initInputHistory(input);
   });
+};
+
+// 只初始化「本批新增子樹」內的輸入元素，成本與新增量成正比，而非全頁元素數平方
+const initializeInputsIn = node => {
+  if (!node || node.nodeType !== 1) return;
+  if (UndoManager.isValidInput(node) && !node._historyInitialized) UndoManager.initInputHistory(node);
+  if (node.querySelectorAll) {
+    node.querySelectorAll(INPUT_SELECTOR).forEach(input => {
+      if (!input._historyInitialized) UndoManager.initInputHistory(input);
+    });
+  }
 };
 
 // 在 DOM 加載完成後初始化
 document.addEventListener('DOMContentLoaded', initializeInputs);
 
-// 監聽 DOM 變化，處理新添加的輸入元素
+// 監聽 DOM 變化：原本每次變動都 setTimeout 全頁重掃（O(n²)，157 textarea 時 ~36ms/次且越點越多越慢）。
+// 改為只處理本批 addedNodes 的子樹 —— 不再全頁重掃。
 new MutationObserver(mutations => {
-  if (mutations.some(mutation => mutation.addedNodes.length > 0)) {
-    setTimeout(initializeInputs, 100);
+  for (const mutation of mutations) {
+    for (const node of mutation.addedNodes) initializeInputsIn(node);
   }
 }).observe(document.body, { childList: true, subtree: true });
 
