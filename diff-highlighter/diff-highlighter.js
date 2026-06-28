@@ -1039,9 +1039,6 @@ const DiffHighlighter = {
       }
     }
 
-    const t2 = new Date(); const ts2 = `${t2.getHours().toString().padStart(2,'0')}:${t2.getMinutes().toString().padStart(2,'0')}:${t2.getSeconds().toString().padStart(2,'0')}`;
-    console.log(`[DiffHighlighter][${ts2}] 📍 _makeBubble type=${type} label=${JSON.stringify(label)} posIdx=${posIdx} posStr=${JSON.stringify(posStr)}`);
-
     const positions = calc.calculatePosition(ta, posIdx, contentText, posStr, styles);
     if (!positions || positions.length === 0) return null;
 
@@ -1059,8 +1056,6 @@ const DiffHighlighter = {
     // 水平中心（相對於 overlay 容器左邊），整體左移 1px
     // delete 型取右緣，對準刪除縫隙；其他型取中心
     const centerX = (useRightEdge ? rightMost : (leftMost + rightMost) / 2);
-    const t3 = new Date(); const ts3 = `${t3.getHours().toString().padStart(2,'0')}:${t3.getMinutes().toString().padStart(2,'0')}:${t3.getSeconds().toString().padStart(2,'0')}`;
-    console.log(`[DiffHighlighter][${ts3}]   → positions[0]={top:${positions[0].top.toFixed(1)},left:${positions[0].left.toFixed(1)},w:${positions[0].width.toFixed(1)}} leftMost=${leftMost.toFixed(1)} rightMost=${rightMost.toFixed(1)} centerX=${centerX.toFixed(1)}`);
 
     // 泡泡頂端（相對於 textarea 頂端），加上 OVERLAY_TOP_EXTRA 轉換到容器座標（容器向上偏移了 OVERLAY_TOP_EXTRA）
     const absTop   = positions[0].top - this.BUBBLE_H - this.BUBBLE_GAP + this.BUBBLE_VERTICAL_ADJUST + this.OVERLAY_TOP_EXTRA;
