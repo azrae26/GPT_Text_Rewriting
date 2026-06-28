@@ -693,9 +693,11 @@ async function autoExportSettings() {
       : allData;
     
     // 組合匯出資料（跟手動匯出格式一致）
+    // 單一真相：appName/version 一律取自 SETTINGS_IDENTIFIER，禁止再硬編。
+    // gotcha：曾硬編成 'GPT Text Rewriting'（空格）與驗證用的底線版漂移，
+    // 導致自動匯出檔無法被「匯入設定」接受（驗證見 settings-manager validateSettingsFile）。
     const exportData = {
-      appName: 'GPT Text Rewriting',
-      version: '1.0',
+      ...GlobalSettings.SETTINGS_IDENTIFIER,
       exportType: 'auto',
       exportTime: new Date().toISOString(),
       settings: filteredSettings

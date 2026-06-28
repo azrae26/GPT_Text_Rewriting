@@ -426,10 +426,14 @@ class SettingsFileManager {
   }
 
   // 驗證設定檔
+  // 容忍歷史備份的 appName 變體：自動匯出曾把 appName 硬編成 'GPT Text Rewriting'（空格），
+  // 與此處底線版 'GPT_Text_Rewriting' 漂移。改寫入端不回溯既有檔，故讀取端把空白/底線正規化後比較，
+  // 讓那些舊自動匯出檔仍可匯入（語意漂移：讀取端容忍舊格式）。
   validateSettingsFile(importedData) {
+    if (!importedData) return false;
+    const normalize = s => String(s || '').replace(/[\s_]+/g, '').toLowerCase();
     return (
-      importedData &&
-      importedData.appName === this.settings.SETTINGS_IDENTIFIER.appName &&
+      normalize(importedData.appName) === normalize(this.settings.SETTINGS_IDENTIFIER.appName) &&
       importedData.version === this.settings.SETTINGS_IDENTIFIER.version
     );
   }
