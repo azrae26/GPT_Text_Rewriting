@@ -1,6 +1,6 @@
 ---
 name: slowdown-leak-debug
-description: 除錯本插件在 uanalyze 編輯頁「越點越慢／漸進卡頓／記憶體洩漏」，或「替換 UI／主組顯不出來、間歇消失、切文章後沒重建」。觸發詞：越點越慢、越用越卡、漸進變慢、記憶體洩漏、效能爬升、UI 越來越慢、顯不出來、主組消失、替換框沒出現。
+description: 除錯本插件在 uanalyze 編輯頁「越點越慢／漸進卡頓／記憶體洩漏」、「滾動／捲動超卡、高亮跟隨慢」，或「替換 UI／主組顯不出來、間歇消失、切文章後沒重建」。觸發詞：越點越慢、越用越卡、漸進變慢、記憶體洩漏、效能爬升、UI 越來越慢、滾動卡、滾動超卡、捲動卡頓、高亮跟隨慢、scroll 卡、顯不出來、主組消失、替換框沒出現。
 ---
 
 # 除錯「越點越慢」— 插件 UI 重建洩漏
@@ -44,3 +44,20 @@ chrome-devtools `evaluate_script` 跑 **main world**，插件 content script 跑
 - 「於 unload 清理」對 session 內重建**無效**（beforeunload 不在點擊時觸發）；要綁到元素生命週期或用單例。
 - **重建觸發是 globalObserver 的 mutation 驅動「一次性」事件**：網站載入文章後 DOM 轉靜便不再觸發。重建入口若用「時間鎖**拒絕並丟棄**建立期間收到的觸發」（原 `initializeReplaceUI` 的 `_isInitializing` 建一次鎖死 1000ms），那唯一一次觸發被丟棄後就再也沒有下一次 → 主組移除後**永不重建 →「顯不出來／10 秒以上才出現」**。注意這與越點越慢相反：**主執行緒空閒、worstStall 小，是「沒被重建」非「被卡住」**。**去重要用「合流」不是「丟棄」**：建立中又被任何觸發呼叫 → 記待辦、本次結束補跑最後一次（`_rebuilding`／`_rebuildPending`，永不丟失），再加**冪等**（已為當前編輯器建好就跳過，免重複/閃爍）；如此時間鎖與自癒補丁都不需要。診斷指紋：DOM 探針見 `-main` 卻無 `+main`、且自動組未被移除（`removeReplaceUI` 沒跑）＝ 入口被鎖擋掉了重建。
 - DevReload ＝ offscreen 檔案監看 → 背景 `chrome.runtime.reload()`；改 content script 後**須重載擴充＋刷新頁面**才生效。chrome-devtools 的 `initScript` 註冊在 MCP 重連時會失效，需用 `evaluate` 重裝監測器。
+
+## 6. 滾動超卡 ≠ 越點越慢
+
+**意圖**：overlay（高亮／替換預覽／diff 標註）跟隨 textarea 內部捲動，本該是「整體平移」的廉價操作。卡頓不是因為元素多，而是**插件改 overlay 屬性的方式，連帶觸發了宿主網站重算整頁**。
+
+**不變量（讀 code 看不出，必知）**：uanalyze 的 SPA 掛了 `MutationObserver(document.body, {childList:true, subtree:true, attributes:true})` 監聽**整個 body 的所有屬性變動**。overlay 都插在 textarea 容器內（body 子樹），所以插件改 overlay 的任何 inline style，都被它捕捉 → 觸發網站重算整頁（minified `D` 函式，可達數百 ms/次）。
+
+**鐵則**：
+- overlay 滾動跟隨**只准改 `transform`**（compositor 屬性，不被當 style 變動觸發宿主）。要藏元素用 `transform: translate(-99999px,-99999px)` 移出視窗、靠容器 `overflow:hidden` 裁切——**絕不每幀改 `visibility`／`display`／任何 inline style**；建立元素時亦同（否則建立那刻就觸發）。
+- 復用元素**只寫會變的 transform**，不重寫 display/color（同屬會觸發宿主的 style 變動）。穩定復用 key（用 match 起始索引，非可見陣列索引）避免 `childList` churn（create/remove 同樣觸發宿主）。
+- 三模組共用 `TextHighlight.SharedScroll` 單一 rAF（單一真相，模仿 default.js 的 `SharedUrlWatcher`），**禁止各自 `bindScrollEvent`**（各自綁＋各自讀 layout 會跨模組 read-after-write 強制重排）。
+
+**診斷陷阱（避免再繞遠路）**：
+- **用 PerformanceObserver `longtask` 量，別用 rAF 間隔**：視窗被別的視窗遮擋（occluded）時 Chrome 把該分頁 rAF 節流到 ~1fps，造成「idle 也 1000ms/幀」的假象，會把你導向錯誤方向；longtask 反映真實主執行緒阻塞、不受節流影響。`document.visibilityState` 仍是 `visible` 也可能 occluded。
+- longtask 即使分頁在背景也準 → **可程式自驅動**（迴圈 `ta.scrollTop=…` ＋ longtask observer），不必每次叫使用者真人滾。
+- **二分定位**：逐一 detach 各模組 overlay 容器，看哪個讓 longtask 歸零 → 鎖定肇事模組；再擋掉插件 scroll handler、自己逐項重現它的操作（改 transform／改 visibility／querySelectorAll）看哪一項觸發。
+- `navigate` 的 `initScript` 可 hook `MutationObserver.prototype.observe`，揭露宿主到底 observe 哪個節點、哪些 options。
