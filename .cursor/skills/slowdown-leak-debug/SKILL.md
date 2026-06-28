@@ -61,3 +61,20 @@ chrome-devtools `evaluate_script` 跑 **main world**，插件 content script 跑
 - longtask 即使分頁在背景也準 → **可程式自驅動**（迴圈 `ta.scrollTop=…` ＋ longtask observer），不必每次叫使用者真人滾。
 - **二分定位**：逐一 detach 各模組 overlay 容器，看哪個讓 longtask 歸零 → 鎖定肇事模組；再擋掉插件 scroll handler、自己逐項重現它的操作（改 transform／改 visibility／querySelectorAll）看哪一項觸發。
 - `navigate` 的 `initScript` 可 hook `MutationObserver.prototype.observe`，揭露宿主到底 observe 哪個節點、哪些 options。
+
+## 7. 打字卡頓 ≠ 越點越慢、≠ 滾動超卡
+
+**意圖**：打字時高亮／替換預覽／diff 泡泡／股票四個 overlay 模組各自綁 input → 每字重算位置＋重建 DOM。重建改 overlay inline style，觸發宿主 body observer 重算整頁（同 §6 不變量）→ 每字卡頓。**這不是洩漏**（無累積、worstStall 不隨點擊爬升），是「每字都做太多固定工」；與滾動超卡同根（宿主 observer），但觸發源是**文字變動**非捲動。
+
+**目標＝即時零延遲**（使用者鐵則）：overlay 要與打字同步更新；防抖（停頓才重建）的延遲在使用者眼中**就是 lag、不接受**。故正解是讓「每字的工作夠便宜」（增量），而非延後。
+
+**歸因**：卸掉某 overlay 容器（`.remove()`）再連打量 longtask，差值即該模組成本——實測 **diff 泡泡重建是最大宗**（卸 `#gpt-diff-overlay-container` 後每字阻塞掉大半）。注意卸高亮容器會使該模組 thrash、數據失真，以 diff 卸載前後差為準。
+
+**不變量**：每模組有兩條獨立路徑——捲動跟隨只改 transform（廉價，§6）；打字才全量重建（昂貴）。優化打字勿動捲動路徑。diff overlay 容器已 `contain:strict`（layout 孤島），故 diff 成本主要在「`clearBubbles` innerHTML='' 全量重建＋逐泡泡 `calculatePosition` 量測」，非宿主重排。
+
+**鐵則（增量）**：
+- 統一走 `default.js` 的 `SharedTypingScheduler.create(fn)` 排程 input→overlay 更新（單一真相）；**預設即時模式**（rAF 合流、零延遲）。
+- 即時要快：**只重比/重渲染受編輯影響的行範圍，其餘泡泡復用**（鍵：型別+文字+錨點；位移者只更新 transform，不重建 DOM）。DMP 本身已靠前後綴裁剪便宜，瓶頸在 `renderBubbles` 全量重建。
+- **防抖是備援、非預設**：`SharedTypingScheduler.enabled`（預設 false）。它讓打字當下不阻塞但 overlay 延後＝延遲，僅供 A/B 或臨時退路，**勿當正解**（違反即時鐵則）。
+
+**診斷**：量「連打期間 longtask 數/每字阻塞」——即時模式每字一個 longtask＝該幀重建太重，要增量化。非破壞性實測：快照 textarea 值 → 程式驅動連打（中間插入最壞，逼全部位置位移）→ 還原並驗證值一致，勿污染使用者真實文件。同 §1：trace 的 ForcedReflow 會把時間算給宿主 InputLabel，那是宿主被插件逼著重排，A/B（關插件）才是裁判。

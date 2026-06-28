@@ -918,23 +918,12 @@ const TextHighlight = {
     setupInputEvents() {
       const textArea = TextHighlight.DOMManager.elements.textArea;
       if (!textArea) return;
-      
-      let updateScheduled = false;
-      
-      const scheduleUpdate = () => {
-        if (!updateScheduled) {
-          updateScheduled = true;
-          requestAnimationFrame(() => {
-            TextHighlight.updateHighlights();
-            updateScheduled = false;
-          });
-        }
-      };
 
-      // 監聽輸入事件
+      // 改用共用打字防抖：連打時不每幀全量重算高亮位置（重路徑），停頓才更新。
+      // 捲動跟隨另走 transform 路徑（updateHighlightsVisibility/followScroll），不受此影響。
+      const scheduleUpdate = window.SharedTypingScheduler.create(() => TextHighlight.updateHighlights());
+
       textArea.addEventListener('input', scheduleUpdate);
-
-      // 監聽 compositionend 事件
       textArea.addEventListener('compositionend', scheduleUpdate);
     }
   },
@@ -1202,7 +1191,6 @@ const TextHighlight = {
 
     // 🔧 修復殘留問題：當文字內容改變時，先完全清理所有高亮元素
     if (this._lastText && this._lastText !== text) {
-      LogUtils.log('文字內容已改變，清理舊的高亮元素');
       this.DOMManager.clearHighlights();
       
       // 清理位置計算快取，確保重新計算

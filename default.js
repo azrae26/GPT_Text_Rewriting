@@ -484,9 +484,42 @@ const SharedUrlWatcher = (() => {
   };
 })();
 
+// 打字更新排程器（單一真相：四個 overlay 模組共用同一排程策略）
+// 意圖：input 事件要更新 overlay（高亮／替換預覽／diff 泡泡／股票）。兩種模式：
+//   • enabled=false（即時，預設）：rAF 合流，每幀最多一次，overlay 與打字同步、零延遲。
+//     使用者要的就是即時——「延遲＝lag，不退讓」。故即時要快得靠各模組做成增量（只重算改變的部分），
+//     而非靠延後（防抖）。
+//   • enabled=true（防抖）：停頓 WAIT 後才重建，連打不重建。打字當下順但 overlay 落後游標。
+//     此模式為備援/實驗（A/B 比較用），預設關閉。
+const SharedTypingScheduler = {
+  enabled: false,  // 預設即時（rAF）；要實驗防抖才設 true
+  WAIT: 120,
+  MAX_WAIT: 1500,
+  /** 建立排程器；回傳函式綁到 input/compositionend。依 enabled 於呼叫時切換即時/防抖（可執行期 A/B） */
+  create(fn, wait = SharedTypingScheduler.WAIT, maxWait = SharedTypingScheduler.MAX_WAIT) {
+    let timer = null, firstPendingAt = 0, rafPending = false;
+    return function scheduled() {
+      if (!SharedTypingScheduler.enabled) {
+        // 即時模式：rAF 合流，同幀多次 input 只跑一次，仍與打字同步
+        if (rafPending) return;
+        rafPending = true;
+        requestAnimationFrame(() => { rafPending = false; fn(); });
+        return;
+      }
+      // 防抖模式：尾隨 + MAX_WAIT 補償
+      const now = performance.now();
+      if (timer === null) firstPendingAt = now;
+      else clearTimeout(timer);
+      const delay = Math.max(0, Math.min(wait, maxWait - (now - firstPendingAt)));
+      timer = setTimeout(() => { timer = null; fn(); }, delay);
+    };
+  }
+};
+
 // 將 DefaultSettings、LogUtils 和 TextAreaDetector 暴露到適當的全域物件
 if (typeof window !== 'undefined') {
   window.SharedUrlWatcher = SharedUrlWatcher;
+  window.SharedTypingScheduler = SharedTypingScheduler;
   // 瀏覽器環境
   window.DefaultSettings = DefaultSettings;
   window.LogUtils = LogUtils;

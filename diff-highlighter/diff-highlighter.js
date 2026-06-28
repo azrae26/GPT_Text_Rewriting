@@ -825,8 +825,9 @@ const DiffHighlighter = {
     const ta      = this.contentTextarea;
     const introTa = this.introTextarea;
 
-    // 任一框輸入 → 立即排程 diff（rAF 保護，下一幀執行）
-    const onInput = () => this.scheduleDiff();
+    // 任一框輸入 → 防抖排程 diff：連打時不每字跑整份 DMP+全量重建泡泡（最重路徑），停頓才比對。
+    // scheduleDiff 內仍有 rAF 保護與 _rafPending 去重，對齊下一幀執行。
+    const onInput = window.SharedTypingScheduler.create(() => this.scheduleDiff());
     ta.addEventListener('input', onInput);
     if (introTa) introTa.addEventListener('input', onInput);
 

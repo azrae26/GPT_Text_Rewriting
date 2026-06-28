@@ -588,10 +588,7 @@ window.StockMatcher = {
   /** 更新股票代碼按鈕 */
   _updateStockButtons(codes, matchedStocks, elements, shouldTriggerAICheck = true) {
     elements.container.innerHTML = '';
-    LogUtils.log('開始更新股票代碼按鈕，找到的代碼:', codes);
-    LogUtils.log('當前輸入框的值:', elements.input.value);
-    LogUtils.log('是否觸發AI檢查:', shouldTriggerAICheck);
-    
+
     // 先隱藏警告提示框
     this._toggleWarningBox(false);
     
@@ -735,16 +732,7 @@ window.StockMatcher = {
         
         // 使用 _getStockCodes 來處理文本
         const { codes, matchedStocks, stockCounts } = this._getStockCodes(textValue, inputValue);
-        
-        // 記錄找到的股票代碼數量
-        LogUtils.log('找到的股票代碼', { 
-            總數量: codes.length,
-            代碼列表: codes,
-            來源: source,
-            當前輸入值: inputValue,
-            是否觸發AI檢查: shouldTriggerAICheck
-        });
-        
+
         // 自動填入最常出現的股票代碼（僅在文本區域觸發時）
         if (source === 'textarea' && codes.length > 0 && !inputValue) {
             LogUtils.log('符合自動填入條件', {
@@ -772,15 +760,13 @@ window.StockMatcher = {
         this._updateStockButtons(codes, matchedStocks, elements, shouldTriggerAICheck);
       };
 
-      // 監聽文本區域變化（不觸發AI檢查）
-      elements.textarea.addEventListener('input', () => {
-        requestAnimationFrame(() => updateUI('textarea', false));
-      });
+      // 監聽文本區域變化（不觸發AI檢查）；改用共用打字防抖：連打時不每字重掃全文股票代碼。
+      const scheduleTextareaUpdate = window.SharedTypingScheduler.create(() => updateUI('textarea', false));
+      elements.textarea.addEventListener('input', scheduleTextareaUpdate);
 
       // 監聽股票代號輸入框變化
-      elements.input.addEventListener('input', () => {
-        requestAnimationFrame(() => updateUI('input'));
-      });
+      const scheduleInputUpdate = window.SharedTypingScheduler.create(() => updateUI('input'));
+      elements.input.addEventListener('input', scheduleInputUpdate);
       
       // 初始更新（根據來源決定是否觸發AI檢查）
       requestAnimationFrame(() => updateUI('textarea', !isFromSettingsUpdate));

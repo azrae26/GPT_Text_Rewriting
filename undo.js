@@ -45,7 +45,6 @@ const UndoManager = {
         .slice(-this.MAX_HISTORY_SIZE);
       
       history.currentIndex = history.history.length - 1;
-      LogUtils.log(`添加新的歷史記錄 [${inputId}]，當前索引:`, history.currentIndex);
     } catch (error) {
       LogUtils.error('添加歷史記錄時發生錯誤:', error);
     }

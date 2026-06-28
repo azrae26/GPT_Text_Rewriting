@@ -41,8 +41,6 @@ function shouldEnableFeatures() {
   const excludePattern = /^https:\/\/data\.uanalyze\.com\.tw\/ai\/assistants\/(?:create|\d+\/edit)(?:\?.*)?$/;
   
   const result = pattern.test(currentUrl) && !excludePattern.test(currentUrl);
-  LogUtils.log('當前URL:', currentUrl);
-  LogUtils.log('是否啟用功能:', result);
   return result;
 }
 

@@ -608,7 +608,6 @@ const ManualReplaceManager = {
       // 🔧 學習 TextHighlight：當文字改變時先完全清理
       const lastText = TextHighlight.PositionCalculator?.cache?.lastText || '';
       if (lastText !== currentText) {
-        LogUtils.log('手動替換：文字內容已改變，清理舊的高亮元素');
         this.clearAllHighlights();
         // 清理位置計算快取
         if (TextHighlight.PositionCalculator?.clearCache) {
@@ -691,7 +690,6 @@ const ManualReplaceManager = {
         this.scrollFollowers = followers; // null=非全建（走重建路徑）；陣列=可只更新可見
         this._cachedClientHeight = textArea.clientHeight;
         this.isCacheInitialized = true;
-        LogUtils.log(`手動替換更新完成: ${groupedPositions.size} 個組`);
 
       } catch (error) {
         LogUtils.error('手動替換更新失敗:', error);
@@ -1087,22 +1085,13 @@ const ManualReplaceManager = {
     if (textArea._manualReplaceBound) return;
     textArea._manualReplaceBound = true;
 
-    let updateScheduled = false;
-
-    const scheduleUpdate = () => {
-      if (!updateScheduled) {
-        updateScheduled = true;
-        requestAnimationFrame(() => {
-          this._updatePreviews();
-          updateScheduled = false;
-        });
-      }
-    };
+    // 改用共用打字防抖：連打時不每幀 clear+全量重建替換預覽（重路徑），停頓才更新。
+    const scheduleUpdate = window.SharedTypingScheduler.create(() => this._updatePreviews());
 
     // 🔧 學習 TextHighlight：直接監聽標準事件，不使用複雜的輪詢檢查
     textArea.addEventListener('input', scheduleUpdate);
     textArea.addEventListener('compositionend', scheduleUpdate);
-    
+
     LogUtils.log('手動替換：設置事件監聽（學習 TextHighlight 策略）');
   },
 
