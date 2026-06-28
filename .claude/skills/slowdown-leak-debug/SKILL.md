@@ -68,13 +68,16 @@ chrome-devtools `evaluate_script` 跑 **main world**，插件 content script 跑
 
 **目標＝即時零延遲**（使用者鐵則）：overlay 要與打字同步更新；防抖（停頓才重建）的延遲在使用者眼中**就是 lag、不接受**。故正解是讓「每字的工作夠便宜」（增量），而非延後。
 
-**歸因**：卸掉某 overlay 容器（`.remove()`）再連打量 longtask，差值即該模組成本——實測 **diff 泡泡重建是最大宗**（卸 `#gpt-diff-overlay-container` 後每字阻塞掉大半）。注意卸高亮容器會使該模組 thrash、數據失真，以 diff 卸載前後差為準。
+**歸因一律用 performance trace（ForcedReflow insight），別用「卸容器」二分**：trace 不破壞模組、按函式累計歸因、可複現。實測瓶頸是 **highlight.js**（`updateHighlightsVisibility`＋`calculatePosition`＋`getTextAreaStyles`），約 diff 的 **47 倍**；diff 渲染本身便宜（每字 ~3ms）。**陷阱（踩過）**：卸 overlay 容器（`.remove()`）會讓該模組拋錯、整條 input 鏈崩 → longtask 數字是垃圾，曾誤導成「diff 占 86%」。**歷史**：早年「diff 慢」其實是逐泡泡 debug LOG（每字 200+ 次、`pageLogEnabled` 下各 JSON 整個 300 筆陣列），非渲染，移除後瓶頸換 highlight。
 
-**不變量**：每模組有兩條獨立路徑——捲動跟隨只改 transform（廉價，§6）；打字才全量重建（昂貴）。優化打字勿動捲動路徑。diff overlay 容器已 `contain:strict`（layout 孤島），故 diff 成本主要在「`clearBubbles` innerHTML='' 全量重建＋逐泡泡 `calculatePosition` 量測」，非宿主重排。
+**不變量**：每模組兩條獨立路徑——捲動跟隨只改 transform（廉價，§6）；打字才全量重算位置＋重建 DOM（昂貴）。優化打字勿動捲動。highlight 的 `updateVirtualView` 用「值 key（含 top/left）」reconcile：位置沒變的高亮 key 不變→自動復用，故**不需每字 `clearHighlights()` 全清**（全清逼它全 churn ＝ 主成本）。
 
-**鐵則（增量）**：
-- 統一走 `default.js` 的 `SharedTypingScheduler.create(fn)` 排程 input→overlay 更新（單一真相）；**預設即時模式**（rAF 合流、零延遲）。
-- 即時要快：**只重比/重渲染受編輯影響的行範圍，其餘泡泡復用**（鍵：型別+文字+錨點；位移者只更新 transform，不重建 DOM）。DMP 本身已靠前後綴裁剪便宜，瓶頸在 `renderBubbles` 全量重建。
-- **防抖是備援、非預設**：`SharedTypingScheduler.enabled`（預設 false）。它讓打字當下不阻塞但 overlay 延後＝延遲，僅供 A/B 或臨時退路，**勿當正解**（違反即時鐵則）。
+**鐵則（增量，已驗證 ~50→4-8ms/字 行末）**：
+1. **快取靜態樣式**：`getTextAreaStyles`（`getComputedStyle`）每字被呼叫但字型/行高/padding 不變 → 快取，只在 resize/字體載入失效。
+2. **別每字全清重建**：移除 text 變時的 `clearHighlights()`，讓值-key reconcile 復用未變者、自動移除消失者（實測 `updateHighlightsVisibility` 784→67ms，12x）。
+3. **前文不算**：算新舊文字 `commonPrefixLen`，完全落在共同前綴內的 match（前文 byte 相同→像素位置必不變）→ 復用上次 `calculatePosition` 結果、不重量測（行末打字幾乎全復用）。
+4. **後文／畫面外**：編輯點之後的高亮位置位移、必重算（mid 打字仍 ~30ms）；再壓低就「只算可見視窗內、off-screen 不算」，但有捲動 tradeoff（捲到未算者要補算）。
+- 統一走 `SharedTypingScheduler.create`（單一真相）；預設即時 rAF。防抖（`enabled`，預設 false）是備援、勿當正解（延遲＝lag）。
+- ⚠ diff 用全域 DMP，group 邊界會**全域重新對齊**，故「前綴穩定」對 diff 不成立（試過 prefix-reuse 復用 diff 泡泡 → 泡泡數崩壞）。此增量法只適用 highlight 這種**獨立 match**（無全域對齊），勿套到 diff。
 
-**診斷**：量「連打期間 longtask 數/每字阻塞」——即時模式每字一個 longtask＝該幀重建太重，要增量化。非破壞性實測：快照 textarea 值 → 程式驅動連打（中間插入最壞，逼全部位置位移）→ 還原並驗證值一致，勿污染使用者真實文件。同 §1：trace 的 ForcedReflow 會把時間算給宿主 InputLabel，那是宿主被插件逼著重排，A/B（關插件）才是裁判。
+**診斷**：非破壞性——快照 textarea 值 → 程式驅動連打（中間插入＝最壞、逼後半位移；行末＝最佳、前綴全復用）→ 還原並驗證值一致。**比對位置正確性前先 `scrollTop=0`**（transform=top−scrollTop，捲動位置不同會誤判位置變了）。每字阻塞用 longtask 量但留意 GC 尖峰致變異大，**以 trace 累計歸因為準**。同 §1：trace ForcedReflow 把時間算給宿主 InputLabel，那是宿主被插件逼著重排。

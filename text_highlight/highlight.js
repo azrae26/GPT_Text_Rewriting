@@ -384,6 +384,8 @@ const TextHighlight = {
       div: null,
       lastText: '',
       positions: new Map(),
+      taStyles: null,          // 快取的 textarea 樣式（字型/行高/padding…），打字不變；resize/字體載入才失效
+      taStylesEl: null,        // taStyles 對應的 textarea 元素（編輯器重掛換元素即自動失效）
       textNaturalOffset: null, // 新增：文字自然偏移緩存
       scrollHeightRatio: 1,    // textarea.scrollHeight / div.scrollHeight 縮放比（修正底部偏移）
       lineInfo: {
@@ -407,8 +409,12 @@ const TextHighlight = {
      * 獲取文本區域的樣式信息
      */
     getTextAreaStyles(textArea) {
+      // 樣式（字型/行高/padding/border）打字時不變，但本函式每字被 updateHighlights/renderBubbles 呼叫，
+      // 每次 getComputedStyle 是 profile 量到的強制 reflow 熱點。→ 快取，只在 resize/字體載入或換 textarea 時失效。
+      const c = this.cache;
+      if (c.taStyles && c.taStylesEl === textArea) return c.taStyles;
       const computedStyle = window.getComputedStyle(textArea);
-      return {
+      c.taStyles = {
         font: `${computedStyle.fontSize} ${computedStyle.fontFamily}`,
         lineHeight: parseFloat(computedStyle.lineHeight),
         paddingLeft: parseFloat(computedStyle.paddingLeft),
@@ -416,6 +422,8 @@ const TextHighlight = {
         letterSpacing: parseFloat(computedStyle.letterSpacing) || 0,
         border: parseFloat(computedStyle.borderWidth) || 0
       };
+      c.taStylesEl = textArea;
+      return c.taStyles;
     },
 
     /**
@@ -852,6 +860,8 @@ const TextHighlight = {
           TextHighlight.PositionCalculator.cache.lastText = '';
           TextHighlight.PositionCalculator.cache.positions.clear();
         }
+        // resize 可能改變字型/行高（zoom、版面變動）→ 失效樣式快取，下次重新讀
+        TextHighlight.PositionCalculator.cache.taStyles = null;
         
         // 清除所有現有的高亮
         TextHighlight.DOMManager.clearHighlights();
@@ -908,6 +918,7 @@ const TextHighlight = {
      */
     setupFontLoader() {
       document.fonts.ready.then(() => {
+        TextHighlight.PositionCalculator.cache.taStyles = null; // 字體載入後行高/字寬改變，失效樣式快取
         TextHighlight.updateHighlights();
       });
     },
@@ -1189,16 +1200,38 @@ const TextHighlight = {
       return;
     }
 
-    // 🔧 修復殘留問題：當文字內容改變時，先完全清理所有高亮元素
-    if (this._lastText && this._lastText !== text) {
-      this.DOMManager.clearHighlights();
-      
-      // 清理位置計算快取，確保重新計算
+    const oldText = this._lastText;
+
+    // 文字改變時清位置快取（強制重算位置）。
+    // 不再 clearHighlights() 全清 DOM＋reconcile Map：updateVirtualView 用「值 key（含 top/left）」reconcile，
+    // 位置沒變的高亮（編輯點前、未受影響段落）key 不變→自動復用，消失者它本就會移除（updateVirtualView 末段）。
+    // 每字全清重建 189 個高亮正是 profile 量到的最大宗 reflow（updateHighlightsVisibility ~784ms）。
+    if (oldText && oldText !== text) {
       this.PositionCalculator.clearCache();
     }
-    
+
     this._lastText = text;
     this._lastScrollTop = textArea.scrollTop;
+
+    // Step 2b 增量：算新舊文字共同前綴。完全落在前綴內的 match（前文 byte 相同）→ 像素位置必不變 →
+    // 復用上次 calculatePosition 結果，不再量測（profile 熱點）。只有編輯點之後的 match 才重算。
+    let commonPrefixLen = 0;
+    if (oldText) {
+      const n = Math.min(oldText.length, text.length);
+      while (commonPrefixLen < n && oldText.charCodeAt(commonPrefixLen) === text.charCodeAt(commonPrefixLen)) commonPrefixLen++;
+    }
+    const prevPos = this._posCacheByKey || new Map();
+    const newPos = new Map();
+    const getPositions = (mIdx, mText) => {
+      const key = mIdx + '|' + mText;
+      if (mIdx + mText.length <= commonPrefixLen) {
+        const cached = prevPos.get(key);
+        if (cached !== undefined) { newPos.set(key, cached); return cached; } // 前綴穩定 → 復用，不量測
+      }
+      const positions = this.PositionCalculator.calculatePosition(textArea, mIdx, text, mText, styles);
+      newPos.set(key, positions);
+      return positions;
+    };
 
     // 收集所有位置信息
     const allPositions = [];
@@ -1215,14 +1248,8 @@ const TextHighlight = {
 
           for (const match of matches) {
             if (match[0]) {
-              const positions = this.PositionCalculator.calculatePosition(
-                textArea, 
-                match.index, 
-                text, 
-                match[0], 
-                styles
-              );
-              
+              const positions = getPositions(match.index, match[0]);
+
               if (positions) {
                 positions.forEach(position => {
                   const colorInfo = this.getColorForWord(targetWord);
@@ -1243,14 +1270,8 @@ const TextHighlight = {
           const matches = Array.from(text.matchAll(regex));
 
           matches.forEach(match => {
-            const positions = this.PositionCalculator.calculatePosition(
-              textArea, 
-              match.index, 
-              text, 
-              match[0], 
-              styles
-            );
-            
+            const positions = getPositions(match.index, match[0]);
+
             if (positions) {
               positions.forEach(position => {
                 const colorInfo = this.getColorForWord(targetWord);
@@ -1269,6 +1290,7 @@ const TextHighlight = {
         LogUtils.error(`處理文字 "${targetWord}" 時發生錯誤:`, error);
       }
     });
+    this._posCacheByKey = newPos; // 供下次打字復用前綴 match 位置
 
     // 更新虛擬滾動數據
     this.DOMManager.elements.virtualScrollData.allPositions = allPositions;
