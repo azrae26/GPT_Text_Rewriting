@@ -830,10 +830,10 @@ const DiffHighlighter = {
     ta.addEventListener('input', onInput);
     if (introTa) introTa.addEventListener('input', onInput);
 
-    // Scroll 同步：改用共享分發器，與高亮／手動替換共用單一 rAF、先讀後寫，杜絕跨模組強制重排
-    if (window.TextHighlight && window.TextHighlight.SharedScroll) {
-      this._removeScrollListener = TextHighlight.SharedScroll.subscribe(
-        (scrollTop) => this.syncScroll(scrollTop)
+    // Scroll 同步（複用 TextHighlight.ScrollHelper 的 rAF 節流）
+    if (window.TextHighlight && window.TextHighlight.ScrollHelper) {
+      this._removeScrollListener = TextHighlight.ScrollHelper.bindScrollEvent(
+        ta, () => this.syncScroll()
       );
     } else {
       const handler = () => this.syncScroll();
@@ -1143,11 +1143,11 @@ const DiffHighlighter = {
   // 13. SCROLL SYNC
   //    與 TextHighlight 完全相同的 pattern：top - scrollTop
   // ─────────────────────────────────────────────────
-  syncScroll(scrollTop) {
+  syncScroll() {
     if (!this.overlayContainer || !this.contentTextarea) return;
-    if (scrollTop == null) scrollTop = this.contentTextarea.scrollTop;
-    // containerH 快取：避免每幀讀 offsetHeight —— 在 SharedScroll 串接中，讀 layout 會 flush
-    // 前一模組剛寫的 transform 之 pending invalidation → 觸發整頁強制重排。resize 時失效（見 _onResize）。
+    const scrollTop = this.contentTextarea.scrollTop;
+    // containerH 快取：避免每幀讀 offsetHeight（讀 layout 屬性可能 flush 整頁、本頁 DOM 大很貴）。
+    // resize 時失效（見 _onResize）。
     let containerH = this._cachedOverlayH;
     if (containerH == null) containerH = this._cachedOverlayH = this.overlayContainer.offsetHeight;
     // 只改 transform，絕不每幀改 visibility —— toggle style.visibility 會觸發網站對 body 的

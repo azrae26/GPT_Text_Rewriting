@@ -78,49 +78,6 @@ const TextHighlight = {
   },
 
   /**
-   * 共享滾動分發器（單一真相）：高亮／手動替換／diff 三模組共用「一個 scroll 監聽 + 單一 rAF」。
-   * rAF 內先讀一次 scrollTop（此時 layout 乾淨 → cheap），再依序呼叫各訂閱者「只寫 transform、不讀 layout」。
-   *
-   * 為何必須合併：舊版三模組各自綁 scroll、各自讀 scrollTop。同幀三個 callback 依序跑時，
-   * 後者讀 scrollTop 會 flush 前者剛寫的 transform 之 pending invalidation → 每幀觸發整頁 layout
-   * （本頁 measurement div 6000 字 + 數百 div，單次 flush 實測達 350ms）。合併成「先讀後全寫」→ 整幀零強制重算。
-   *
-   * 訂閱者簽名 fn(scrollTop, clientHeight)，務必只用參數、不要再讀 textarea 的 scrollTop/clientHeight/offsetHeight。
-   */
-  SharedScroll: {
-    subscribers: new Set(),
-    _ticking: false,
-    _bound: null, // { ta, handler }
-
-    subscribe(fn) {
-      this.subscribers.add(fn);
-      this._ensureBound();
-      return () => this.subscribers.delete(fn);
-    },
-
-    _ensureBound() {
-      const ta = TextHighlight.DOMManager.elements.textArea;
-      if (!ta) return;
-      if (this._bound && this._bound.ta === ta) return;
-      if (this._bound) this._bound.ta.removeEventListener('scroll', this._bound.handler);
-      const handler = () => {
-        if (this._ticking) return;
-        this._ticking = true;
-        requestAnimationFrame(() => {
-          this._ticking = false;
-          const t = this._bound && this._bound.ta;
-          if (!t) return;
-          const scrollTop = t.scrollTop;
-          const clientHeight = t.clientHeight;
-          this.subscribers.forEach(fn => { try { fn(scrollTop, clientHeight); } catch (e) {} });
-        });
-      };
-      ta.addEventListener('scroll', handler, { passive: true });
-      this._bound = { ta, handler };
-    }
-  },
-
-  /**
    * 全局位置快取管理器 - 用於共享位置計算結果
    */
   GlobalPositionCache: {
@@ -411,9 +368,11 @@ const TextHighlight = {
     /**
      * 滾動事件入口：全建（已有 followers 快取）→ 只更新可見範圍 transform；超大文件 → 重建可見集合。
      */
-    onScroll(scrollTop, clientHeight) {
+    onScroll() {
+      const { textArea } = this.elements;
+      if (!textArea) return;
       if (this.elements.scrollFollowers) {
-        this.followScroll(scrollTop, clientHeight);
+        this.followScroll(textArea.scrollTop, textArea.clientHeight);
       } else {
         this.updateHighlightsVisibility();
       }
@@ -833,10 +792,10 @@ const TextHighlight = {
       // 先移除上一次綁定的滾動監聽，避免每次重新初始化（編輯器重掛）累積監聽器
       if (this.cleanup) this.cleanup();
 
-      // 改用共享滾動分發器：三模組共用單一 rAF、先讀一次 scrollTop 後各自只寫 transform，
-      // 杜絕跨模組 read-after-write 觸發的整頁強制重排（本頁單次達 350ms）
-      const removeScrollListener = TextHighlight.SharedScroll.subscribe(
-        (scrollTop, clientHeight) => TextHighlight.DOMManager.onScroll(scrollTop, clientHeight)
+      // 使用 ScrollHelper 處理滾動事件（rAF 節流，FULL 模式只更新可見範圍 transform）
+      const removeScrollListener = TextHighlight.ScrollHelper.bindScrollEvent(
+        textArea,
+        () => TextHighlight.DOMManager.onScroll()
       );
 
       // 清理函數（在需要時調用）

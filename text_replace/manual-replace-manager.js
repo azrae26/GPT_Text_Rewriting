@@ -528,11 +528,12 @@ const ManualReplaceManager = {
       
       textArea.parentElement.appendChild(this.container);
       
-      // 改用共享滾動分發器：與高亮／diff 共用單一 rAF、先讀後寫，杜絕跨模組強制重排
-      // 先移除上一次的訂閱，避免每次 UI 重建累積
+      // 使用 ScrollHelper 處理滾動事件（rAF 節流，滾動時只更新可見預覽 transform）
+      // 先移除上一次的滾動監聽，避免每次 UI 重建累積
       if (this._removeScroll) this._removeScroll();
-      this._removeScroll = TextHighlight.SharedScroll.subscribe(
-        (scrollTop) => this._updateScrollVisibility(textArea, scrollTop)
+      this._removeScroll = TextHighlight.ScrollHelper.bindScrollEvent(
+        textArea,
+        () => this._updateScrollVisibility(textArea)
       );
 
       this._setupResizeObserver(textArea);
@@ -719,9 +720,8 @@ const ManualReplaceManager = {
     },
 
     // 🚀 輕量級滾動更新 - 專門用於滾動時的性能優化
-    _updateScrollVisibility(textArea, scrollTop) {
-      // scrollTop 由 SharedScroll 幀首統一讀入（避免在此再讀 layout 觸發強制重排）；缺省時自行讀
-      if (scrollTop == null) scrollTop = textArea.scrollTop;
+    _updateScrollVisibility(textArea) {
+      const scrollTop = textArea.scrollTop;
 
       // 🆕 修復判斷邏輯：只有在緩存未初始化時才回退到完整更新
       if (!this.isCacheInitialized) {

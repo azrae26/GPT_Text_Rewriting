@@ -54,7 +54,7 @@ chrome-devtools `evaluate_script` 跑 **main world**，插件 content script 跑
 **鐵則**：
 - overlay 滾動跟隨**只准改 `transform`**（compositor 屬性，不被當 style 變動觸發宿主）。要藏元素用 `transform: translate(-99999px,-99999px)` 移出視窗、靠容器 `overflow:hidden` 裁切——**絕不每幀改 `visibility`／`display`／任何 inline style**；建立元素時亦同（否則建立那刻就觸發）。
 - 復用元素**只寫會變的 transform**，不重寫 display/color（同屬會觸發宿主的 style 變動）。穩定復用 key（用 match 起始索引，非可見陣列索引）避免 `childList` churn（create/remove 同樣觸發宿主）。
-- 三模組共用 `TextHighlight.SharedScroll` 單一 rAF（單一真相，模仿 default.js 的 `SharedUrlWatcher`），**禁止各自 `bindScrollEvent`**（各自綁＋各自讀 layout 會跨模組 read-after-write 強制重排）。
+- **overlay 容器務必加 `contain: strict`**：否則宿主每幀 measure 整頁時要連 overlay 內部一起算（改 transform 雖不觸發 observer，仍使 overlay 的 layout dirty）。`contain:strict` 把 overlay 隔離成 layout 孤島，宿主直接跳過——這是滾動跟隨成本能壓到趨近零的關鍵之一。三模組各自 `ScrollHelper.bindScrollEvent`（內建 rAF 節流）即可，不需共用分發器。
 
 **診斷陷阱（避免再繞遠路）**：
 - **用 PerformanceObserver `longtask` 量，別用 rAF 間隔**：視窗被別的視窗遮擋（occluded）時 Chrome 把該分頁 rAF 節流到 ~1fps，造成「idle 也 1000ms/幀」的假象，會把你導向錯誤方向；longtask 反映真實主執行緒阻塞、不受節流影響。`document.visibilityState` 仍是 `visible` 也可能 occluded。
