@@ -522,16 +522,17 @@ const ManualReplaceManager = {
         overflow: hidden;
         font: ${styles.font};
         line-height: ${styles.lineHeight}px;
+        contain: strict;
       `;
+      // contain:strict：預覽框 overlay 自成 layout 孤島，每幀改 transform 不波及網站整頁 layout
       
       textArea.parentElement.appendChild(this.container);
       
-      // 使用 TextHighlight 的滾動處理器 - 滾動時使用輕量級更新
-      // 先移除上一次的滾動監聽，避免每次 UI 重建累積
+      // 改用共享滾動分發器：與高亮／diff 共用單一 rAF、先讀後寫，杜絕跨模組強制重排
+      // 先移除上一次的訂閱，避免每次 UI 重建累積
       if (this._removeScroll) this._removeScroll();
-      this._removeScroll = TextHighlight.ScrollHelper.bindScrollEvent(
-        textArea,
-        () => this._updateScrollVisibility(textArea)
+      this._removeScroll = TextHighlight.SharedScroll.subscribe(
+        (scrollTop) => this._updateScrollVisibility(textArea, scrollTop)
       );
 
       this._setupResizeObserver(textArea);
@@ -615,9 +616,7 @@ const ManualReplaceManager = {
       }
       
       const scrollTop = textArea.scrollTop;
-      const scrollBottom = scrollTop + textArea.clientHeight;
-      const bufferSize = 200;
-      
+
       // 重新計算所有組的位置
       const groupedPositions = new Map();
       
@@ -653,13 +652,27 @@ const ManualReplaceManager = {
         }
       });
       
-      // 更新虛擬滾動視圖
+      // 全建模式：與滾動路徑一致，首次即建好全部供滾動復用（上限內視窗涵蓋全文）
+      const totalPreviews = Array.from(groupedPositions.values()).reduce((sum, p) => sum + p.length, 0);
+      const FULL = totalPreviews <= TextHighlight.CONFIG.FULL_RENDER_MAX;
+      let visibleTop, visibleBottom;
+      if (FULL) {
+        visibleTop = -Infinity;
+        visibleBottom = Infinity;
+      } else {
+        const bufferSize = 200;
+        visibleTop = scrollTop - bufferSize;
+        visibleBottom = scrollTop + textArea.clientHeight + bufferSize;
+      }
+
+      // 更新虛擬滾動視圖（全建時收集滾動跟隨清單，供 scroll 只更新可見預覽）
+      const followers = FULL ? [] : null;
       try {
         TextHighlight.SharedVirtualScroll.updateMultiGroupVirtualView({
           groupedPositions,
           groupHighlights: this.groupHighlights,
-          visibleTop: scrollTop - bufferSize,
-          visibleBottom: scrollBottom + bufferSize,
+          visibleTop,
+          visibleBottom,
           scrollTop,
           createHighlight: (pos) => {
             return TextHighlight.Renderer.createPreviewHighlight(
@@ -670,53 +683,92 @@ const ManualReplaceManager = {
             );
           },
           container: this.container,
-          highlightClass: 'replace-preview-highlight'
+          highlightClass: 'replace-preview-highlight',
+          followersOut: followers
         });
-        
+
+        this.scrollFollowers = followers; // null=非全建（走重建路徑）；陣列=可只更新可見
+        this._cachedClientHeight = textArea.clientHeight;
         this.isCacheInitialized = true;
         LogUtils.log(`手動替換更新完成: ${groupedPositions.size} 個組`);
-        
+
       } catch (error) {
         LogUtils.error('手動替換更新失敗:', error);
         this.isCacheInitialized = false;
       }
     },
 
+    // 滾動跟隨：只更新「可見範圍」內預覽的 transform；剛離開視窗者藏到視窗外一次（off 旗標防重複寫、防錯位）。
+    // 大 DOM 頁面每改一個元素都要重算樣式，故只寫視窗內 ~數個，而非全部預覽。
+    _followScroll(scrollTop, clientHeight) {
+      const arr = this.scrollFollowers;
+      if (!arr) return;
+      const ch = clientHeight != null ? clientHeight : (this._cachedClientHeight || 600);
+      const vTop = scrollTop - 100;
+      const vBottom = scrollTop + ch + 100;
+      for (let i = 0; i < arr.length; i++) {
+        const f = arr[i];
+        if (f.top >= vTop && f.top <= vBottom) {
+          f.el.style.transform = `translate3d(0, ${f.top - scrollTop}px, 0)`;
+          f.off = false;
+        } else if (!f.off) {
+          f.el.style.transform = 'translate3d(0, -99999px, 0)';
+          f.off = true;
+        }
+      }
+    },
+
     // 🚀 輕量級滾動更新 - 專門用於滾動時的性能優化
-    _updateScrollVisibility(textArea) {
-      
-      // 滾動時只更新可見性，不重新計算位置
-      const scrollTop = textArea.scrollTop;
-      const scrollBottom = scrollTop + textArea.clientHeight;
-      const bufferSize = 200;
-      
+    _updateScrollVisibility(textArea, scrollTop) {
+      // scrollTop 由 SharedScroll 幀首統一讀入（避免在此再讀 layout 觸發強制重排）；缺省時自行讀
+      if (scrollTop == null) scrollTop = textArea.scrollTop;
+
       // 🆕 修復判斷邏輯：只有在緩存未初始化時才回退到完整更新
       if (!this.isCacheInitialized) {
         LogUtils.log(`緩存未初始化，執行首次完整更新`);
         this._updateVirtualScrolling(textArea);
         return;
       }
-      
+
+      // 全建路徑：只更新「可見範圍」內預覽的 transform，不重建 Map/filter/key（與高亮 followScroll 同理）
+      if (this.scrollFollowers) {
+        this._followScroll(scrollTop);
+        return;
+      }
+
       // 🆕 直接從獨立緩存獲取位置數據（不依賴DOM元素）
       const groupedPositions = new Map();
-      
+
       // 複製緩存的位置數據
       this.cachedGroupPositions.forEach((positions, groupIndex) => {
         if (positions && positions.length > 0) {
           groupedPositions.set(groupIndex, positions);
         }
       });
-      
-      // 🆕 即使緩存為空也是正常狀態，不需要回退到完整更新
-      LogUtils.log(`快速滾動更新: ${groupedPositions.size} 個組，共 ${Array.from(groupedPositions.values()).reduce((sum, positions) => sum + positions.length, 0)} 個位置`);
-      
+
+      // 全建模式：預覽框數在上限內就視窗涵蓋全文，滾動只平移現有 transform
+      //（compositor 屬性，不動 layout）→ 零 create/remove → 不讀 clientHeight → scroll path 零強制重排
+      const totalPreviews = Array.from(groupedPositions.values()).reduce((sum, p) => sum + p.length, 0);
+      const FULL = totalPreviews <= TextHighlight.CONFIG.FULL_RENDER_MAX;
+      let visibleTop, visibleBottom;
+      if (FULL) {
+        visibleTop = -Infinity;
+        visibleBottom = Infinity;
+      } else {
+        const bufferSize = 200;
+        visibleTop = scrollTop - bufferSize;
+        visibleBottom = scrollTop + textArea.clientHeight + bufferSize;
+      }
+
+      LogUtils.log(`快速滾動更新: ${groupedPositions.size} 個組，共 ${totalPreviews} 個位置`);
+
       // 使用 SharedVirtualScroll 僅更新可見性
       try {
         TextHighlight.SharedVirtualScroll.updateMultiGroupVirtualView({
           groupedPositions,
           groupHighlights: this.groupHighlights,
-          visibleTop: scrollTop - bufferSize,
-          visibleBottom: scrollBottom + bufferSize,
+          visibleTop,
+          visibleBottom,
           scrollTop,
           createHighlight: (pos) => {
             const element = TextHighlight.Renderer.createPreviewHighlight(

@@ -798,7 +798,9 @@ const DiffHighlighter = {
       pointer-events: none;
       z-index: 1002;
       overflow: hidden;
+      contain: strict;
     `;
+    // contain:strict：diff 泡泡 overlay 自成 layout 孤島，滾動同步改 transform 不波及網站整頁 layout
 
     const taParent      = ta.parentElement;
     const taGrandParent = taParent?.parentElement;
@@ -828,10 +830,10 @@ const DiffHighlighter = {
     ta.addEventListener('input', onInput);
     if (introTa) introTa.addEventListener('input', onInput);
 
-    // Scroll 同步（複用 TextHighlight.ScrollHelper）
-    if (window.TextHighlight && window.TextHighlight.ScrollHelper) {
-      this._removeScrollListener = TextHighlight.ScrollHelper.bindScrollEvent(
-        ta, () => this.syncScroll()
+    // Scroll 同步：改用共享分發器，與高亮／手動替換共用單一 rAF、先讀後寫，杜絕跨模組強制重排
+    if (window.TextHighlight && window.TextHighlight.SharedScroll) {
+      this._removeScrollListener = TextHighlight.SharedScroll.subscribe(
+        (scrollTop) => this.syncScroll(scrollTop)
       );
     } else {
       const handler = () => this.syncScroll();
@@ -856,6 +858,7 @@ const DiffHighlighter = {
     this.overlayContainer.style.left   = `${taRect.left - parentRect.left}px`;
     this.overlayContainer.style.width  = `${ta.offsetWidth}px`;
     this.overlayContainer.style.height = `${ta.offsetHeight + this.OVERLAY_TOP_EXTRA}px`;
+    this._cachedOverlayH = null; // 容器高度已變，失效 syncScroll 的快取
     this.clearBubbles();
     this.scheduleDiff();
   },
@@ -1080,13 +1083,14 @@ const DiffHighlighter = {
     // 水平置中：先平移到 centerX，再用 translateX(-50%) 讓泡泡自身置中
     const containerH = this.overlayContainer.offsetHeight;
     const inBounds = finalTop >= 0 && finalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
+    // 出界泡泡用 transform 移出視窗，不用 visibility —— 每幀 toggle visibility 會觸發網站對 body 的
+    // 重渲染（實測為滾動卡頓主因，55% 阻塞）；transform 是 compositor 屬性、不觸發。
     bubble.style.cssText = `
       position: absolute;
       top: 0;
       left: 0;
-      transform: translate(${centerX}px, ${finalTop}px) translateX(-50%);
+      transform: ${inBounds ? `translate(${centerX}px, ${finalTop}px) translateX(-50%)` : 'translate(-99999px, -99999px)'};
       pointer-events: auto;
-      visibility: ${inBounds ? 'visible' : 'hidden'};
     `;
 
     // X 按鈕
@@ -1115,10 +1119,9 @@ const DiffHighlighter = {
         position: absolute;
         top: 0;
         left: 0;
-        transform: translate(${lineLeft}px, ${lineFinalTop}px);
+        transform: ${inBoundsLn ? `translate(${lineLeft}px, ${lineFinalTop}px)` : 'translate(-99999px, -99999px)'};
         width: ${lineWidth}px;
         pointer-events: none;
-        visibility: ${inBoundsLn ? 'visible' : 'hidden'};
       `;
       result.appendChild(lineEl);
     }
@@ -1140,26 +1143,33 @@ const DiffHighlighter = {
   // 13. SCROLL SYNC
   //    與 TextHighlight 完全相同的 pattern：top - scrollTop
   // ─────────────────────────────────────────────────
-  syncScroll() {
+  syncScroll(scrollTop) {
     if (!this.overlayContainer || !this.contentTextarea) return;
-    const scrollTop  = this.contentTextarea.scrollTop;
-    const containerH = this.overlayContainer.offsetHeight;
+    if (scrollTop == null) scrollTop = this.contentTextarea.scrollTop;
+    // containerH 快取：避免每幀讀 offsetHeight —— 在 SharedScroll 串接中，讀 layout 會 flush
+    // 前一模組剛寫的 transform 之 pending invalidation → 觸發整頁強制重排。resize 時失效（見 _onResize）。
+    let containerH = this._cachedOverlayH;
+    if (containerH == null) containerH = this._cachedOverlayH = this.overlayContainer.offsetHeight;
+    // 只改 transform，絕不每幀改 visibility —— toggle style.visibility 會觸發網站對 body 的
+    // MutationObserver/重渲染（實測 55% 阻塞、滾動卡頓主因）。出界泡泡用 transform 移出視窗，
+    // 純 compositor 屬性、不觸發網站。
     this.overlayContainer.querySelectorAll('.gpt-ann').forEach(bubble => {
       const absTop   = parseFloat(bubble.dataset.absTop);
       const centerX  = parseFloat(bubble.dataset.centerX);
       const finalTop = absTop - scrollTop;
       const inBounds = finalTop >= 0 && finalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
-      bubble.style.visibility = inBounds ? 'visible' : 'hidden';
-      bubble.style.transform =
-        `translate(${centerX}px, ${finalTop}px) translateX(-50%)`;
+      bubble.style.transform = inBounds
+        ? `translate(${centerX}px, ${finalTop}px) translateX(-50%)`
+        : 'translate(-99999px, -99999px)';
     });
     this.overlayContainer.querySelectorAll('.gpt-ann-hline').forEach(lineEl => {
       const absLineTop   = parseFloat(lineEl.dataset.absLineTop);
       const lineLeft     = parseFloat(lineEl.dataset.lineLeft);
       const lineFinalTop = absLineTop - scrollTop;
       const inBounds = lineFinalTop >= 0 && lineFinalTop < containerH - this.BOUNDS_BOTTOM_MARGIN;
-      lineEl.style.visibility = inBounds ? 'visible' : 'hidden';
-      lineEl.style.transform = `translate(${lineLeft}px, ${lineFinalTop}px)`;
+      lineEl.style.transform = inBounds
+        ? `translate(${lineLeft}px, ${lineFinalTop}px)`
+        : 'translate(-99999px, -99999px)';
     });
   },
 

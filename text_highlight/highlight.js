@@ -32,7 +32,9 @@ const TextHighlight = {
       TOP: 0     // 固定上偏移量，調整為減少垂直偏移
     },
     DEFAULT_COLOR: 'rgba(50, 205, 50, 0.3)', // 預設顏色
-    CACHE_CLEANUP_INTERVAL: 60000 // 快取清理間隔（毫秒）
+    CACHE_CLEANUP_INTERVAL: 60000, // 快取清理間隔（毫秒）
+    // 高亮數 ≤ 此值 → 滾動時全部渲染、只平移 transform（零 reflow）；超過才退回可見窗口虛擬化
+    FULL_RENDER_MAX: 1500
   },
 
   /**
@@ -47,9 +49,17 @@ const TextHighlight = {
      * @returns {Function} 處理滾動的函數
      */
     createScrollHandler(callback, options = { passive: true }) {
-      // 🚀 移除ticking節流機制，直接執行callback，提升跟隨響應速度
+      // rAF 合流：真實拖動每幀觸發多次 scroll 事件，無節流會每幀跑數次 callback。
+      // 合流成每幀最多一次（仍每幀更新 → 跟隨即時），且 callback 在 rAF 內執行 →
+      // 與瀏覽器繪製同拍，transform 寫入直接進下一幀，零多餘 reflow。
+      let ticking = false;
       return function scrollHandler(event) {
-        callback(event);
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+          ticking = false;
+          callback(event);
+        });
       };
     },
 
@@ -64,6 +74,49 @@ const TextHighlight = {
       const handler = this.createScrollHandler(callback, options);
       element.addEventListener('scroll', handler, options);
       return () => element.removeEventListener('scroll', handler);
+    }
+  },
+
+  /**
+   * 共享滾動分發器（單一真相）：高亮／手動替換／diff 三模組共用「一個 scroll 監聽 + 單一 rAF」。
+   * rAF 內先讀一次 scrollTop（此時 layout 乾淨 → cheap），再依序呼叫各訂閱者「只寫 transform、不讀 layout」。
+   *
+   * 為何必須合併：舊版三模組各自綁 scroll、各自讀 scrollTop。同幀三個 callback 依序跑時，
+   * 後者讀 scrollTop 會 flush 前者剛寫的 transform 之 pending invalidation → 每幀觸發整頁 layout
+   * （本頁 measurement div 6000 字 + 數百 div，單次 flush 實測達 350ms）。合併成「先讀後全寫」→ 整幀零強制重算。
+   *
+   * 訂閱者簽名 fn(scrollTop, clientHeight)，務必只用參數、不要再讀 textarea 的 scrollTop/clientHeight/offsetHeight。
+   */
+  SharedScroll: {
+    subscribers: new Set(),
+    _ticking: false,
+    _bound: null, // { ta, handler }
+
+    subscribe(fn) {
+      this.subscribers.add(fn);
+      this._ensureBound();
+      return () => this.subscribers.delete(fn);
+    },
+
+    _ensureBound() {
+      const ta = TextHighlight.DOMManager.elements.textArea;
+      if (!ta) return;
+      if (this._bound && this._bound.ta === ta) return;
+      if (this._bound) this._bound.ta.removeEventListener('scroll', this._bound.handler);
+      const handler = () => {
+        if (this._ticking) return;
+        this._ticking = true;
+        requestAnimationFrame(() => {
+          this._ticking = false;
+          const t = this._bound && this._bound.ta;
+          if (!t) return;
+          const scrollTop = t.scrollTop;
+          const clientHeight = t.clientHeight;
+          this.subscribers.forEach(fn => { try { fn(scrollTop, clientHeight); } catch (e) {} });
+        });
+      };
+      ta.addEventListener('scroll', handler, { passive: true });
+      this._bound = { ta, handler };
     }
   },
 
@@ -198,7 +251,11 @@ const TextHighlight = {
         pointer-events: none;
         z-index: 1;
         overflow: hidden;
+        contain: strict;
       `;
+      // contain:strict（layout+size+paint+style 隔離）：本容器有明確尺寸，告訴瀏覽器它內部的
+      // 134 個高亮元素自成一個 layout/paint 孤島。關鍵作用——擴充每幀改高亮 transform 時，
+      // 不會再讓網站（大 DOM）重算整頁 layout。實測這是滾動卡頓的主因（網站 D 函式被連帶觸發）。
 
       // 設置內層容器樣式
       container.style.cssText = `
@@ -266,17 +323,28 @@ const TextHighlight = {
       if (!textArea || !container) return;
 
       const scrollTop = textArea.scrollTop;
-      const visibleHeight = textArea.clientHeight;
-      const totalHeight = textArea.scrollHeight;
-      
-      // 計算可見區域的範圍（加上上下緩衝區）
-      const bufferSize = this.elements.virtualScrollData.bufferSize;
-      const visibleTop = Math.max(0, scrollTop - bufferSize);
-      const visibleBottom = Math.min(totalHeight, scrollTop + visibleHeight + bufferSize);
+      const allPositions = virtualScrollData.allPositions;
+
+      // 高亮數在上限內 → 一次全建所有高亮（churn=0，穩定 key 全復用）；超大文件才退回可見窗口虛擬化。
+      const FULL = allPositions.length <= TextHighlight.CONFIG.FULL_RENDER_MAX;
+      let visibleTop, visibleBottom;
+      if (FULL) {
+        visibleTop = -Infinity;
+        visibleBottom = Infinity;
+      } else {
+        const visibleHeight = textArea.clientHeight;
+        const totalHeight = textArea.scrollHeight;
+        const bufferSize = virtualScrollData.bufferSize;
+        visibleTop = Math.max(0, scrollTop - bufferSize);
+        visibleBottom = Math.min(totalHeight, scrollTop + visibleHeight + bufferSize);
+      }
+
+      // 全建時收集滾動跟隨清單，供 scroll 只更新「可見範圍」內高亮的 transform（而非全部）
+      const followers = FULL ? [] : null;
 
       // 使用共享的虛擬滾動管理器
       TextHighlight.SharedVirtualScroll.updateVirtualView({
-        allPositions: virtualScrollData.allPositions,
+        allPositions,
         visibleHighlights: virtualScrollData.visibleHighlights,
         visibleTop,
         visibleBottom,
@@ -300,8 +368,55 @@ const TextHighlight = {
           }
         },
         container,
-        highlightClass: 'text-highlight'
+        highlightClass: 'text-highlight',
+        followersOut: followers
       });
+
+      if (followers) {
+        followers.sort((a, b) => a.top - b.top); // 按內容 top 排序，供 followScroll 二分
+        this.elements.scrollFollowers = followers;
+        this._cachedClientHeight = textArea.clientHeight; // 快取，scroll 不再讀 layout
+      } else {
+        this.elements.scrollFollowers = null;
+      }
+    },
+
+    /**
+     * 滾動跟隨：只更新「可見範圍 ± buffer」內高亮的 transform。
+     * 全建下高亮都在 DOM，但每幀只移動視窗內 ~一屏的量（非全部 N 個）→ 成本與可見數成正比、與文件長度無關。
+     * 範圍外高亮 transform 暫時過時，但在 outer overflow:hidden 之外看不到；滾入可見前必被本函式更新（buffer 提前量）。
+     */
+    followScroll(scrollTop, clientHeight) {
+      const arr = this.elements.scrollFollowers;
+      if (!arr) return;
+      // 本質：滾動時只有視窗內 ~15 個高亮看得到、需要動；視窗外 100+ 個看不到，不必每幀改它們。
+      // 大 DOM 頁面每改一個元素 transform 都要重算樣式（昂貴），所以「只寫視窗內」是關鍵。
+      // 遍歷全部僅做便宜的數值比較；視窗內 → 更新位置；剛離開視窗 → 藏到視窗外一次（off 旗標防重複寫，
+      // 也杜絕「過時 transform 落回視窗內」的錯位 bug）。
+      const ch = clientHeight != null ? clientHeight : (this._cachedClientHeight || 600);
+      const vTop = scrollTop - 100;
+      const vBottom = scrollTop + ch + 100;
+      for (let i = 0; i < arr.length; i++) {
+        const f = arr[i];
+        if (f.top >= vTop && f.top <= vBottom) {
+          f.el.style.transform = `translate3d(0, ${f.top - scrollTop}px, 0)`;
+          f.off = false;
+        } else if (!f.off) {
+          f.el.style.transform = 'translate3d(0, -99999px, 0)'; // 移出視窗一次，之後不再碰
+          f.off = true;
+        }
+      }
+    },
+
+    /**
+     * 滾動事件入口：全建（已有 followers 快取）→ 只更新可見範圍 transform；超大文件 → 重建可見集合。
+     */
+    onScroll(scrollTop, clientHeight) {
+      if (this.elements.scrollFollowers) {
+        this.followScroll(scrollTop, clientHeight);
+      } else {
+        this.updateHighlightsVisibility();
+      }
     },
   },
 
@@ -718,10 +833,10 @@ const TextHighlight = {
       // 先移除上一次綁定的滾動監聽，避免每次重新初始化（編輯器重掛）累積監聽器
       if (this.cleanup) this.cleanup();
 
-      // 使用 ScrollHelper 處理滾動事件
-      const removeScrollListener = TextHighlight.ScrollHelper.bindScrollEvent(
-        textArea,
-        () => TextHighlight.DOMManager.updateHighlightsVisibility()
+      // 改用共享滾動分發器：三模組共用單一 rAF、先讀一次 scrollTop 後各自只寫 transform，
+      // 杜絕跨模組 read-after-write 觸發的整頁強制重排（本頁單次達 350ms）
+      const removeScrollListener = TextHighlight.SharedScroll.subscribe(
+        (scrollTop, clientHeight) => TextHighlight.DOMManager.onScroll(scrollTop, clientHeight)
       );
 
       // 清理函數（在需要時調用）
@@ -1248,10 +1363,11 @@ const TextHighlight = {
       scrollTop,
       createHighlight,
       container,
-      highlightClass = 'text-highlight'
+      highlightClass = 'text-highlight',
+      followersOut = null
     }) {
       const startTime = new Date();
-      
+
       // 記錄現有的高亮元素
       const existingHighlights = new Map(visibleHighlights);
       visibleHighlights.clear();
@@ -1270,27 +1386,24 @@ const TextHighlight = {
         const color = pos.color || 'rgba(50, 205, 50, 0.3)';
         const style = pos.style || 'background';
         
-        // 🔧 修復：在 key 中包含樣式信息和唯一標識符，避免相同位置不同樣式的元素衝突
+        // 🔧 key 須跨幀穩定才能復用：用 match 起始字元索引（同一匹配永不變），
+        // 不可用 visiblePositions 的迴圈索引（滾動時可見集合一變就漂移 → 每幀全 miss
+        // → 全部 remove+append churn → layout 失效 → 讀 scrollTop 觸發強制重排 → 高亮跟隨卡）
         const targetWord = pos.targetWord || '';
-        const key = `${top}-${left}-${text}-${style}-${targetWord}-${index}`;
+        const matchIdx = pos.position ? pos.position.index : pos.index;
+        const key = `${top}-${left}-${text}-${style}-${targetWord}-${matchIdx}`;
         let highlight = existingHighlights.get(key);
 
         // 計算最終渲染位置（滾動補償）
         const finalTop = top - scrollTop;
 
         if (highlight) {
-          // 重用現有元素，只更新位置和顏色（不再進行複雜的樣式切換）
+          // 復用：滾動時只有 transform 會變（scrollTop）。
+          // display(恆 block) 與顏色(由 targetWord 決定、已隱含在 key 內) 跨幀不變；
+          // 每幀重寫相同值仍會 invalidate style → 觸發海量 Recalc Style（實測為 scroll 熱路徑首因）。
+          // 顏色變更走 setTargetWords→forceUpdate 重建（會清掉復用 Map），不經此路徑。
           existingHighlights.delete(key);
           highlight.style.transform = `translate3d(0, ${finalTop}px, 0)`;
-          highlight.style.display = 'block';
-          
-          // 簡化顏色更新邏輯
-          const currentColor = color || 'rgba(50, 205, 50, 0.3)';
-          if (style === 'border') {
-            highlight.style.color = currentColor;
-          } else {
-            highlight.style.backgroundColor = currentColor;
-          }
         } else {
           // 創建新元素（樣式在創建時就確定，避免後續切換）
           highlight = createHighlight(pos);
@@ -1304,6 +1417,8 @@ const TextHighlight = {
         }
 
         visibleHighlights.set(key, highlight);
+        // 收集滾動跟隨清單（el + 絕對內容 top），供 scroll 時只更新可見範圍用
+        if (followersOut) followersOut.push({ el: highlight, top });
       });
 
       // 🔧 修復殘留問題：完全移除不再需要的元素，而不只是隱藏
@@ -1339,7 +1454,8 @@ const TextHighlight = {
       scrollTop,
       createHighlight,
       container,
-      highlightClass = 'text-highlight'
+      highlightClass = 'text-highlight',
+      followersOut = null
     }) {
       // 創建文檔片段，減少DOM操作
       const fragment = document.createDocumentFragment();
@@ -1370,17 +1486,18 @@ const TextHighlight = {
           const text = pos.position ? pos.position.text : pos.text;
           const style = pos.style || 'background';
           
-          // 🔧 修復：在 key 中包含樣式信息和唯一標識符，避免相同位置不同樣式的元素衝突
+          // 🔧 key 須跨幀穩定才能復用：用 match 起始字元索引（同一匹配永不變），
+          // 不可用 visiblePositions 迴圈索引（滾動時漂移 → 每幀全 remove+append churn → 強制重排）
           const targetWord = pos.targetWord || '';
-          const key = `${top}-${left}-${text}-${style}-${targetWord}-${groupIndex}-${posIndex}`;
+          const matchIdx = pos.position ? pos.position.index : pos.index;
+          const key = `${top}-${left}-${text}-${style}-${targetWord}-${groupIndex}-${matchIdx}`;
           let highlight = existingHighlights.get(key);
 
           if (highlight) {
-            // 重用現有元素，只更新 transform
+            // 復用：只更新 transform。display(恆 block) 與 groupIndex(已隱含在 key 內) 跨幀不變，
+            // 每幀重寫相同值會 invalidate style → 海量 Recalc Style，故略過。
             existingHighlights.delete(key);
             highlight.style.transform = `translate3d(0, ${top - scrollTop}px, 0)`;
-            highlight.style.display = 'block';
-            highlight.dataset.groupIndex = groupIndex;
           } else {
             // 創建新元素
             highlight = createHighlight(pos);
@@ -1394,6 +1511,7 @@ const TextHighlight = {
           }
 
           groupHighlightMap.set(key, highlight);
+          if (followersOut) followersOut.push({ el: highlight, top });
         });
 
         // 🔧 修復殘留問題：完全移除不再需要的元素，而不只是隱藏
