@@ -40,6 +40,16 @@ const DiffHighlighter = {
   LINE_WIDTH_EXTRA: 2,
   /** 泡泡 label 最大顯示字元數 */
   ABBREV_MAX_LEN: 50,
+  /** 差異率超過此閾值自動關閉比對（泡泡太多無實用價值） */
+  DIFF_OFF_THRESHOLD: 0.20,
+  /** UI 層註冊的回呼，差異率過高時呼叫以同步按鈕狀態 */
+  onAutoOff: null,
+  /** UI 層註冊的回呼，差異率回降時呼叫以恢復按鈕狀態 */
+  onAutoOn: null,
+  /** 是否因閾值自動關閉（區分使用者手動 off，避免誤恢復） */
+  _autoOffActive: false,
+  /** 自動關閉前的顯示模式，恢復時用 */
+  _preAutoOffMode: null,
 
   isEnabled: true,
   /** 顯示模式：'off' 關閉 | 'hide' 隱藏等價差異（預設）| 'show' 顯示等價差異 */
@@ -880,19 +890,56 @@ const DiffHighlighter = {
   // 9. RUN DIFF
   // ─────────────────────────────────────────────────
   runDiff() {
-    if (!this.isEnabled) return;
+    if (!this.isEnabled && !this._autoOffActive) return;
     if (!this.contentTextarea || !this.introTextarea) return;
 
     const introText   = this.introTextarea.value;
     const contentText = this.contentTextarea.value;
-
-    this.clearBubbles();
     if (!introText.trim() || !contentText.trim()) return;
 
+    // 差異率計算（auto-off 監控模式也需要，故提前）
+    const ops = this.computeDiffDMP(introText, contentText, false);
+    let totalChars = 0, changedChars = 0;
+    for (const op of ops) {
+      const len = (op.a || op.b).length;
+      totalChars += len;
+      if (op.type !== 'equal') changedChars += len;
+    }
+    const diffRatio = totalChars > 0 ? changedChars / totalChars : 0;
+
+    // auto-off 監控：差異率回降 → 自動恢復
+    if (this._autoOffActive) {
+      if (diffRatio <= this.DIFF_OFF_THRESHOLD) {
+        LogUtils.log(`[DiffHighlighter] 差異率 ${(diffRatio * 100).toFixed(1)}% 回降，自動恢復比對`);
+        this._autoOffActive = false;
+        const restoreMode = this._preAutoOffMode || 'hide';
+        this._preAutoOffMode = null;
+        if (this.onAutoOn) this.onAutoOn(restoreMode);
+        else this.toggle(restoreMode);
+        // toggle 內會呼叫 scheduleDiff → runDiff 重新渲染，此處 return
+      }
+      return;
+    }
+
+    // 差異率過高 → 自動關閉
+    if (diffRatio > this.DIFF_OFF_THRESHOLD) {
+      LogUtils.log(`[DiffHighlighter] 差異率 ${(diffRatio * 100).toFixed(1)}% 超過閾值，自動關閉比對`);
+      this._autoOffActive = true;
+      this._preAutoOffMode = this.displayMode;
+      if (this.onAutoOff) this.onAutoOff();
+      else this.toggle('off');
+      return;
+    }
+
+    this.clearBubbles();
+
     const normToOrig = this.buildNormToOrig(contentText);
-    // hide 模式：DMP 前先對 introNorm 套用自訂規則正規化，讓等價差異消失成 equal
-    const ops = this.computeDiffDMP(introText, contentText, this.displayMode === 'hide');
-    const grouped = this.groupOps(ops);
+    // show 模式 preDMPNorm=false 與差異率算的 ops 相同，直接復用；hide 模式需重算
+    const opsForRender = (this.displayMode === 'hide')
+      ? this.computeDiffDMP(introText, contentText, true)
+      : ops;
+
+    const grouped = this.groupOps(opsForRender);
     const postProcessed = this.postProcessGroups(grouped);
     // hide 模式：pre-DMP 已處理等價差異，不再需要 applyCustomRules（避免迭代爆炸）
     // show 模式：照常合併碎片以便偵測等價群組並顯示灰色泡泡

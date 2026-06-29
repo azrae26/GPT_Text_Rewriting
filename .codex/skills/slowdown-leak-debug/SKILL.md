@@ -76,8 +76,12 @@ chrome-devtools `evaluate_script` 跑 **main world**，插件 content script 跑
 1. **快取靜態樣式**：`getTextAreaStyles`（`getComputedStyle`）每字被呼叫但字型/行高/padding 不變 → 快取，只在 resize/字體載入失效。
 2. **別每字全清重建**：移除 text 變時的 `clearHighlights()`，讓值-key reconcile 復用未變者、自動移除消失者（實測 `updateHighlightsVisibility` 784→67ms，12x）。
 3. **前文不算**：算新舊文字 `commonPrefixLen`，完全落在共同前綴內的 match（前文 byte 相同→像素位置必不變）→ 復用上次 `calculatePosition` 結果、不重量測（行末打字幾乎全復用）。
-4. **後文／畫面外**：編輯點之後的高亮位置位移、必重算（mid 打字仍 ~30ms）；再壓低就「只算可見視窗內、off-screen 不算」，但有捲動 tradeoff（捲到未算者要補算）。
-- 統一走 `SharedTypingScheduler.create`（單一真相）；預設即時 rAF。防抖（`enabled`，預設 false）是備援、勿當正解（延遲＝lag）。
-- ⚠ diff 用全域 DMP，group 邊界會**全域重新對齊**，故「前綴穩定」對 diff 不成立（試過 prefix-reuse 復用 diff 泡泡 → 泡泡數崩壞）。此增量法只適用 highlight 這種**獨立 match**（無全域對齊），勿套到 diff。
+4. **後文／畫面外＝視窗化 + idle 補算（僅 highlight 採用）**：編輯點之後的高亮位置位移、必重算。打字時**只算可見視窗內**的高亮（依 `scrollTop/scrollHeight` 估字元範圍 + 一個視窗緩衝），畫面外略過；停手後 `requestIdleCallback`（~500ms）全算補回（off-screen 打字時看不到，捲到前多半已補）。
+- 統一走 `SharedTypingScheduler.create`（單一真相）；預設即時 rAF。防抖（`enabled`，預設 false）是備援，勿當正解（延遲＝lag）。
+- ⚠ diff 用全域 DMP，group 邊界**全域重新對齊**，「前綴穩定」對 diff 不成立（試過 prefix-reuse 復用 diff 泡泡 → 泡泡數崩壞）；highlight/manual-replace 是獨立 match 才可前綴復用。
+- **只 highlight 值得視窗化**：曾把 diff/manual-replace 也視窗化、stock 改 debounce，實測**無可量增益**（按住停在下述宿主地板，37↔38ms 雜訊內）→ 全回退，徒增複雜度。highlight 視窗化已把按住從 61→~38ms（到地板），其餘模組省再多也被地板蓋掉。
 
-**診斷**：非破壞性——快照 textarea 值 → 程式驅動連打（中間插入＝最壞、逼後半位移；行末＝最佳、前綴全復用）→ 還原並驗證值一致。**比對位置正確性前先 `scrollTop=0`**（transform=top−scrollTop，捲動位置不同會誤判位置變了）。每字阻塞用 longtask 量但留意 GC 尖峰致變異大，**以 trace 累計歸因為準**。同 §1：trace ForcedReflow 把時間算給宿主 InputLabel，那是宿主被插件逼著重排。
+**⚠ 宿主放大地板（最重要、消不掉）**：viewport 把每字算的元素砍到 ~可見，但實測按住仍有**每字固定地板，且不隨元素數降**。因為插件每字只要**碰一次 DOM**（改任一 overlay、或寫測量用鏡像 div——皆在 uanalyze 監看的 body 內）就觸發宿主 `MutationObserver` → 宿主重算它自己的 MUI 版面。與改 10 個或 134 個無關。`contain:strict` 擋不住（只讓宿主跳過量 overlay 內部，不阻止 observer 觸發、不阻止宿主重排自身）。**鐵證**：關整個插件按住超順（零 DOM 碰觸）；viewport 砍元素數但地板不動。**結論**：要「畫面內每字即時」就有此地板（除非 uanalyze 自己改）；要更順只能按住時不每字碰 DOM（防抖/節流，但畫面內會延後）——使用者選即時、接受此地板。
+
+**診斷**：非破壞性——快照 textarea 值 → 程式驅動連打（中間插入＝最壞、逼後半位移；行末＝最佳、前綴全復用）→ 還原並驗證值一致。**比對位置正確性前先 `scrollTop=0`**（transform=top−scrollTop，捲動位置不同會誤判）。
+**陷阱（occlusion，踩過）**：chrome-devtools 跑合成測試時 Chrome 視窗常在背景 → rAF 被節流到 ~1fps、setTimeout 被 clamp → viewport/idle 時序全亂、量到的 overlay 數是更新前舊值（會誤判視窗化沒生效）。**viewport/idle 行為與每字成本只能靠使用者前景真實按住驗證**；longtask 累計值仍可信，個別時點 DOM 數不可信。**performance trace 錄製本身會讓「按住」凍結數秒**（profiler 開銷）→ 按住卡頓不可用 trace 錄，只能用輕量 longtask 探針 + 真人按。同 §1：trace ForcedReflow 把時間算給宿主 InputLabel，那是宿主被插件逼著重排。

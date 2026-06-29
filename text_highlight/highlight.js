@@ -930,9 +930,9 @@ const TextHighlight = {
       const textArea = TextHighlight.DOMManager.elements.textArea;
       if (!textArea) return;
 
-      // 改用共用打字防抖：連打時不每幀全量重算高亮位置（重路徑），停頓才更新。
-      // 捲動跟隨另走 transform 路徑（updateHighlightsVisibility/followScroll），不受此影響。
-      const scheduleUpdate = window.SharedTypingScheduler.create(() => TextHighlight.updateHighlights());
+      // 打字時走 viewport 模式：只算可見字元範圍內的高亮（畫面外略過），停手後 idle 全算補回。
+      // 即時（rAF 合流，零延遲）＋只算可見＝打字當下輕；捲動跟隨另走 transform 路徑，不受影響。
+      const scheduleUpdate = window.SharedTypingScheduler.create(() => TextHighlight.updateHighlights({ viewport: true }));
 
       textArea.addEventListener('input', scheduleUpdate);
       textArea.addEventListener('compositionend', scheduleUpdate);
@@ -1185,7 +1185,11 @@ const TextHighlight = {
   /**
    * 更新所有標示
    */
-  updateHighlights() {
+  updateHighlights(opts) {
+    // viewport：打字時只算「可見字元範圍」內的 match，畫面外的 after-edit 略過（停手後 idle 全算補正）；
+    // force：忽略「文本未變」早退，供 idle 補算強制全算。
+    const viewport = !!(opts && opts.viewport);
+    const force = !!(opts && opts.force);
     const { textArea, container } = this.DOMManager.elements;
     if (!textArea || !container) {
               LogUtils.error('更新高亮失敗：缺少必要元素');
@@ -1194,9 +1198,9 @@ const TextHighlight = {
 
     const text = textArea.value;
     const styles = this.PositionCalculator.getTextAreaStyles(textArea);
-    
-    // 如果文本和滾動位置都沒有變化，則跳過更新
-    if (this._lastText === text && this._lastScrollTop === textArea.scrollTop) {
+
+    // 如果文本和滾動位置都沒有變化，則跳過更新（force 時不早退，供 idle 補算）
+    if (!force && this._lastText === text && this._lastScrollTop === textArea.scrollTop) {
       return;
     }
 
@@ -1220,14 +1224,29 @@ const TextHighlight = {
       const n = Math.min(oldText.length, text.length);
       while (commonPrefixLen < n && oldText.charCodeAt(commonPrefixLen) === text.charCodeAt(commonPrefixLen)) commonPrefixLen++;
     }
+    // 視窗化可見字元範圍（依捲動比例估算 + 一個視窗的緩衝；估不準靠緩衝兜，且 idle 全算會修正）。
+    // 打字時畫面外 after-edit match 略過 calculatePosition（每字最大宗成本），停手後 idle 補算。
+    let vLo = -Infinity, vHi = Infinity;
+    if (viewport) {
+      const sh = textArea.scrollHeight || 1;
+      const lo = (textArea.scrollTop / sh) * text.length;
+      const hi = ((textArea.scrollTop + textArea.clientHeight) / sh) * text.length;
+      const buf = (hi - lo) || 200;
+      vLo = Math.max(0, Math.floor(lo - buf));
+      vHi = Math.min(text.length, Math.ceil(hi + buf));
+    }
+
     const prevPos = this._posCacheByKey || new Map();
     const newPos = new Map();
+    let deferredCount = 0;
     const getPositions = (mIdx, mText) => {
       const key = mIdx + '|' + mText;
       if (mIdx + mText.length <= commonPrefixLen) {
         const cached = prevPos.get(key);
         if (cached !== undefined) { newPos.set(key, cached); return cached; } // 前綴穩定 → 復用，不量測
       }
+      // 視窗化：畫面外的 match 先略過（不算、不渲染），記數供 idle 補算
+      if (viewport && (mIdx + mText.length < vLo || mIdx > vHi)) { deferredCount++; return null; }
       const positions = this.PositionCalculator.calculatePosition(textArea, mIdx, text, mText, styles);
       newPos.set(key, positions);
       return positions;
@@ -1294,9 +1313,22 @@ const TextHighlight = {
 
     // 更新虛擬滾動數據
     this.DOMManager.elements.virtualScrollData.allPositions = allPositions;
-    
+
     // 觸發可見性更新
     this.DOMManager.updateHighlightsVisibility();
+
+    // 視窗化有略過畫面外 match → 排程 idle 補算（停手後全算補回；force 略過早退）
+    if (deferredCount > 0) this._scheduleIdleBackfill();
+  },
+
+  /** 停手後（500ms）以 requestIdleCallback 全算一次，補回打字時略過的畫面外高亮 */
+  _scheduleIdleBackfill() {
+    clearTimeout(this._idleBackfillTimer);
+    this._idleBackfillTimer = setTimeout(() => {
+      const run = () => this.updateHighlights({ force: true });
+      if (typeof requestIdleCallback === 'function') requestIdleCallback(run, { timeout: 1000 });
+      else run();
+    }, 500);
   },
 
   // 添加新的方法來新顏色射

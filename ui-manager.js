@@ -52,6 +52,8 @@ const UIManager = {
     diffToggleBtn.textContent = '比對';
     diffToggleBtn.classList.add('gpt-diff-toggle-hide');
     diffToggleBtn.addEventListener('click', () => {
+      // 使用者手動切換 → 取消自動關閉狀態，避免被自動恢復覆蓋
+      if (window.DiffHighlighter) window.DiffHighlighter._autoOffActive = false;
       this._diffModeIdx = (this._diffModeIdx + 1) % this._DIFF_MODES.length;
       const mode = this._DIFF_MODES[this._diffModeIdx];
       diffToggleBtn.className = '';
@@ -352,6 +354,8 @@ const UIManager = {
     // 初始化比對功能（在 DOM 就緒後）
     if (window.DiffHighlighter) {
       window.DiffHighlighter.init('textarea[name="info"]', 'textarea[name="content"]');
+      window.DiffHighlighter.onAutoOff = () => this.setDiffOff();
+      window.DiffHighlighter.onAutoOn = (mode) => this._restoreDiffMode(mode);
       if (window.GlobalSettings) {
         window.DiffHighlighter.setCustomRules(GlobalSettings.diffCustomRules || '');
       }
@@ -549,6 +553,23 @@ const UIManager = {
     this._diffToggleBtn.id = 'gpt-diff-toggle';
     if (window.DiffHighlighter) window.DiffHighlighter.toggle('off');
     LogUtils.log('比對按鈕已自動設為 off');
+  },
+
+  /**
+   * 差異率回降時，恢復比對按鈕到指定模式
+   * @param {'hide'|'show'} mode - 要恢復的模式
+   */
+  _restoreDiffMode(mode) {
+    if (!this._diffToggleBtn) return;
+    const idx = this._DIFF_MODES.indexOf(mode);
+    if (idx === -1) return;
+
+    this._diffModeIdx = idx;
+    this._diffToggleBtn.className = '';
+    this._diffToggleBtn.id = 'gpt-diff-toggle';
+    if (mode !== 'off') this._diffToggleBtn.classList.add(`gpt-diff-toggle-${mode}`);
+    if (window.DiffHighlighter) window.DiffHighlighter.toggle(mode);
+    LogUtils.log(`比對按鈕已自動恢復為 ${mode}`);
   },
 
   /** 檢查文本內容並更新按鈕狀態 */
